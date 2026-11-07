@@ -1,0 +1,36 @@
+name: PS4 Native Scanner Build (Experimental)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ps4-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Host source check
+        run: |
+          mkdir -p ps4-auto-updater-v0.3/ps4/build
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            -o ps4-auto-updater-v0.3/ps4/build/scanner-host \
+            ps4-auto-updater-v0.3/ps4/src/main.c
+          python3 ps4-auto-updater-v0.3/tests/test_ps4_scanner.py
+
+      - name: Compile PS4 package using OpenOrbis
+        uses: OpenOrbis/toolchain-action@main
+        with:
+          version: v0.5.4
+          command: cd ps4-auto-updater-v0.3/ps4 && make
+
+      - name: Save PS4 package (not yet tested on console)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps4-scanner-experimental
+          path: ps4-auto-updater-v0.3/ps4/*.pkg
+          if-no-files-found: error
+          retention-days: 14

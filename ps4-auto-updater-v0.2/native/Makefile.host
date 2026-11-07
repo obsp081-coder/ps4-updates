@@ -1,0 +1,10 @@
+CC ?= cc
+CFLAGS ?= -O2 -std=c99 -Wall -Wextra -Werror
+.PHONY: all clean test
+all: scan_appdb
+scan_appdb: scan_appdb.c
+	$(CC) $(CFLAGS) -o $@ $< -lsqlite3
+clean:
+	rm -f scan_appdb
+test: all
+	python3 -m unittest discover -s ../tests -v

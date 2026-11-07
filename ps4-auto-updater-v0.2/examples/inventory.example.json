@@ -1,0 +1,17 @@
+{
+  "schema": 2,
+  "source": "example-only-not-from-a-real-console",
+  "metadata_only": false,
+  "games": [
+    {
+      "cusa": "CUSA02343",
+      "name": "Uncharted: The Nathan Drake Collection (example)",
+      "app_ver": "01.00",
+      "content_id": "",
+      "category": "gd",
+      "listed_in_appdb": true,
+      "metadata_available": false,
+      "installed_confirmed": false
+    }
+  ]
+}

@@ -691,9 +691,9 @@ static void downloads(uint32_t *p) {
     }
     char n[24];
     (void)snprintf(n,sizeof n,"%u",running);
-    summary(p,90,540,UI_AR_NO_ACTIVE_DOWNLOAD,n,CYAN);
+    summary(p,90,540,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
     (void)snprintf(n,sizeof n,"%u",queued);
-    summary(p,645,540,UI_AR_NO_QUEUED_DOWNLOAD,n,ACCENT);
+    summary(p,645,540,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
     (void)snprintf(n,sizeof n,"%u",finished);
     summary(p,1200,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
     panel(p,90,288,1655,640,PANEL);

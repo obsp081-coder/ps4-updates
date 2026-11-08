@@ -40,6 +40,7 @@ int32_t sceUserServiceInitialize(void *);
 int32_t sceUserServiceGetInitialUser(int32_t *);
 int32_t sceVideoOutOpen(int32_t, int32_t, int32_t, const void *);
 int32_t sceVideoOutClose(int32_t);
+int32_t sceVideoOutUnregisterBuffers(int32_t, int32_t);
 void sceVideoOutSetBufferAttribute(void *, uint32_t, uint32_t, uint32_t,
                                     uint32_t, uint32_t, uint32_t);
 int32_t sceVideoOutRegisterBuffers(int32_t, int32_t, void * const *,

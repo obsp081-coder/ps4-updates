@@ -250,17 +250,18 @@ static void ui_title(uint32_t *p,int x,int y,int width,
         }
     }
 }
-static const char *category_label(const ScannerUiEntry *g) {
-    if (!g || !g->metadata_verified) return "NOT VERIFIED";
-    if (!g->category) return "METADATA";
+static UiArabicLabel category_label(const ScannerUiEntry *g) {
+    if (!g || !g->metadata_verified) return UI_AR_UNVERIFIED_METADATA;
+    if (!g->category) return UI_AR_OTHER_METADATA;
     if (!strcmp(g->category,"gp") || !strcmp(g->category,"gdp"))
-        return "PATCH META";
-    if (!strcmp(g->category,"ac")) return "ADD-ON META";
+        return UI_AR_PATCH_METADATA;
+    if (!strcmp(g->category,"ac")) return UI_AR_DLC_METADATA;
     if (!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
         !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"))
-        return g->install_state==1 ? "INSTALLED" :
-               g->install_state==0 ? "NOT INSTALLED" : "BASE - UNKNOWN";
-    return "OTHER META";
+        return g->install_state==1 ? UI_AR_GAME_INSTALLED :
+               g->install_state==0 ? UI_AR_GAME_NOT_INSTALLED :
+               UI_AR_BASE_UNKNOWN;
+    return UI_AR_OTHER_METADATA;
 }
 static const char *fallback_name(const ScannerUiEntry *g) {
     return g && g->title && g->title[0] ? g->title : "NAME NOT AVAILABLE";
@@ -395,8 +396,8 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     ui_title(p,187,y+5,630,fallback_name(g),WHITE,2);
     ascii(p,187,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     ascii(p,877,y+16,fallback_version(g),CYAN,2,16);
-    ascii(p,877,y+52,category_label(g),
-          g->metadata_verified?MUTED:AMBER,2,21);
+    arabic(p,877,y+37,category_label(g),
+           g->metadata_verified?MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       unsigned count,unsigned good,unsigned errors,
@@ -438,7 +439,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
             arabic(p,1472,337,UI_AR_VERSION,MUTED);
             ascii(p,1472,377,fallback_version(g),WHITE,3,14);
             arabic(p,1235,490,UI_AR_CATEGORY,MUTED);
-            ascii(p,1235,547,category_label(g),WHITE,3,23);
+            arabic(p,1235,535,category_label(g),WHITE);
             rect(p,1234,598,568,2,0xFF244769u);
             arabic(p,1235,613,UI_AR_NO_TRUSTED_UPDATE,AMBER);
             arabic(p,1235,653,UI_AR_DOWNLOAD_BLOCKED,MUTED);
@@ -472,7 +473,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,143,405,UI_AR_VERSION,MUTED);
     ascii(p,143,452,fallback_version(g),WHITE,4,15);
     arabic(p,625,405,UI_AR_PACKAGE,MUTED);
-    ascii(p,625,455,category_label(g),WHITE,3,30);
+    arabic(p,625,440,category_label(g),WHITE);
     arabic(p,143,525,UI_AR_REGION,MUTED);
     arabic(p,400,525,UI_AR_GAME_SIZE,MUTED);
     arabic(p,680,525,UI_AR_FIRMWARE,MUTED);

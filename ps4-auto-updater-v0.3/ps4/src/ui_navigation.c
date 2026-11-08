@@ -68,6 +68,38 @@ void ui_nav_filter(UiNavigation *state, const UiRecord *items,
     if (state->page == UI_PAGE_DETAILS && state->available == 0)
         state->page = UI_PAGE_HOME;
 }
+/* This function is side-effect-free outside UiNavigation. The caller
+ * captures selected_cusa before overwriting the previous UiRecord array.
+ * A missing selection cannot silently switch a Details page to a new title. */
+void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
+                   unsigned count, const char *selected_cusa) {
+    if(!state)return;
+    char saved_query[UI_SEARCH_CAPACITY];
+    memcpy(saved_query,state->query,sizeof saved_query);
+    saved_query[UI_SEARCH_CAPACITY-1]=0;
+    const UiPage old_page=state->page;
+    const unsigned keyboard_index=state->keyboard_index;
+    const unsigned keyboard_arabic=state->keyboard_arabic;
+    ui_nav_filter(state,items,count,saved_query);
+    int selected_found=0;
+    if(selected_cusa && selected_cusa[0] && items) {
+        for(unsigned i=0;i<state->available;++i) {
+            const unsigned idx=state->matched[i];
+            if(items[idx].cusa &&
+               strcmp(items[idx].cusa,selected_cusa)==0) {
+                state->selected=i;
+                state->scroll=i>=UI_VISIBLE_ROWS?i-UI_VISIBLE_ROWS+1:0;
+                selected_found=1;
+                break;
+            }
+        }
+    }
+    state->page=(old_page==UI_PAGE_DETAILS && !selected_found)
+        ? UI_PAGE_HOME : old_page;
+    state->keyboard_index=keyboard_index;
+    state->keyboard_arabic=keyboard_arabic;
+}
+
 void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count) {
     if (!state) return;
     memset(state, 0, sizeof(*state));

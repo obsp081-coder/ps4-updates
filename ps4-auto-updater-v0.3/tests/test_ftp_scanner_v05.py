@@ -582,6 +582,24 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertFalse(inventory["scan_complete"])
         self.assertIn("LIST_TRUNCATED: 1", diagnostic)
 
+    def test_combined_root_capacity_overflow_reports_incomplete_scan(self):
+        internal = (
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
+        )
+        external = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA08032\r\n"
+        def configure(server):
+            server.external_listing = external
+        inventory, diagnostic, _ = self.with_server(
+            internal,
+            {"CUSA02343": sfo("CUSA02343"),
+             "CUSA00411": sfo("CUSA00411"),
+             "CUSA08032": sfo("CUSA08032")},
+            executable=self.limited_executable, passthrough=configure)
+        self.assertFalse(inventory["scan_complete"])
+        self.assertEqual(len(inventory["directory_candidates"]), 2)
+        self.assertIn("CANDIDATE_CAPACITY_EXCEEDED: 1", diagnostic)
+
     def test_content_id_substring_cannot_impersonate_title(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, _ = self.with_server(

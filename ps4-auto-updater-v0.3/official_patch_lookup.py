@@ -78,7 +78,7 @@ def read_xml(url):
         raise ValueError("Sony metadata URL must be a string")
     match = re.fullmatch(
         re.escape(ENDPOINT) + r"/(CUSA[0-9]{5})/[a-f0-9]{64}/"
-        + r"(CUSA[0-9]{5})-ver\\.xml",
+        + r"(CUSA[0-9]{5})-ver\.xml",
         url,
     )
     if not match or match.group(1) != match.group(2) or url != patch_url(match.group(1)):

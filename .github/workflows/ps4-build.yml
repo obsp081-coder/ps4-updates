@@ -31,11 +31,22 @@ jobs:
           sudo apt-get install -y python3-pil fonts-noto-core
 
       - name: Run all automatic tests
+        env:
+          UI_PREVIEW_EXPORT_DIR: ps4-auto-updater-v0.3/ui-previews
         run: |
           python3 -m unittest discover \
             -s ps4-auto-updater-v0.3/tests \
             -p 'test_*.py' \
             -v
+
+      - name: Upload host-rendered UI previews (NOT PS4 screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-native-host-previews
+          path: ps4-auto-updater-v0.3/ui-previews/*.png
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Host checks completed
         run: |

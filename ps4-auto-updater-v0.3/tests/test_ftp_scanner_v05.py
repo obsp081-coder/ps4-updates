@@ -45,7 +45,9 @@ def sfo(title_id, name="Test Game", version="01.04", category="gd"):
 
 class MockHandler(socketserver.StreamRequestHandler):
     def respond(self, text):
-        self.wfile.write((text + "\r\n").encode("ascii"))
+        # Original FTPS4 often terminates control replies with LF only.
+        ending = "\n" if self.server.lf_only_replies else "\r\n"
+        self.wfile.write((text + ending).encode("ascii"))
         self.wfile.flush()
 
     def handle(self):
@@ -153,6 +155,7 @@ class MockFTP(socketserver.TCPServer):
         self.challenge_password = False
         self.type_unknown = False
         self.packet_strict = False
+        self.lf_only_replies = False
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -389,6 +392,27 @@ class ScannerFTPTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=4)
+
+
+    def test_real_ftps4_per_recv_commands_and_lf_only_replies(self):
+        def configure(server):
+            server.packet_strict = True
+            server.lf_only_replies = True
+
+        listing = b"drwxr-xr-x 1 ps4 ps4 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing,
+            {"CUSA02343": sfo("CUSA02343", "LF-only FTPS4 Test")},
+            passthrough=configure,
+        )
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertEqual(inventory["games"][0]["cusa"], "CUSA02343")
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
+        self.assertIn("FTP_PASV_CODE: 227", diagnostic)
+        self.assertNotIn("FRAGMENT", commands)
+        self.assertNotIn("TYPE", commands)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

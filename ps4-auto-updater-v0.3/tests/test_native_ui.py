@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 UI_SOURCE = ROOT / "ps4" / "src" / "scanner_ui.cpp"
 UI_NAV = ROOT / "ps4" / "src" / "ui_navigation.c"
+UI_TITLE_LAYOUT = ROOT / "ps4" / "src" / "ui_title_layout.c"
 UI_IMAGE = ROOT / "ps4" / "src" / "ui_image.c"
 UI_ICON_CACHE = ROOT / "ps4" / "src" / "ui_icon_cache.c"
 UI_MODELS = ROOT / "ps4" / "src" / "ui_models.c"
@@ -65,7 +66,8 @@ class NativeUiSmokeTests(unittest.TestCase):
                     cxx, "-std=c++17", "-O2", "-Wall", "-Wextra",
                     "-Werror", "-DPS4_UI_HOST_TEST", "-I", str(MOCK_DIR),
                     "-I", str(Path(tmp)),
-                    str(UI_SOURCE), str(UI_NAV), str(UI_IMAGE),
+                    str(UI_SOURCE), str(UI_NAV), str(UI_TITLE_LAYOUT),
+                    str(UI_IMAGE),
                     str(UI_ICON_CACHE), str(UI_MODELS), str(MOCK_TEST),
                     "-o", str(binary),
                     "-lm",

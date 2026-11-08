@@ -64,8 +64,29 @@ int main(int argc,char **argv) {
     assert(ui_snapshot_load(path,loaded,2,&count)==1);
     assert(count==2);
 
+    /* Partial internal FTP scans must NEVER replace a prior valid
+     * snapshot, even if it has zero games. Full scans are allowed to
+     * replace it, and the first useful partial scan may seed one. */
+    assert(ui_snapshot_should_save(1,0,1)==1);
+    assert(ui_snapshot_should_save(1,1,1)==1);
+    assert(ui_snapshot_should_save(0,1,0)==1);
+    assert(ui_snapshot_should_save(0,1,1)==0);
+    assert(ui_snapshot_should_save(0,0,1)==0);
+    assert(ui_snapshot_should_save(0,0,0)==0);
+
+    /* Simulate retaining the two-record full library when the later
+     * scan discovers only one internal game and misses all external games. */
+    assert(ui_snapshot_load(path,loaded,2,&count)==1 && count==2);
+    const unsigned scanned_partial_count=1;
+    if(ui_snapshot_should_save(0,scanned_partial_count>0,1))
+        assert(ui_snapshot_save(path,games,scanned_partial_count)==0);
+    assert(ui_snapshot_load(path,loaded,2,&count)==1 && count==2);
+    assert(!strcmp(loaded[0].cusa,"CUSA02343"));
+    assert(!strcmp(loaded[1].cusa,"CUSA00002"));
+
     /* Only a correctly completed scan may explicitly clear a cache. */
     assert(ui_snapshot_save(path,NULL,0)==0);
+    assert(ui_snapshot_should_save(0,1,1)==0);
     assert(ui_snapshot_load(path,NULL,0,&count)==1);
     assert(count==0);
     f=fopen(path,"wb");

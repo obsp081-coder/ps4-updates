@@ -63,6 +63,12 @@ static int ftp_login_ok = 0;
 static int primary_listing_ok = 0;
 static unsigned directory_candidates = 0;
 static unsigned sfo_invalid = 0;
+typedef struct {
+    char cusa[10];
+    char source[12];
+} DirectoryCandidate;
+static DirectoryCandidate candidate_list[MAX_GAMES];
+static unsigned candidate_count = 0;
 
 static void logmsg(const char *name, int value) {
     if (report) {
@@ -80,6 +86,20 @@ static int valid_id(const char *s) {
             return 0;
 
     return 1;
+}
+
+/* Directory observations are NOT proof of installed applications. */
+static void remember_candidate(const char *id, const char *source) {
+    for (unsigned i = 0; i < candidate_count; ++i)
+        if (!strcmp(candidate_list[i].cusa, id))
+            return;
+
+    if (candidate_count == MAX_GAMES)
+        return;
+
+    DirectoryCandidate *c = &candidate_list[candidate_count++];
+    memcpy(c->cusa, id, 10);
+    snprintf(c->source, sizeof c->source, "%s", source);
 }
 
 static int duplicate(const char *s) {
@@ -768,6 +788,9 @@ static int scan_root(
     if (count > 0)
         directory_candidates += (unsigned)count;
 
+    for (int i = 0; i < count; ++i)
+        remember_candidate(ids[i], source);
+
     static unsigned char sfo[MAX_SFO];
 
     for (int i = 0; i < count; ++i) {
@@ -919,9 +942,21 @@ static int save_inventory(const char *path) {
         ",\n"
         "  \"download_enabled\":false,\n"
         "  \"install_enabled\":false,\n"
-        "  \"games\":[\n",
+        "  \"directory_candidates\":[\n",
         fp
     );
+
+    for (unsigned i = 0; i < candidate_count; ++i) {
+        if (i)
+            fputs(",\n", fp);
+        fputs("    {\"cusa\":", fp);
+        json_str(fp, candidate_list[i].cusa);
+        fputs(",\"source\":", fp);
+        json_str(fp, candidate_list[i].source);
+        fputs(",\"metadata_verified\":false}", fp);
+    }
+
+    fputs("\n  ],\n  \"games\":[\n", fp);
 
     for (unsigned i = 0; i < found; ++i) {
         Game *g = &games[i];
@@ -1118,7 +1153,8 @@ int main(void) {
             ++unknown;
     }
 
-    logmsg("Directory candidates", (int)directory_candidates);
+    logmsg("Directory candidates", (int)candidate_count);
+    logmsg("Directory listings observed", (int)directory_candidates);
     logmsg("SFO invalid", (int)sfo_invalid);
     logmsg("Metadata records", (int)found);
     logmsg("Installed confirmed", (int)confirmed);

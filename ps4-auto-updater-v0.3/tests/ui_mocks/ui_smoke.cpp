@@ -138,7 +138,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
-               frame[901u*SCREEN_WIDTH+1250u]==0xFF102D50u)
+               frame[940u*SCREEN_WIDTH+1250u]==0xFF102D50u)
                 saw_offline_cache=true;
         }
         if(capture_cached_preview) {

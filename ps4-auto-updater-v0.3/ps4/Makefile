@@ -1,13 +1,15 @@
 # PS4 Auto Updater 0.3 - metadata scanner SMOKE TEST ONLY.
 # Build with OpenOrbis PS4 Toolchain. See README_AR.md before running.
 TITLE       := PS4 Game Scanner Test
-VERSION     := 01.00
+VERSION     := 01.01
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
 TOOLCHAIN   := $(OO_PS4_TOOLCHAIN)
 TOOLBIN     := $(TOOLCHAIN)/bin/linux
 INTDIR      := build
+# The OpenOrbis runtime stubs must be packaged inside sce_module/.
+RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 LIBS        := -lc -lkernel -lc++
 CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
@@ -48,7 +50,25 @@ sce_sys/about/right.sprx:
 	  test -n "$$f" || { echo 'right.sprx missing from toolchain sample'; exit 1; }; \
 	  cp "$$f" '$@'
 
-pkg.gp4: eboot.bin sce_sys/param.sfo sce_sys/icon0.png sce_sys/about/right.sprx
+# Fail the build if a required runtime PRX is missing.
+# OpenOrbis 0.5.4 may place these in src/modules or bin/data/modules.
+sce_module/%.prx:
+	@set -eu; \
+	  mkdir -p sce_module; \
+	  source_file=''; \
+	  for p in "$(TOOLCHAIN)/src/modules/$*.prx" "$(TOOLCHAIN)/bin/data/modules/$*.prx"; do \
+	    if [ -s "$$p" ]; then source_file="$$p"; break; fi; \
+	  done; \
+	  if [ -z "$$source_file" ]; then \
+	    source_file="$$(find '$(TOOLCHAIN)' -type f -name '$*.prx' -print -quit)"; \
+	  fi; \
+	  if [ -z "$$source_file" ] || [ ! -s "$$source_file" ]; then \
+	    echo 'ERROR: OpenOrbis runtime $*.prx not found in the downloaded toolchain' >&2; \
+	    exit 1; \
+	  fi; \
+	  cp "$$source_file" "$@"
+
+pkg.gp4: eboot.bin sce_sys/param.sfo sce_sys/icon0.png sce_sys/about/right.sprx $(RUNTIME_PRXS)
 	$(TOOLBIN)/create-gp4 -out $@ --content-id=$(CONTENT_ID) --files "$^"
 
 $(CONTENT_ID).pkg: pkg.gp4
@@ -58,4 +78,4 @@ host-check: | $(INTDIR)
 	cc -std=c99 -Wall -Wextra -Werror -O2 -o $(INTDIR)/scanner-host src/main.c
 
 clean:
-	rm -rf $(INTDIR) eboot.bin pkg.gp4 sce_sys/param.sfo *.pkg
+	rm -rf $(INTDIR) eboot.bin pkg.gp4 sce_sys/param.sfo $(RUNTIME_PRXS) *.pkg

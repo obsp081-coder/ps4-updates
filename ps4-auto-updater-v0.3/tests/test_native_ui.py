@@ -113,6 +113,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 "Arabic keyboard key has no visible glyph"
                             )
                     if page == "search":
+                        # Search must show an actual matching title below
+                        # the keyboard, not just its match count. This
+                        # rectangle contains no keyboard key or footer text.
+                        result_patch = pixels.crop((193, 920, 650, 955))
+                        result_ink = sum(
+                            1 for r, g, b in result_patch.getdata()
+                            if r >= 175 and g >= 175 and b >= 175
+                        )
+                        self.assertGreater(
+                            result_ink, 18,
+                            "Search results preview has no visible game title"
+                        )
                         # All A-J keys on the 10-column keyboard must have
                         # visible white glyphs; proportional fonts can be
                         # clipped if the old 5x7 fixed-cell width is reused.

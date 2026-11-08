@@ -1,6 +1,6 @@
 
-TITLE       := PS4 Game Scanner Test
-VERSION     := 01.10
+TITLE       := PS4 Auto Updater - Read Only Preview
+VERSION     := 01.11
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -10,7 +10,7 @@ INTDIR      := build
 
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
-LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil
+LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil -lSceVideoOut -lScePad -lSceUserService
 
 CFLAGS      := -D__ORBIS__ -include stdbool.h -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf \
@@ -25,6 +25,10 @@ LDFLAGS     := -m elf_x86_64 -pie \
                $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
 CC          := clang
+CXX         := clang++
+CXXFLAGS    := -D__ORBIS__ -std=c++17 -Wall -Wextra -Werror \
+               --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
 LD          := ld.lld
 
 .PHONY: all clean host-check
@@ -37,8 +41,11 @@ $(INTDIR):
 $(INTDIR)/main.o: src/ftp_scanner_v05.c | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-eboot.bin: $(INTDIR)/main.o
-	$(LD) $(INTDIR)/main.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
+$(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h | $(INTDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+eboot.bin: $(INTDIR)/main.o $(INTDIR)/scanner_ui.o
+	$(LD) $(INTDIR)/main.o $(INTDIR)/scanner_ui.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
 	$(TOOLBIN)/create-fself -in=$(INTDIR)/scanner.elf -out=$(INTDIR)/scanner.oelf --eboot eboot.bin --paid 0x3800000000000011
 
 sce_sys/param.sfo: Makefile

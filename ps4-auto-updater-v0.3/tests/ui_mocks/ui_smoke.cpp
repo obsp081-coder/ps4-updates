@@ -26,6 +26,7 @@ static bool saw_cached_sixth_row = false;
 static bool check_offline_cache = false;
 static bool saw_offline_cache = false;
 static bool test_async_scan = false;
+static bool test_async_exit = false;
 static bool saw_scan_details = false;
 static bool saw_scan_settings = false;
 static volatile uint32_t mock_scan_status = 0;
@@ -90,7 +91,8 @@ static void reset() {
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     capture_cached_preview = saw_cached_sixth_row = false;
     check_offline_cache = saw_offline_cache = false;
-    test_async_scan = saw_scan_details = saw_scan_settings = false;
+    test_async_scan = test_async_exit = saw_scan_details =
+        saw_scan_settings = false;
     mock_scan_status = 0;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
@@ -209,6 +211,10 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_async_exit) {
+        if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_async_scan) {
         /* Worker remains incomplete while we navigate cached details and
          * settings. It signals completion only after Pad input is polled. */
@@ -384,6 +390,18 @@ int main() {
     assert(scanner_ui_wait_for_scan(&mock_scan_status)==0);
     assert(saw_scan_details && saw_scan_settings && pad_reads>=8);
     test_async_scan=false;
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Pressing Circle on Home during a pending scan must return a cancel
+     * request to the owner so it can signal abort and join the worker. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
+    test_async_exit=true;
+    assert(scanner_ui_wait_for_scan(&mock_scan_status)==1);
+    assert(pad_reads>=2 && !(mock_scan_status&SCANNER_UI_SCAN_DONE));
+    test_async_exit=false;
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

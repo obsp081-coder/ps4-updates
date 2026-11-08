@@ -10,6 +10,7 @@ typedef struct ScannerUiEntry {
     const char *version;
     int metadata_verified;
     int install_state;
+    const char *category;
 } ScannerUiEntry;
 
 int scanner_ui_begin(void);

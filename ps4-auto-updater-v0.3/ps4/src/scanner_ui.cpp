@@ -1105,7 +1105,9 @@ extern "C" void scanner_ui_results(
     unsigned no_pad_wait=0;
     unsigned pad_read_failures=0;
     for(;;) {
-        (void)sceKernelUsleep(100000);
+        /* Poll Pad at ~30 Hz, but draw only on input or new icon data.
+         * This is NOT proof of 30 rendered FPS on physical hardware. */
+        (void)sceKernelUsleep(33000);
         /* Icon requests are nonblocking atomic mailbox operations.
          * Poll selected title first, then six visible rows; never decode
          * images or access FTP on the VideoOut/Pad thread. */

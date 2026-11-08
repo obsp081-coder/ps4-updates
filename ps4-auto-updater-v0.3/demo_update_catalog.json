@@ -1,0 +1,31 @@
+
+{
+  "schema": 1,
+  "fixture_only": true,
+  "description": "SIMULATION ONLY - not real PS4 updates",
+  "updates": [
+    {
+      "cusa": "CUSA02343",
+      "content_id": "DEMO-CUSA02343_00-MOCKONLY000000000",
+      "version": "01.02",
+      "min_fw": "11.00",
+      "required_base_version": "01.00",
+      "demo_only": true
+    },
+    {
+      "cusa": "CUSA00411",
+      "content_id": "DEMO-CUSA00411_00-MOCKONLY000000000",
+      "version": "01.58",
+      "min_fw": "15.00",
+      "required_base_version": "01.57",
+      "demo_only": true
+    },
+    {
+      "cusa": "CUSA08032",
+      "content_id": "DEMO-CUSA08032_00-MOCKONLY000000000",
+      "version": "03.90",
+      "min_fw": "12.00",
+      "demo_only": true
+    }
+  ]
+}

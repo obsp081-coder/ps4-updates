@@ -102,8 +102,13 @@ static void text(uint32_t *pixels, int x, int y, const char *s,
                  uint32_t color, int scale, int max_chars) {
     if (!pixels || !s || max_chars<=0 || scale<=0) return;
     if(scale>=2 && scale<=4) {
-        const int cap=x+max_chars*6*scale<WIDTH ?
-                      x+max_chars*6*scale:WIDTH;
+        /* A 42px proportional 'W' is wider than the old 5x7 cell.
+         * One-character keyboard buttons and the compact PS4 badge need
+         * a glyph-sized cap or letters vanish entirely. Long game titles
+         * retain their conservative column budget. */
+        const int cell_width=max_chars<=4 ? 12*scale : 6*scale;
+        const int cap=x+max_chars*cell_width<WIDTH ?
+                      x+max_chars*cell_width:WIDTH;
         int pen=x;
         for(int i=0; s[i] && i<max_chars; ++i) {
             unsigned c=(unsigned char)s[i];

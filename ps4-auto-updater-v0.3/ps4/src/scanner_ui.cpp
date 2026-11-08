@@ -5,6 +5,7 @@
  */
 #include "scanner_ui.h"
 #include "ui_navigation.h"
+#include "ui_icon_cache.h"
 #include "ui_arabic_generated.h"
 #ifdef PS4_UI_HOST_TEST
 #include "scanner_ui_host_mock.h"
@@ -163,6 +164,18 @@ static void placeholder(uint32_t *p, int x, int y, int w, int h) {
     rect(p,x+15,y+15,w-30,4,CYAN);
     ascii(p,x+19,y+h/2-8,"PS4",WHITE,3,3);
 }
+/* Decode outside draw(). The 128px local thumbnail is scaled on demand. */
+static void cover(uint32_t *p,int x,int y,int w,int h,const char *cusa) {
+    const uint32_t *thumb=ui_icon_cache_find(cusa);
+    if(!thumb) { placeholder(p,x,y,w,h); return; }
+    for(int dy=0;dy<h;++dy) {
+        unsigned sy=(unsigned)((uint64_t)dy*UI_ICON_SIDE/(unsigned)h);
+        for(int dx=0;dx<w;++dx) {
+            unsigned sx=(unsigned)((uint64_t)dx*UI_ICON_SIDE/(unsigned)w);
+            p[(size_t)(y+dy)*WIDTH+x+dx]=thumb[sy*UI_ICON_SIDE+sx];
+        }
+    }
+}
 static void header(uint32_t *p, UiPage page) {
     rect(p,0,0,WIDTH,115,0xFF0A1E3Eu);
     rect(p,0,112,WIDTH,3,ACCENT);
@@ -203,7 +216,7 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
     panel(p,76,y,1090,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) rect(p,76,y+10,5,68,CYAN);
-    placeholder(p,92,y+11,68,66);
+    cover(p,92,y+11,68,66,g?g->cusa:nullptr);
     ascii(p,187,y+15,fallback_name(g),WHITE,2,39);
     ascii(p,187,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     ascii(p,877,y+16,fallback_version(g),CYAN,2,16);
@@ -244,7 +257,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
-            placeholder(p,1232,240,208,231);
+            cover(p,1232,240,208,231,g->cusa);
             ascii(p,1472,262,fallback_name(g),WHITE,2,23);
             ascii(p,1472,309,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
             arabic(p,1472,337,UI_AR_VERSION,MUTED);
@@ -278,7 +291,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     const ScannerUiEntry *g=&entries[idx];
     arabic(p,93,137,UI_AR_DETAILS,WHITE);
     panel(p,90,225,1730,705,PANEL);
-    placeholder(p,1465,271,285,317);
+    cover(p,1465,271,285,317,g->cusa);
     ascii(p,135,271,fallback_name(g),WHITE,4,35);
     ascii(p,140,348,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
     arabic(p,143,405,UI_AR_VERSION,MUTED);
@@ -350,7 +363,14 @@ static void draw(const ScannerUiEntry *entries,
     }
 }
 
+extern "C" int scanner_ui_offer_icon(
+    const char *cusa, const unsigned char *png, unsigned png_bytes
+) {
+    return ui_icon_cache_offer(cusa,png,png_bytes);
+}
+
 extern "C" int scanner_ui_begin(void) {
+    ui_icon_cache_reset();
     OrbisUserServiceInitializeParams init = {};
     init.priority = ORBIS_KERNEL_PRIO_FIFO_LOWEST;
     (void)sceUserServiceInitialize(&init);

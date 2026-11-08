@@ -1285,7 +1285,7 @@ int main(void) {
     logmsg("Installation unknown", (int)unknown);
 
     logmsg(
-        "AppInstUtil status (0=OK,-1=unavailable)",
+        "AppInstUtil status (0=OK,2=init failed,-1=host)",
         api_stage
     );
 

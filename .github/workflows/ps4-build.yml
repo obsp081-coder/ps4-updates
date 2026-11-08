@@ -37,6 +37,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs:
       - host-tests
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout project
@@ -106,7 +108,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.07\n"
+              "Build version: 01.08\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"
@@ -125,3 +127,38 @@ jobs:
             ps4-auto-updater-v0.3/ps4/BUILD_MANIFEST.txt
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish prerelease with direct PKG download
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Publish only a fully tested build from the current main HEAD.
+          HEAD_SHA=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$HEAD_SHA" != "$GITHUB_SHA" ]; then
+            echo "Skipping outdated run at $GITHUB_SHA; main is $HEAD_SHA"
+            exit 0
+          fi
+
+          TAG="scanner-v0.5.3"
+          ASSET="PS4-Auto-Updater-v0.5.3.pkg"
+          ROOT="ps4-auto-updater-v0.3/ps4"
+          PKG="$ROOT/IV0000-BREW00197_00-PS4SCANNERTEST00.pkg"
+          MANIFEST="$ROOT/BUILD_MANIFEST.txt"
+          test -s "$PKG" && test -s "$MANIFEST"
+          cp "$PKG" "$ASSET"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; preserving immutable artifact."
+            exit 0
+          fi
+
+          gh release create "$TAG" "$ASSET" "$MANIFEST" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "PS4 Auto Updater v0.5.3 — experimental scanner" \
+            --notes "Experimental read-only GoldHEN FTP diagnostic build (PKG 01.08). Not verified on real PS4 firmware 14.00. Does not download, install, or delete game updates. Includes SHA256 manifest."
+
+          echo "Direct PKG: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

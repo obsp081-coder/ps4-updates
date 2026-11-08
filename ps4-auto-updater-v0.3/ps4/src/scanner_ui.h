@@ -21,6 +21,9 @@ void scanner_ui_results(
     int scan_complete, int inventory_saved
 );
 void scanner_ui_shutdown(void (*trace)(const char *, int));
+/* Source is local console metadata only, bytes read by scanner; no network. */
+int scanner_ui_offer_icon(const char *cusa, const unsigned char *png,
+                          unsigned png_bytes);
 
 #ifdef __cplusplus
 }

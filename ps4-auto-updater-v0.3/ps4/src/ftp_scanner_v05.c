@@ -88,6 +88,23 @@ static int valid_id(const char *s) {
     return 1;
 }
 
+/* PS4/FPKG Content IDs encode the title at offset 7:
+ * XX0000-CUSA12345_00-XXXXXXXXXXXXXXXX. A substring elsewhere is
+ * not reliable proof that the metadata belongs to this title. */
+static int content_id_matches(const char *cid, const char *id) {
+    if (strlen(cid) < 17 || !valid_id(id))
+        return 0;
+    if (!isupper((unsigned char)cid[0]) ||
+        !isupper((unsigned char)cid[1]) ||
+        !isdigit((unsigned char)cid[2]) ||
+        !isdigit((unsigned char)cid[3]) ||
+        !isdigit((unsigned char)cid[4]) ||
+        !isdigit((unsigned char)cid[5]) ||
+        cid[6] != '-' || cid[16] != '_')
+        return 0;
+    return memcmp(cid + 7, id, 9) == 0;
+}
+
 /* Directory observations are NOT proof of installed applications. */
 static void remember_candidate(const char *id, const char *source) {
     for (unsigned i = 0; i < candidate_count; ++i)
@@ -215,14 +232,14 @@ static int parse_sfo(
             id, g.cusa[0] ? g.cusa : "(missing)",
             g.category[0] ? g.category : "(missing)",
             g.version[0] ? g.version : "(missing)",
-            g.cid[0] ? strstr(g.cid, id) != NULL : -1
+            g.cid[0] ? content_id_matches(g.cid, id) : -1
         );
         fflush(report);
     }
 
     /* If TITLE_ID is absent, CONTENT_ID may independently confirm
        the directory ID. The directory alone is insufficient. */
-    if (!g.cusa[0] && g.cid[0] && strstr(g.cid, id)) {
+    if (!g.cusa[0] && g.cid[0] && content_id_matches(g.cid, id)) {
         memcpy(g.cusa, id, 10);
         if (report)
             fprintf(report, "SFO ID from CONTENT_ID: %s\n", id);
@@ -230,14 +247,17 @@ static int parse_sfo(
 
     if (!valid_id(g.cusa)) return -33;
     if (strcmp(g.cusa, id)) return -34;
-    if (g.cid[0] && !strstr(g.cid, id)) return -35;
+    if (g.cid[0] && !content_id_matches(g.cid, id)) return -35;
 
-    /* gd=game, gdO=PS2 classic. gp is a patch, not a base game;
-       gde, ac, and other values aren't validated base-game records. */
+    /* Keep playable base-game categories aligned with the project's
+       PKG inspector: gd, gda and gdo. gde is a demo, also playable.
+       gp/gdp are patches; ac is an add-on, not a base game. */
     if (
         g.category[0] &&
         strcmp(g.category, "gd") &&
-        strcmp(g.category, "gdO")
+        strcmp(g.category, "gda") &&
+        strcmp(g.category, "gdo") &&
+        strcmp(g.category, "gde")
     ) return 2;
 
     if (found >= MAX_GAMES) return -36;
@@ -953,7 +973,9 @@ static int save_inventory(const char *path) {
         json_str(fp, candidate_list[i].cusa);
         fputs(",\"source\":", fp);
         json_str(fp, candidate_list[i].source);
-        fputs(",\"metadata_verified\":false}", fp);
+        fputs(duplicate(candidate_list[i].cusa)
+                  ? ",\"metadata_verified\":true}"
+                  : ",\"metadata_verified\":false}", fp);
     }
 
     fputs("\n  ],\n  \"games\":[\n", fp);

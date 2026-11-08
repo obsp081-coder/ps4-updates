@@ -1050,8 +1050,9 @@ static int scan_root(
 #ifdef __ORBIS__
 /* Read-only GoldHEN FTP icon retrieval. A single PNG is decoded in the
  * background thread, and its 128x128 pixels remain private until READY.
- * An unsupported TYPE I command is handled by chunk-CRC-checked
- * FTP ASCII repair; an invalid PNG can never enter the UI cache. */
+ * GoldHEN variants may not support TYPE I: match scanner's PASV-first
+ * transfer path. PNG CRC and optional ASCII newline recovery protect the
+ * icon cache from corrupt transport data. */
 static int fetch_local_icon(sock_t control,unsigned index,uint32_t *out) {
     if(index>=found || !out || scan_should_abort())return -1;
     const Game *g=&games[index];
@@ -1087,9 +1088,10 @@ static void *cover_worker_entry(void *unused) {
         __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
         return NULL;
     }
-    char reply[512];
-    const int type=command(control,reply,sizeof reply,"TYPE I");
-    logmsg("ICON_FTP_TYPE_I_RC",type);
+    /* Do not probe TYPE I here. Some PS4 FTP implementations reject it
+     * and desynchronize subsequent PASV requests. The read-only scanner
+     * already uses PASV first; the cover worker must do the same. */
+    logmsg("ICON_FTP_PASV_FIRST",1);
     __atomic_store_n(&cover_online,1u,__ATOMIC_RELEASE);
     while(!scan_should_abort() &&
           !__atomic_load_n(&cover_stop,__ATOMIC_ACQUIRE)) {
@@ -1449,15 +1451,19 @@ static int scan_readonly(void) {
                 ++errors;
             }
 
-            char line[512];
-
-            (void)command(
-                control,
-                line,
-                sizeof line,
-                "QUIT"
-            );
-
+            /* transfer() may stop halfway through a data stream when
+             * Cancel is requested; its control reply is then unread.
+             * Never issue QUIT on an out-of-sync command stream. */
+#ifdef __ORBIS__
+            if(!scan_should_abort()) {
+#endif
+                char line[512];
+                (void)command(control,line,sizeof line,"QUIT");
+#ifdef __ORBIS__
+            } else {
+                logmsg("FTP_CANCEL_SKIP_QUIT",1);
+            }
+#endif
             NET_CLOSE(control);
         }
     }
@@ -1573,8 +1579,8 @@ static int scan_readonly(void) {
 static void *scan_worker_entry(void *unused) {
     (void)unused;
     scan_run_rc=scan_readonly();
-    /* Release protects games[], ui_items[], report and worker_thumbnails[].
-     * The main UI thread must still join before consuming these objects. */
+    /* Release publishes scanner completion. The main UI thread still joins
+     * before consuming games[], ui_items[] and diagnostic state. */
     __atomic_store_n(&scan_status,SCANNER_UI_SCAN_DONE,__ATOMIC_RELEASE);
     return NULL;
 }

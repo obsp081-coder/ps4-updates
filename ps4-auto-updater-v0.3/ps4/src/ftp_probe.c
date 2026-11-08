@@ -1,33 +1,40 @@
 
-/* PS4 Auto Updater v0.3.3
-   Local GoldHEN FTP connection test.
-   No downloads or system modifications.
-*/
+/*
+ * PS4 Auto Updater v0.3.3
+ * GoldHEN Local FTP Connection Diagnostic
+ * Read-only network test.
+ */
 
-#include <orbis/Net.h>
-#include <errno.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <errno.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <orbis/Net.h>
 
-#define REPORT_DIR "/data/PS4AutoUpdater"
-#define REPORT_FILE REPORT_DIR "/ftp_probe.txt"
+#define REPORT_DIR  "/data/PS4AutoUpdater"
+#define REPORT_FILE "/data/PS4AutoUpdater/ftp_probe.txt"
 
-int main(void) {
+int main(void)
+{
     if (mkdir(REPORT_DIR, 0777) != 0 &&
         errno != EEXIST) {
         return 1;
     }
 
     FILE *report = fopen(REPORT_FILE, "wb");
-    if (!report) return 2;
 
-    fputs("PS4 Auto Updater - FTP diagnostic v0.3.3\n", report);
+    if (report == NULL) {
+        return 2;
+    }
+
+    fputs("PS4 Auto Updater FTP Diagnostic v0.3.3\n", report);
     fputs("Target: 127.0.0.1:2121\n", report);
 
     int init_ret = sceNetInit();
 
-    fprintf(report, "sceNetInit: %d (0x%08X)\n",
+    fprintf(report,
+            "sceNetInit: %d (0x%08X)\n",
             init_ret, (uint32_t)init_ret);
 
     OrbisNetId sock = sceNetSocket(
@@ -37,34 +44,39 @@ int main(void) {
         0
     );
 
-    fprintf(report, "sceNetSocket: %d (0x%08X)\n",
+    fprintf(report,
+            "sceNetSocket: %d (0x%08X)\n",
             sock, (uint32_t)sock);
 
     if (sock < 0) {
-        fputs("Result: socket creation failed\n", report);
+        fputs("Result: SOCKET_FAILED\n", report);
         fclose(report);
         return 3;
     }
 
     OrbisNetSockaddr address = {0};
+
     address.len = (uint8_t)sizeof(address);
     address.sa_family = ORBIS_NET_AF_INET;
 
-    /* Port 2121 */
+    /* Port 2121 in network byte order */
     address.sa_data[0] = 0x08;
     address.sa_data[1] = 0x49;
 
-    /* Localhost 127.0.0.1 */
+    /* IP address 127.0.0.1 */
     address.sa_data[2] = 127;
     address.sa_data[3] = 0;
     address.sa_data[4] = 0;
     address.sa_data[5] = 1;
 
     int connection = sceNetConnect(
-        sock, &address, sizeof(address)
+        sock,
+        &address,
+        (OrbisNetSocklen_t)sizeof(address)
     );
 
-    fprintf(report, "sceNetConnect: %d (0x%08X)\n",
+    fprintf(report,
+            "sceNetConnect: %d (0x%08X)\n",
             connection, (uint32_t)connection);
 
     if (connection == 0) {

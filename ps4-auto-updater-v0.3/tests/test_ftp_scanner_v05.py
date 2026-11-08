@@ -511,6 +511,33 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertFalse(inventory["scan_complete"])
         self.assertIn("SFO CUSA02343: -33", diagnostic)
 
+
+    def test_nine_realistic_candidates_remain_visible_when_sfo_invalid(self):
+        ids = [
+            "CUSA00001", "CUSA06122", "CUSA57220",
+            "CUSA03506", "CUSA01116", "CUSA08032",
+            "CUSA00411", "CUSA03551", "CUSA02343",
+        ]
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 " + title + "\r\n").encode()
+            for title in ids
+        )
+        inventory, diagnostic, commands = self.with_server(
+            listing, {title: b"BAD!" for title in ids})
+        self.assertEqual(inventory["games"], [])
+        self.assertEqual(
+            [x["cusa"] for x in inventory["directory_candidates"]], ids
+        )
+        self.assertTrue(all(
+            x["metadata_verified"] is False
+            for x in inventory["directory_candidates"]
+        ))
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("Directory candidates: 9", diagnostic)
+        self.assertIn("SFO invalid: 9", diagnostic)
+        self.assertEqual(diagnostic.count("magic=0x21444142"), 9)
+        self.assertEqual(commands.count("RETR"), 9)
+
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, _, commands = self.with_server(

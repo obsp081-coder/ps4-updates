@@ -13,6 +13,7 @@ typedef struct ScannerUiEntry {
 } ScannerUiEntry;
 
 int scanner_ui_begin(void);
+void scanner_ui_progress(const char *cusa, unsigned current, unsigned total);
 void scanner_ui_results(
     const ScannerUiEntry *items, unsigned entries,
     unsigned metadata_count, unsigned errors,

@@ -154,9 +154,22 @@ static void draw(const ScannerUiEntry *entries,
          scanning ? "PLEASE WAIT" :
          "UP/DOWN: SCROLL    CIRCLE: EXIT    METADATA IS NOT INSTALL PROOF",
          0xFFD8E8F9u, 2, 90);
-    (void)sceVideoOutSubmitFlip(video, next_buffer,
-                                ORBIS_VIDEO_OUT_FLIP_VSYNC, frame_id++);
-    next_buffer = (next_buffer + 1) % 2;
+    /* Prevent overwriting a framebuffer before VideoOut finishes
+     * displaying it. Use bounded polling rather than an infinite
+     * graphics wait; the scanner must still save diagnostics. */
+    const int64_t submitted = ++frame_id;
+    int32_t submitted_ok = sceVideoOutSubmitFlip(
+        video, next_buffer, ORBIS_VIDEO_OUT_FLIP_VSYNC, submitted
+    );
+    if (submitted_ok == 0) {
+        for (unsigned attempt = 0; attempt < 160; ++attempt) {
+            OrbisVideoOutFlipStatus state = {};
+            if (sceVideoOutGetFlipStatus(video, &state) != 0 ||
+                state.flipArg == submitted) break;
+            (void)sceKernelUsleep(2500);
+        }
+        next_buffer = (next_buffer + 1) % 2;
+    }
 }
 
 extern "C" int scanner_ui_begin(void) {

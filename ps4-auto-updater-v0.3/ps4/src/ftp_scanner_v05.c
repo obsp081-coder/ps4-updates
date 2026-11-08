@@ -21,6 +21,7 @@
 #include <orbis/AppInstUtil.h>
 #include <orbis/libkernel.h>
 #include "scanner_ui.h"
+#include "ui_png_transport.h"
 #include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)
@@ -995,20 +996,17 @@ static int scan_root(
 }
 
 #ifdef __ORBIS__
-/* Optional local icon prefetch. A PNG may be corrupted by FTP ASCII
- * LF -> CRLF conversion: never decode images unless TYPE I was accepted.
- * This preloads only the first eight library entries and does not block
- * the later VideoOut input loop. Future pages need a bounded async worker.
- * No file is written; only GoldHEN loopback FTP RETR is used. */
+/* Optional local icon prefetch: fail closed on PNG corruption. FTP
+ * TYPE I may be unsupported; only accept ASCII newline repair after
+ * all PNG chunks pass CRC32 validation. Never install or write game files.
+ * First eight icons only. A later async/lazy loading mechanism is needed. */
 static void prefetch_local_icons(sock_t control) {
     if (candidate_count == 0) return;
     char reply_line[512];
     const int type = command(control, reply_line, sizeof reply_line, "TYPE I");
     logmsg("ICON_FTP_TYPE_I_RC", type);
-    if (type != 200) {
-        logmsg("ICON_BINARY_FTP_UNSUPPORTED", 1);
-        return;
-    }
+    if (type != 200)
+        logmsg("ICON_FTP_BINARY_UNSUPPORTED_CRC_FALLBACK", 1);
     static unsigned char icon_png[2 * 1024 * 1024];
     unsigned attempted = candidate_count < 8 ? candidate_count : 8;
     for (unsigned i=0; i<attempted; ++i) {
@@ -1027,6 +1025,13 @@ static void prefetch_local_icons(sock_t control) {
             logmsg("ICON_FTP_READ_RC",rc);
             continue;
         }
+        /* Do not pass mangled, opaque binary data to the PNG decoder. */
+        const int recovered=ui_png_ftp_validate(icon_png,&got);
+        if(recovered<0) {
+            logmsg("ICON_PNG_CRC_FAILED",recovered);
+            continue;
+        }
+        if(recovered==1)logmsg("ICON_FTP_ASCII_CRC_RECOVERED",1);
         const int decoded=scanner_ui_offer_icon(candidate->cusa,icon_png,(unsigned)got);
         logmsg("ICON_THUMBNAIL_RC",decoded);
         if(report) {

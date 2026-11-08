@@ -13,6 +13,12 @@ static int pad_reads = 0;
 static int allocated = 0;
 static int sleep_count = 0;
 static int64_t last_flip = 0;
+static const uint32_t *display_buffers[2] = {nullptr, nullptr};
+static bool saw_blurred_background = false;
+static constexpr unsigned SCREEN_WIDTH = 1920u;
+static const unsigned char icon_png_sample[] = {
+0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x02,0x08,0x06,0x00,0x00,0x00,0x72,0xb6,0x0d,0x24,0x00,0x00,0x00,0x14,0x49,0x44,0x41,0x54,0x78,0x9c,0x63,0x94,0xf4,0xde,0xf2,0x9f,0x81,0x81,0x81,0x81,0x89,0x01,0x0a,0x00,0x1f,0x0d,0x02,0x1b,0x4c,0x07,0x75,0x81,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82
+};
 static bool fail_video = false;
 static bool fail_memory = false;
 static bool fail_pad = false;
@@ -32,6 +38,8 @@ static void reset() {
     video_opened = video_closed = pad_closed = 0;
     flip_count = pad_reads = allocated = sleep_count = 0;
     last_flip = 0;
+    display_buffers[0] = display_buffers[1] = nullptr;
+    saw_blurred_background = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -63,13 +71,22 @@ void sceVideoOutSetBufferAttribute(void *, uint32_t, uint32_t, uint32_t,
 int32_t sceVideoOutRegisterBuffers(int32_t, int32_t, void * const *p,
                                     int32_t count, const OrbisVideoOutBufferAttribute *) {
     if (count != 2 || !p || !p[0] || !p[1]) return -1;
+    display_buffers[0] = static_cast<uint32_t *>(p[0]);
+    display_buffers[1] = static_cast<uint32_t *>(p[1]);
     registered = true;
     return 0;
 }
 int32_t sceVideoOutSetFlipRate(int32_t, int32_t) { return 0; }
-int32_t sceVideoOutSubmitFlip(int32_t, int32_t, uint32_t, int64_t tag) {
+int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
     ++flip_count;
     last_flip = tag;
+    if(index >= 0 && index < 2 && display_buffers[index]) {
+        /* Source is the synthetic 2x2 PNG in icon_smoke.c, decoded to
+         * 0xFF194BB4. The selected-game blurred backdrop is 25% icon and
+         * 75% royal-blue with blending performed once, not per pixel. */
+        const uint32_t sample = display_buffers[index][500u*SCREEN_WIDTH];
+        if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+    }
     return 0;
 }
 int32_t sceVideoOutGetFlipStatus(int32_t, OrbisVideoOutFlipStatus *out) {
@@ -139,8 +156,11 @@ int main() {
 
     reset();
     assert(scanner_ui_begin() == 1);
+    assert(scanner_ui_offer_icon("CUSA02343",
+                                 icon_png_sample,sizeof icon_png_sample) == 0);
     scanner_ui_progress("CUSA02343", 1, 3);
     scanner_ui_results(entries, 3, 2, 1, 0, 1);
+    assert(saw_blurred_background);
     scanner_ui_shutdown(trace);
     assert(flip_count >= 8);
     assert(pad_reads >= 18);

@@ -420,31 +420,24 @@ static int command(
  * authentication after an explicit FTP 530 response. Never guess
  * passwords, send extra FTP feature probes, or print credentials.
  */
-static int login(sock_t fd) {
+static int ftp_auth_attempted = 0;
+
+/*
+ * In some GoldHEN builds TYPE I returns 500 (unknown command) even
+ * though LIST/RETR work. Metadata is only read; never attempt a write.
+ */
+static int ftp_type_usable(int code) {
+    return code == 200 || code == 500 || code == 502 || code == 504;
+}
+
+/* Only send USER if the server actually requests authentication (530). */
+static int anonymous_auth(sock_t fd) {
     char line[512];
-    int code = reply(fd, line, sizeof line);
-
-    if (code == 120) {
-        logmsg("FTP_GREETING_WAIT_CODE", code);
-        code = reply(fd, line, sizeof line);
-    }
-    logmsg("FTP_GREETING_CODE", code);
-    if (code != 220)
+    if (ftp_auth_attempted)
         return 0;
+    ftp_auth_attempted = 1;
 
-    code = command(fd, line, sizeof line, "TYPE I");
-    logmsg("FTP_INITIAL_TYPE_CODE", code);
-
-    if (code == 200) {
-        logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 0);
-        return 1;
-    }
-
-    /* Only try USER if server explicitly says authentication required. */
-    if (code != 530)
-        return 0;
-
-    code = command(fd, line, sizeof line, "USER anonymous");
+    int code = command(fd, line, sizeof line, "USER anonymous");
     logmsg("FTP_USER_CODE", code);
 
     if (code == 331) {
@@ -457,11 +450,40 @@ static int login(sock_t fd) {
 
     code = command(fd, line, sizeof line, "TYPE I");
     logmsg("FTP_AUTH_TYPE_CODE", code);
-    if (code != 200)
+    if (!ftp_type_usable(code))
         return 0;
 
     logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 1);
     return 1;
+}
+
+static int login(sock_t fd) {
+    char line[512];
+    int code = reply(fd, line, sizeof line);
+
+    if (code == 120) {
+        logmsg("FTP_GREETING_WAIT_CODE", code);
+        code = reply(fd, line, sizeof line);
+    }
+
+    logmsg("FTP_GREETING_CODE", code);
+    if (code != 220)
+        return 0;
+
+    code = command(fd, line, sizeof line, "TYPE I");
+    logmsg("FTP_INITIAL_TYPE_CODE", code);
+
+    if (ftp_type_usable(code)) {
+        if (code != 200)
+            logmsg("FTP_TYPE_UNSUPPORTED_CONTINUING", code);
+        logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 0);
+        return 1;
+    }
+
+    if (code == 530)
+        return anonymous_auth(fd);
+
+    return 0;
 }
 
 static int pasv_port(const char *line) {
@@ -516,6 +538,12 @@ static int transfer(
         control, line, sizeof line, "PASV"
     );
     logmsg("FTP_PASV_CODE", code);
+
+    /* TYPE may be unsupported and PASV may be the first auth check. */
+    if (code == 530 && anonymous_auth(control)) {
+        code = command(control, line, sizeof line, "PASV");
+        logmsg("FTP_PASV_AFTER_AUTH_CODE", code);
+    }
 
     if (code != 227)
         return -10;
@@ -947,7 +975,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.5.2 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.5.3 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,

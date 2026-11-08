@@ -49,6 +49,11 @@ int ui_icon_cache_offer(const char *id,const unsigned char *png,size_t bytes) {
     if(!valid_id(id))return -1;
     int ret=ui_image_thumbnail(png,bytes,candidate,UI_ICON_PIXELS);
     if(ret<0)return ret;
+    return ui_icon_cache_offer_pixels(id,candidate,UI_ICON_PIXELS);
+}
+int ui_icon_cache_offer_pixels(const char *id,const uint32_t *pixels,
+                               size_t pixel_count) {
+    if(!valid_id(id) || !pixels || pixel_count!=UI_ICON_PIXELS)return -1;
     unsigned chosen=0;
     uint32_t min_age=UINT32_MAX;
     for(unsigned i=0;i<UI_ICON_CACHE_SLOTS;++i) {
@@ -64,7 +69,7 @@ int ui_icon_cache_offer(const char *id,const unsigned char *png,size_t bytes) {
     /* Find an existing entry first even when there is a free slot. */
     for(unsigned i=0;i<UI_ICON_CACHE_SLOTS;++i)
         if(slots[i].valid && strcmp(slots[i].id,id)==0) { chosen=i; break; }
-    memcpy(slots[chosen].pixels,candidate,sizeof candidate);
+    memcpy(slots[chosen].pixels,pixels,sizeof slots[chosen].pixels);
     memcpy(slots[chosen].id,id,10);
     slots[chosen].valid=1;
     slots[chosen].last_use=advance_clock();

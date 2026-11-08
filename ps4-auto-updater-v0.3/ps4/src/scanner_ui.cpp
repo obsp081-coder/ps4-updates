@@ -51,6 +51,7 @@ static const Glyph font[] = {
 };
 
 static int video = -1, pad = -1, usable = 0, next_buffer = 0;
+static int buffers_registered = 0;
 static off_t mem_off = 0;
 static size_t mem_size = 0;
 static void *mapped = nullptr;
@@ -219,6 +220,7 @@ extern "C" int scanner_ui_begin(void) {
         mem_size = 0;
         return 0;
     }
+    buffers_registered = 1;
     (void)sceVideoOutSetFlipRate(video, 0);
     if (scePadInit() == 0 && user_id >= 0)
         pad = scePadOpen(user_id, 0, 0, nullptr);
@@ -280,20 +282,91 @@ extern "C" void scanner_ui_results(
     }
 }
 
-extern "C" void scanner_ui_shutdown(void) {
+/*
+ * Real PS4 exit path. The order is important:
+ * 1. Stop input, 2. wait for pending flips, 3. unregister VideoOut
+ * buffers, 4. close VideoOut, 5. unmap/release direct memory.
+ * Never free memory still potentially referenced by the display.
+ * trace() is optional and is intended to write flushed checkpoints
+ * to the scanner's existing diagnostic report.
+ */
+extern "C" void scanner_ui_shutdown(
+    void (*trace)(const char *, int)
+) {
+    if (!usable && video < 0 && !mapped && !mem_size) return;
+    if (trace) trace("UI_SHUTDOWN_ENTER", 1);
+
     if (pad >= 0) {
-        (void)scePadClose(pad);
+        if (trace) trace("UI_PAD_CLOSE_BEGIN", 1);
+        const int result = scePadClose(pad);
+        if (trace) trace("UI_PAD_CLOSE_RC", result);
         pad = -1;
     }
+
+    int safe_to_release = 1;
+    if (video >= 0 && buffers_registered) {
+        /* The flip completion check prevents unsafe teardown during
+         * a pending asynchronous display operation. */
+        int flips_drained = 0;
+        if (trace) trace("UI_FLIP_DRAIN_BEGIN", 1);
+        for (unsigned i = 0; i < 100; ++i) {
+            OrbisVideoOutFlipStatus status = {};
+            const int rc = sceVideoOutGetFlipStatus(video, &status);
+            if (rc != 0) {
+                if (trace) trace("UI_FLIP_STATUS_FAILED", rc);
+                break;
+            }
+            if (status.numFlipPending == 0 &&
+                status.numGpuFlipPending == 0 &&
+                status.flipArg >= frame_id) {
+                flips_drained = 1;
+                break;
+            }
+            (void)sceKernelUsleep(10000);
+        }
+        if (trace) trace("UI_FLIP_DRAIN_OK", flips_drained);
+        if (!flips_drained)
+            safe_to_release = 0;
+
+        if (trace) trace("UI_UNREGISTER_BEGIN", 1);
+        const int rc = sceVideoOutUnregisterBuffers(video, 0);
+        if (trace) trace("UI_UNREGISTER_RC", rc);
+        if (rc == 0)
+            buffers_registered = 0;
+        else
+            safe_to_release = 0;
+    }
+
     if (video >= 0) {
-        (void)sceVideoOutClose(video);
+        if (trace) trace("UI_VIDEO_CLOSE_BEGIN", 1);
+        const int rc = sceVideoOutClose(video);
+        if (trace) trace("UI_VIDEO_CLOSE_RC", rc);
+        if (rc != 0)
+            safe_to_release = 0;
         video = -1;
     }
-    if (mapped && mem_size)
-        (void)sceKernelMunmap(mapped, mem_size);
-    if (mem_size)
-        (void)sceKernelReleaseDirectMemory(mem_off, mem_size);
-    mapped = nullptr;
-    mem_size = 0;
+
+    if (safe_to_release && mapped && mem_size) {
+        if (trace) trace("UI_MUNMAP_BEGIN", 1);
+        const int rc = sceKernelMunmap(mapped, mem_size);
+        if (trace) trace("UI_MUNMAP_RC", rc);
+        if (rc != 0)
+            safe_to_release = 0;
+        else
+            mapped = nullptr;
+    }
+    if (safe_to_release && mem_size) {
+        if (trace) trace("UI_RELEASE_MEM_BEGIN", 1);
+        const int rc = sceKernelReleaseDirectMemory(mem_off, mem_size);
+        if (trace) trace("UI_RELEASE_MEM_RC", rc);
+        if (rc == 0)
+            mem_size = 0;
+    }
+    if (!safe_to_release && trace)
+        trace("UI_MEMORY_RETAINED_FOR_SAFETY", 1);
+
     usable = 0;
+    next_buffer = 0;
+    frame_id = 0;
+    if (trace) trace("UI_SHUTDOWN_DONE", 1);
 }

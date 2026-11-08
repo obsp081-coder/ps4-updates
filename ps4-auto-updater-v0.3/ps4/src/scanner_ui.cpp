@@ -254,11 +254,16 @@ static const UiArabicJoining *ui_joining(uint32_t cp) {
     return nullptr;
 }
 static void ui_draw_arabic_form(uint32_t *p,int x,int y,
-                                uint16_t form,uint32_t color) {
+                                uint16_t form,uint32_t color,
+                                int clip_left,int clip_right) {
     if(form>=UI_AR_DYNAMIC_COUNT)return;
     const UiArabicDynamicGlyph g=UI_AR_DYNAMIC_GLYPHS[form];
     if(x<0||y<0||x+(int)g.width>WIDTH||y+(int)g.height>HEIGHT)return;
     for(unsigned row=0;row<g.height;++row)for(unsigned col=0;col<g.width;++col) {
+        /* The source atlas has transparent side margins. Compact natural
+         * advances let joined letter strokes meet; clip any margin pixels
+         * outside the allocated text column before writing framebuffer. */
+        if(x+(int)col<clip_left || x+(int)col>=clip_right)continue;
         const size_t k=(size_t)row*g.width+col;
         const unsigned alpha=(UI_AR_DYNAMIC_BITS[g.offset+k/4]>>
                                (2*(3-k%4)))&3u;
@@ -309,7 +314,7 @@ static int ui_title_advance(const uint32_t *cp,size_t n,size_t i,
     if(ui_title_mark(cp[i]))return 0;
     const uint16_t shape=ui_title_shape(cp,n,i);
     if(shape<UI_AR_DYNAMIC_COUNT)
-        return (int)UI_AR_DYNAMIC_GLYPHS[shape].width;
+        return (int)UI_AR_DYNAMIC_GLYPHS[shape].advance;
     const char c[2]={ui_title_ascii(cp[i]),0};
     return latin_width(c,scale,1);
 }
@@ -322,8 +327,11 @@ static void ui_title_paint(uint32_t *p,int pen,int y,int left,int right,
     const uint16_t shape=ui_title_shape(codepoints,n,index);
     if(shape<UI_AR_DYNAMIC_COUNT) {
         const int w=(int)UI_AR_DYNAMIC_GLYPHS[shape].width;
-        if(pen>=left && pen+w<=right)
-            ui_draw_arabic_form(p,pen,y-4,shape,color);
+        const int paint_x=pen-3;
+        /* Only transparent glyph margins may cross the column edge.
+         * Rasterization itself is clipped to [left, right). */
+        if(paint_x>=left-3 && paint_x+w<=right+3)
+            ui_draw_arabic_form(p,paint_x,y-4,shape,color,left,right);
     } else {
         const char single[2]={ui_title_ascii(cp),0};
         const unsigned c=(unsigned char)single[0];

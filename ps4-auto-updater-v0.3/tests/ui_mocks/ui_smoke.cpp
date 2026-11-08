@@ -122,9 +122,9 @@ int32_t sceKernelUsleep(uint32_t) {
 
 int main() {
     ScannerUiEntry entries[] = {
-        {"CUSA02343", "Verified Game", "01.07", 1, -1},
-        {"CUSA00411", "", "", 0, -1},
-        {"CUSA08032", "Other Game", "02.04", 1, 1},
+        {"CUSA02343", "Verified Game", "01.07", 1, -1, "gd"},
+        {"CUSA00411", "", "", 0, -1, nullptr},
+        {"CUSA08032", "Other Patch", "02.04", 1, -1, "gp"},
     };
 
     reset();

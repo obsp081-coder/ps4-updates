@@ -66,7 +66,8 @@ def sfo_corruption_repro(title_id="CUSA02343"):
         vpos = len(vals)
         keys.extend(key.encode("ascii") + b"\0")
         vals.extend(raw)
-        index.extend(struct.pack("<HHIII", kpos, fmt, len(raw), len(raw), vpos))
+        index.extend(struct.pack("<HHIII", kpos, fmt, len(raw),
+                                 16 if key == "TITLE_ID" else len(raw), vpos))
     header = struct.pack("<IIIII", 0x46535000, 0x101,
                          20 + len(index), 20 + len(index) + len(keys),
                          len(fields))

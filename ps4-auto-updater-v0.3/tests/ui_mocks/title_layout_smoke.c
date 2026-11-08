@@ -40,6 +40,16 @@ int main(void) {
     assert(plan.paragraph==UI_TITLE_RTL && plan.count==1);
     assert(plan.runs[0].length==5);
 
+    /* Arabic comma/punctuation does not count as a strong RTL letter.
+     * It inherits the surrounding title's direction. */
+    const uint32_t comma_first[]={0x060Cu,' ',0x0644u,0x0639u};
+    assert(ui_title_layout(comma_first,4,&plan)==0);
+    assert(plan.paragraph==UI_TITLE_RTL && plan.count==1);
+    const uint32_t mixed_comma[]={'G','T','A',0x060Cu,' ',0x0644u,0x0639u};
+    assert(ui_title_layout(mixed_comma,7,&plan)==0);
+    assert(plan.paragraph==UI_TITLE_LTR && plan.count==2);
+    assert(plan.runs[0].length==5 && plan.runs[1].length==2);
+
     /* ASCII-only, empty, invalid and oversized input remain bounded. */
     const uint32_t ascii_only[]={'C','U','S','A','0','0','0','0','1'};
     assert(ui_title_layout(ascii_only,9,&plan)==0);

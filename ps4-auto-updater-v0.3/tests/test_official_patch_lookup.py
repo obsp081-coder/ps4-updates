@@ -15,7 +15,9 @@ from official_patch_lookup import (
     discover,
     inspect_title,
     parse_patch_xml,
-    patch_url
+    patch_url,
+    read_xml,
+    _RejectRedirect,
 )
 
 
@@ -32,6 +34,32 @@ EXAMPLE = b"""<titlepatch><tag>
 
 
 class OfficialPatchLookupTests(unittest.TestCase):
+
+    def test_reject_noncanonical_metadata_urls_before_network(self):
+        valid = patch_url("CUSA02343")
+        for bad in (
+            "https://evil.example/CUSA02343/patch.xml",
+            valid.replace("http://", "https://", 1),
+            valid.replace("CUSA02343-ver.xml", "CUSA02343-ver.xml?redirect=1"),
+            valid.replace("/CUSA02343/", "/CUSA99999/", 1),
+            valid.replace("-ver.xml", "-verXxml"),
+            1234,
+        ):
+            with self.subTest(url=bad):
+                with self.assertRaises(ValueError):
+                    read_xml(bad)
+
+    def test_sony_redirect_handler_refuses_following(self):
+        handler = _RejectRedirect()
+        self.assertIsNone(handler.redirect_request(None, None, 302, "", {},
+                                                   "http://127.0.0.1/foo"))
+
+    def test_http_metadata_never_grants_download_or_install(self):
+        row = inspect_title("CUSA02343", lambda url: EXAMPLE)
+        for key in ("transport_authenticated", "rights_verified",
+                    "install_enabled", "downloads_enabled",
+                    "fpkg_compatibility_confirmed"):
+            self.assertIs(row[key], False)
 
     def test_known_url_hmac(self):
         self.assertIn(

@@ -64,6 +64,7 @@ static int errors;
 static int api_stage = -1;
 static int ftp_login_ok = 0;
 static int primary_listing_ok = 0;
+static int external_listing_ok = 0;
 static unsigned directory_candidates = 0;
 static unsigned sfo_invalid = 0;
 typedef struct {
@@ -845,7 +846,9 @@ static int scan_root(
         return -1;
     }
 
-    if (!optional)
+    if (optional)
+        external_listing_ok = 1;
+    else
         primary_listing_ok = 1;
 
     static char ids[MAX_GAMES][10];
@@ -1042,7 +1045,7 @@ static int save_inventory(const char *path) {
         fp
     );
     fputs(
-        ftp_login_ok && primary_listing_ok && errors == 0
+        ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0
             ? "true" : "false",
         fp
     );
@@ -1286,7 +1289,8 @@ int main(void) {
 
     logmsg("Scan errors", errors);
     logmsg("Primary listing available", primary_listing_ok);
-    logmsg("Scan complete", ftp_login_ok && primary_listing_ok && errors == 0);
+    logmsg("External listing available", external_listing_ok);
+    logmsg("Scan complete", ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0);
     logmsg("Inventory saved (0=OK)", saved);
 
     if (report)
@@ -1313,7 +1317,7 @@ int main(void) {
     }
     scanner_ui_results(
         ui_items, candidate_count, found, (unsigned)errors,
-        ftp_login_ok && primary_listing_ok && errors == 0,
+        ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0,
         saved == 0
     );
     scanner_ui_shutdown();

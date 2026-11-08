@@ -21,6 +21,30 @@ LABEL_SCRIPT = ROOT / "ps4" / "tools" / "generate_ui_arabic.py"
 
 class NativeUiSmokeTests(unittest.TestCase):
 
+    def test_all_fixed_arabic_captions_have_supported_script(self):
+        # NotoSansArabic's fixed RTL atlas cannot shape Latin runs
+        # correctly on the current build. Arabic-only captions prevent
+        # opaque tofu squares on the real console.
+        import ast
+        import re
+        tree = ast.parse(LABEL_SCRIPT.read_text(encoding="utf-8"))
+        entries = None
+        for node in tree.body:
+            if (isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name)
+                            and target.id == "LABELS"
+                            for target in node.targets)):
+                entries = ast.literal_eval(node.value)
+                break
+        self.assertIsNotNone(entries)
+        self.assertGreater(len(entries), 30)
+        for name, caption in entries:
+            with self.subTest(name=name):
+                self.assertIsNone(
+                    re.search(r"[A-Za-z]", caption),
+                    "Latin glyph missing from fixed Arabic atlas"
+                )
+
     def test_video_pad_navigation_and_cleanup(self):
         cxx = shutil.which("g++") or shutil.which("clang++")
         if cxx is None:

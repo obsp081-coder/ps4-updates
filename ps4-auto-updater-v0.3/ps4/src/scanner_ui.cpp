@@ -1132,6 +1132,10 @@ extern "C" void scanner_ui_results(
         metadata_count=count;
     }
     if(count>UI_MAX_TITLES)count=UI_MAX_TITLES;
+    /* The summary must never claim more verified base records than the
+     * bounded UI library can actually represent. An oversized provider
+     * count is not evidence of additional installed games. */
+    if(metadata_count>count)metadata_count=count;
     /* Navigation records are about to be replaced. Save the selected ID
      * first so a completed rescan cannot jump Details to a different game. */
     char selected_cusa[10]={0};

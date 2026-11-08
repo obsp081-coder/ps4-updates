@@ -1050,7 +1050,7 @@ static int save_inventory(const char *path) {
     fputs(
         "{\n"
         "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v062\",\n"
+        "  \"source\":\"ftp_loopback_readonly_v063\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
         fp
@@ -1148,10 +1148,10 @@ int main(void) {
 
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v062.json";
+        ROOT "/inventory_v063.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v062.txt";
+        ROOT "/diagnostic_v063.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1187,7 +1187,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.2 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.3 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,

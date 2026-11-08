@@ -88,7 +88,7 @@ class MockHandler(socketserver.StreamRequestHandler):
         self.request.settimeout(5)
         data_socket = None
         logged_in = not self.server.require_login
-        self.respond("220 mock FTP ready")
+        self.respond(self.server.greeting)
         try:
             while True:
                 if self.server.packet_strict:
@@ -191,6 +191,7 @@ class MockFTP(socketserver.TCPServer):
         self.type_unknown = False
         self.packet_strict = False
         self.lf_only_replies = False
+        self.greeting = "220 mock FTP ready"
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -245,6 +246,32 @@ class ScannerFTPTests(unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=4)
+
+    def test_invalid_ftp_greeting_delimiter_is_not_authenticated(self):
+        """220X is not a valid success response, even with three digits."""
+        listing = b"drwxr-xr-x 1 root root 0 CUSA02343\\r\\n"
+        data, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343")},
+            passthrough=lambda s: setattr(s, "greeting", "220X invalid")
+        )
+        self.assertFalse(data["scan_complete"])
+        self.assertEqual(data["games"], [])
+        self.assertIn("FTP_GREETING_CODE: -1", diagnostic)
+        self.assertNotIn("PASV", commands)
+
+    def test_multiline_ftp_greeting_with_short_text_is_parsed_safely(self):
+        """A short intermediate line must not be read as the final code."""
+        data, diagnostic, commands = self.with_server(
+            b"",
+            {},
+            passthrough=lambda s: setattr(
+                s, "greeting", "220-welcome\\nx\\n220 ready"
+            )
+        )
+        self.assertTrue(data["scan_complete"])
+        self.assertEqual(data["games"], [])
+        self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
+        self.assertIn("PASV", commands)
 
     def test_two_games_ignore_dlc_and_duplicates(self):
         listing = (

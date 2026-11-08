@@ -7,7 +7,16 @@
 #define STBI_NO_HDR
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
+/* STBI_ONLY_PNG legitimately leaves other codec helpers unused. Limit the
+ * warning exception to the third-party implementation, not our code. */
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 #include "../vendor/stb_image.h"
+#if defined(__clang__) || defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 /* The GPU framebuffer is 32-bit AARRGGBB. Alpha from source icons is
  * composited on royal-blue panel color, preventing undefined blend state. */

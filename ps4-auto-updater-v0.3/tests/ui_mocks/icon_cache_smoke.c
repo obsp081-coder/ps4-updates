@@ -21,6 +21,15 @@ int main(void) {
     assert(ui_icon_cache_offer("CUSA00008",png,sizeof png)==0);
     assert(ui_icon_cache_find("CUSA00000")!=NULL);
     assert(ui_icon_cache_find("CUSA00001")==NULL);
+    /* Worker-staged thumbnails are imported only after thread join.
+     * Reject malformed handoff without evicting the current entry. */
+    uint32_t staged[UI_ICON_PIXELS];
+    for(size_t i=0;i<UI_ICON_PIXELS;++i)staged[i]=0xFF102D50u;
+    assert(ui_icon_cache_offer_pixels("CUSA00000",NULL,UI_ICON_PIXELS)<0);
+    assert(ui_icon_cache_offer_pixels("CUSA00000",staged,UI_ICON_PIXELS-1)<0);
+    assert(ui_icon_cache_offer_pixels("BAD",staged,UI_ICON_PIXELS)<0);
+    assert(ui_icon_cache_offer_pixels("CUSA00000",staged,UI_ICON_PIXELS)==0);
+    assert(ui_icon_cache_find("CUSA00000")[0]==0xFF102D50u);
     const uint32_t *before=ui_icon_cache_find("CUSA00000");
     unsigned char corrupted[sizeof png];
     memcpy(corrupted,png,sizeof png);

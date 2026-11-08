@@ -178,7 +178,7 @@ static void value(
  * 1=game, 2=valid non-game/patch, 3=duplicate.
  * Negative: -30 empty, -31 bad magic, -32 bad header offsets,
  * -33 missing/invalid ID, -34 title-id mismatch, -35 content mismatch,
- * -36 inventory capacity.
+ * -36 inventory capacity, -37 missing CATEGORY.
  * Presence of an SFO does NOT confirm that an app is installed.
  */
 static int parse_sfo(
@@ -262,8 +262,8 @@ static int parse_sfo(
     /* Keep playable base-game categories aligned with the project's
        PKG inspector: gd, gda and gdo. gde is a demo, also playable.
        gp/gdp are patches; ac is an add-on, not a base game. */
+    if (!g.category[0]) return -37;
     if (
-        g.category[0] &&
         strcmp(g.category, "gd") &&
         strcmp(g.category, "gda") &&
         strcmp(g.category, "gdo") &&
@@ -276,6 +276,20 @@ static int parse_sfo(
     snprintf(g.source, sizeof g.source, "%s", source);
     games[found++] = g;
     return 1;
+}
+
+/* Recover CRLF-expanded SFO only after raw validation fails.
+ * This preserves console files and revalidates every recovered record. */
+static size_t unexpand_ascii_newlines(
+    const unsigned char *src, size_t size, unsigned char *dst
+) {
+    size_t written = 0;
+    for (size_t i = 0; i < size; ++i) {
+        if (src[i] == '\r' && i + 1 < size && src[i + 1] == '\n')
+            continue;
+        dst[written++] = src[i];
+    }
+    return written;
 }
 
 static void json_str(FILE *fp, const char *s) {
@@ -877,6 +891,29 @@ static int scan_root(
             }
 
             int parsed = parse_sfo(sfo, bytes, ids[i], source);
+            if (parsed < 0 && bytes >= 20 &&
+                u32(sfo) == 0x46535000u) {
+                /* Require a valid SFO for the same CUSA after recovery. */
+                static unsigned char decoded[MAX_SFO];
+                size_t clean_size = unexpand_ascii_newlines(
+                    sfo, bytes, decoded
+                );
+                if (clean_size < bytes) {
+                    int recovered = parse_sfo(
+                        decoded, clean_size, ids[i], source
+                    );
+                    if (recovered >= 0) {
+                        parsed = recovered;
+                        if (report) {
+                            fprintf(report,
+                                "SFO ASCII_RECOVERED %s original=%lu cleaned=%lu\n",
+                                ids[i], (unsigned long)bytes,
+                                (unsigned long)clean_size);
+                            fflush(report);
+                        }
+                    }
+                }
+            }
             if (parsed < 0) {
                 status = parsed;
                 ++sfo_invalid;

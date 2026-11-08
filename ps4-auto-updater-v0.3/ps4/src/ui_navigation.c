@@ -4,6 +4,26 @@
 #include "ui_navigation.h"
 #include <stddef.h>
 #include <string.h>
+static const char *const latin_keys[] = {
+    "A","B","C","D","E","F","G","H","I","J",
+    "K","L","M","N","O","P","Q","R","S","T",
+    "U","V","W","X","Y","Z","0","1","2","3",
+    "4","5","6","7","8","9"," "
+};
+static const char *const arabic_keys[] = {
+    "ا","ب","ت","ث","ج","ح","خ","د","ذ","ر",
+    "ز","س","ش","ص","ض","ط","ظ","ع","غ","ف",
+    "ق","ك","ل","م","ن","ه","و","ي","ة","ى",
+    "ء","ئ","أ","إ","ؤ","آ"," "
+};
+#define UI_KEY_COUNT 37u
+unsigned ui_nav_keyboard_count(const UiNavigation *state) {
+    return state ? UI_KEY_COUNT : 0;
+}
+const char *ui_nav_keyboard_key(const UiNavigation *state,unsigned index) {
+    if(!state||index>=UI_KEY_COUNT)return NULL;
+    return state->keyboard_arabic?arabic_keys[index]:latin_keys[index];
+}
 
 static unsigned char lower_ascii(unsigned char value) {
     return (value >= 'A' && value <= 'Z') ? (unsigned char)(value + ('a'-'A')) : value;
@@ -31,6 +51,8 @@ void ui_nav_filter(UiNavigation *state, const UiRecord *items,
     memcpy(state->query, query, n);
     state->query[n] = 0;
     state->available = 0;
+    state->items=items;
+    state->item_count=limit(count);
     if (items) {
         for (unsigned i = 0; i < limit(count); ++i) {
             const UiRecord *r = &items[i];
@@ -56,14 +78,81 @@ unsigned ui_nav_resolve(const UiNavigation *state, unsigned idx) {
     if (!state || idx >= state->available) return UI_MAX_TITLES;
     return state->matched[idx];
 }
+static int update_query(UiNavigation *state,const char *value) {
+    char tmp[UI_SEARCH_CAPACITY];
+    size_t len=strlen(value);
+    if(len>=UI_SEARCH_CAPACITY)return 0;
+    memcpy(tmp,value,len+1);
+    ui_nav_filter(state,state->items,state->item_count,tmp);
+    return 1;
+}
 int ui_nav_action(UiNavigation *state, UiAction action) {
     if (!state || state->exit_requested) return 0;
-    if (action == UI_ACT_BACK) {
-        if (state->page == UI_PAGE_HOME) {
-            state->exit_requested = 1;
-        } else {
-            state->page = UI_PAGE_HOME;
+    if (state->page == UI_PAGE_SEARCH) {
+        unsigned keys=ui_nav_keyboard_count(state);
+        if (action == UI_ACT_BACK) {
+            state->page=UI_PAGE_HOME;
+            return 1;
         }
+        if (action == UI_ACT_TOGGLE_KEYBOARD ||
+            action == UI_ACT_NEXT_TAB || action == UI_ACT_PREVIOUS_TAB) {
+            state->keyboard_arabic=!state->keyboard_arabic;
+            return 1;
+        }
+        if (action == UI_ACT_LEFT) {
+            if (state->keyboard_index%10==0) return 0;
+            --state->keyboard_index;
+            return 1;
+        }
+        if (action == UI_ACT_RIGHT) {
+            if (state->keyboard_index%10==9 ||
+                state->keyboard_index+1>=keys)return 0;
+            ++state->keyboard_index;
+            return 1;
+        }
+        if (action == UI_ACT_UP) {
+            if (state->keyboard_index<10)return 0;
+            state->keyboard_index-=10;
+            return 1;
+        }
+        if (action == UI_ACT_DOWN) {
+            if (state->keyboard_index+10>=keys)return 0;
+            state->keyboard_index+=10;
+            return 1;
+        }
+        if (action == UI_ACT_CLEAR_SEARCH)
+            return update_query(state,"");
+        if (action == UI_ACT_REMOVE) {
+            char tmp[UI_SEARCH_CAPACITY];
+            memcpy(tmp,state->query,sizeof tmp);
+            size_t n=strlen(tmp);
+            if(!n)return 0;
+            --n;
+            while(n>0 && ((unsigned char)tmp[n]&0xC0)==0x80)--n;
+            tmp[n]=0;
+            return update_query(state,tmp);
+        }
+        if (action == UI_ACT_OPEN) {
+            const char *key=ui_nav_keyboard_key(state,state->keyboard_index);
+            if(!key)return 0;
+            size_t old_len=strlen(state->query),new_len=strlen(key);
+            if(old_len+new_len>=UI_SEARCH_CAPACITY)return 0;
+            char tmp[UI_SEARCH_CAPACITY];
+            memcpy(tmp,state->query,old_len);
+            memcpy(tmp+old_len,key,new_len+1);
+            return update_query(state,tmp);
+        }
+        return 0;
+    }
+    if (action == UI_ACT_SEARCH) {
+        state->page=UI_PAGE_SEARCH;
+        state->keyboard_index=0;
+        return 1;
+    }
+    if (action == UI_ACT_BACK) {
+        if (state->page == UI_PAGE_HOME)
+            state->exit_requested = 1;
+        else state->page = UI_PAGE_HOME;
         return 1;
     }
     if (action == UI_ACT_DOWNLOADS || action == UI_ACT_NEXT_TAB) {

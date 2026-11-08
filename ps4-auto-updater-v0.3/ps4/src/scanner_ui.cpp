@@ -337,11 +337,15 @@ static UiArabicLabel category_label(const ScannerUiEntry *g) {
                UI_AR_BASE_UNKNOWN;
     return UI_AR_OTHER_METADATA;
 }
-static const char *fallback_name(const ScannerUiEntry *g) {
-    return g && g->title && g->title[0] ? g->title : "NAME NOT AVAILABLE";
+static void game_title(uint32_t *p,int x,int y,int max_width,
+                       const ScannerUiEntry *g,uint32_t color,int scale) {
+    if(g && g->title && g->title[0])
+        ui_title(p,x,y,max_width,g->title,color,scale);
+    else
+        arabic(p,x,y,UI_AR_GAME_NAME_UNAVAILABLE,AMBER);
 }
 static const char *fallback_version(const ScannerUiEntry *g) {
-    return g && g->version && g->version[0] ? g->version : "UNKNOWN";
+    return g && g->version && g->version[0] ? g->version : "--";
 }
 static void placeholder(uint32_t *p, int x, int y, int w, int h) {
     panel(p,x,y,w,h,0xFF163860u);
@@ -535,7 +539,7 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     panel(p,76,y,1090,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) rect(p,76,y+10,5,68,CYAN);
     cover(p,92,y+11,68,66,g?g->cusa:nullptr);
-    ui_title(p,187,y+5,630,fallback_name(g),WHITE,2);
+    game_title(p,187,y+5,630,g,WHITE,2);
     ascii(p,187,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     ascii(p,877,y+16,fallback_version(g),CYAN,2,16);
     arabic(p,877,y+37,category_label(g),
@@ -576,7 +580,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
             cover(p,1232,240,208,231,g->cusa);
-            ui_title(p,1472,252,340,fallback_name(g),WHITE,2);
+            game_title(p,1472,252,340,g,WHITE,2);
             ascii(p,1472,309,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
             arabic(p,1472,337,UI_AR_VERSION,MUTED);
             ascii(p,1472,377,fallback_version(g),WHITE,3,14);
@@ -610,7 +614,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,93,137,UI_AR_DETAILS,WHITE);
     panel(p,90,225,1730,705,PANEL);
     cover(p,1465,271,285,317,g->cusa);
-    ui_title(p,135,251,1275,fallback_name(g),WHITE,4);
+    game_title(p,135,251,1275,g,WHITE,4);
     ascii(p,140,348,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
     arabic(p,143,405,UI_AR_VERSION,MUTED);
     ascii(p,143,452,fallback_version(g),WHITE,4,15);

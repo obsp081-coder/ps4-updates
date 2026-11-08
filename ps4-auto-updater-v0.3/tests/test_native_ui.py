@@ -125,6 +125,20 @@ class NativeUiSmokeTests(unittest.TestCase):
                             result_ink, 18,
                             "Search results preview has no visible game title"
                         )
+                        # Regression: the 'm' in 'Verified Game' used to
+                        # vanish because max_chars=1 incorrectly capped the
+                        # Noto glyph to a 24px legacy cell. Check its actual
+                        # ink, not merely that some neighbouring title text
+                        # survived.
+                        m_glyph = pixels.crop((326, 933, 349, 960))
+                        m_ink = sum(
+                            1 for r, g, b in m_glyph.getdata()
+                            if r >= 175 and g >= 175 and b >= 175
+                        )
+                        self.assertGreater(
+                            m_ink, 8,
+                            "Wide 'm' glyph missing from search title"
+                        )
                         # All A-J keys on the 10-column keyboard must have
                         # visible white glyphs; proportional fonts can be
                         # clipped if the old 5x7 fixed-cell width is reused.

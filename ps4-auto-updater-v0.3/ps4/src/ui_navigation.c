@@ -65,6 +65,7 @@ void ui_nav_filter(UiNavigation *state, const UiRecord *items,
     /* Changing the results must not preserve an out-of-bounds selection. */
     state->selected = 0;
     state->scroll = 0;
+    if(!state->available)state->search_result_focus=0;
     if (state->page == UI_PAGE_DETAILS && state->available == 0)
         state->page = UI_PAGE_HOME;
 }
@@ -80,6 +81,8 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
     const UiPage old_page=state->page;
     const unsigned keyboard_index=state->keyboard_index;
     const unsigned keyboard_arabic=state->keyboard_arabic;
+    const unsigned search_focus=state->search_result_focus;
+    const unsigned search_origin=state->details_from_search;
     ui_nav_filter(state,items,count,saved_query);
     int selected_found=0;
     if(selected_cusa && selected_cusa[0] && items) {
@@ -98,6 +101,9 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
         ? UI_PAGE_HOME : old_page;
     state->keyboard_index=keyboard_index;
     state->keyboard_arabic=keyboard_arabic;
+    state->search_result_focus=state->available?search_focus:0;
+    state->details_from_search=
+        state->page==UI_PAGE_DETAILS?search_origin:0;
 }
 
 void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count) {
@@ -130,8 +136,36 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
     if (state->page == UI_PAGE_SEARCH) {
         unsigned keys=ui_nav_keyboard_count(state);
         if (action == UI_ACT_BACK) {
-            state->page=UI_PAGE_HOME;
+            if(state->search_result_focus) {
+                state->search_result_focus=0;
+            } else {
+                state->page=UI_PAGE_HOME;
+            }
             return 1;
+        }
+        /* A focused result opens Details without typing a keyboard key.
+         * LEFT/RIGHT cycle known matching CUSA IDs, UP returns to the
+         * last keyboard row. No other page bypasses read-only gates. */
+        if(state->search_result_focus) {
+            if(action==UI_ACT_OPEN && state->available) {
+                state->details_from_search=1;
+                state->page=UI_PAGE_DETAILS;
+                return 1;
+            }
+            if(action==UI_ACT_UP) {
+                state->search_result_focus=0;
+                return 1;
+            }
+            if(action==UI_ACT_LEFT && state->selected>0) {
+                --state->selected;
+                return 1;
+            }
+            if(action==UI_ACT_RIGHT &&
+               state->selected+1<state->available) {
+                ++state->selected;
+                return 1;
+            }
+            if(action==UI_ACT_DOWN)return 0;
         }
         if (action == UI_ACT_TOGGLE_KEYBOARD ||
             action == UI_ACT_NEXT_TAB || action == UI_ACT_PREVIOUS_TAB) {
@@ -155,7 +189,13 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
             return 1;
         }
         if (action == UI_ACT_DOWN) {
-            if (state->keyboard_index+10>=keys)return 0;
+            if (state->keyboard_index+10>=keys) {
+                if(state->available && !state->search_result_focus) {
+                    state->search_result_focus=1;
+                    return 1;
+                }
+                return 0;
+            }
             state->keyboard_index+=10;
             return 1;
         }
@@ -186,12 +226,20 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
     if (action == UI_ACT_SEARCH) {
         state->page=UI_PAGE_SEARCH;
         state->keyboard_index=0;
+        state->search_result_focus=0;
+        state->details_from_search=0;
         return 1;
     }
     if (action == UI_ACT_BACK) {
-        if (state->page == UI_PAGE_HOME)
+        if(state->page==UI_PAGE_DETAILS && state->details_from_search) {
+            state->page=UI_PAGE_SEARCH;
+            state->details_from_search=0;
+            state->search_result_focus=state->available>0;
+        } else if (state->page == UI_PAGE_HOME) {
             state->exit_requested = 1;
-        else state->page = UI_PAGE_HOME;
+        } else {
+            state->page = UI_PAGE_HOME;
+        }
         return 1;
     }
     if (action == UI_ACT_DOWNLOADS || action == UI_ACT_NEXT_TAB) {

@@ -44,6 +44,8 @@ typedef struct UiNavigation {
     int exit_requested;
     unsigned keyboard_index;
     unsigned keyboard_arabic;
+    unsigned search_result_focus; /* down from last keyboard row */
+    unsigned details_from_search; /* Circle returns to search */
     const UiRecord *items; /* caller-owned; valid for visible UI lifetime */
     unsigned item_count;
 } UiNavigation;

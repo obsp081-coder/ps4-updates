@@ -110,7 +110,7 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         bbox = font.getbbox(caption, direction="rtl", language="ar")
         width = bbox[2] - bbox[0] + 4
         height = bbox[3] - bbox[1] + 4
-        if not (1 <= width <= 900 and 1 <= height <= 90):
+        if not (1 <= width <= 1100 and 1 <= height <= 90):
             raise ValueError(f"Illegal label dimensions: {name} {width}x{height}")
         image = Image.new("L", (width, height), 0)
         drawer = ImageDraw.Draw(image)

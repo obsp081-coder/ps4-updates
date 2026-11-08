@@ -28,7 +28,8 @@ CC          := clang
 CXX         := clang++
 CXXFLAGS    := -D__ORBIS__ -std=c++17 -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
-               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
+               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include \\
+               -I$(INTDIR)
 LD          := ld.lld
 
 .PHONY: all clean host-check
@@ -47,7 +48,10 @@ $(INTDIR)/ui_navigation.o: src/ui_navigation.c src/ui_navigation.h | $(INTDIR)
 $(INTDIR)/ui_image.o: src/ui_image.c src/ui_image.h vendor/stb_image.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-$(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h | $(INTDIR)
+$(INTDIR)/ui_arabic_generated.h: tools/generate_ui_arabic.py | $(INTDIR)
+	python3 tools/generate_ui_arabic.py --output $@
+
+$(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h $(INTDIR)/ui_arabic_generated.h | $(INTDIR)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 $(INTDIR)/ps4_shell_exit.o: src/ps4_shell_exit.c src/ps4_shell_exit.h | $(INTDIR)

@@ -765,6 +765,9 @@ static int scan_root(
             source, count
         );
 
+    if (count > 0)
+        directory_candidates += (unsigned)count;
+
     static unsigned char sfo[MAX_SFO];
 
     for (int i = 0; i < count; ++i) {
@@ -791,10 +794,27 @@ static int scan_root(
         );
 
         if (status == 0) {
-            /* 1=game, 2=valid non-game, 0=invalid metadata. */
+            /* Log only the SFO header and selected metadata fields, never
+             * game file contents or private SFO fields. */
+            if (report) {
+                fprintf(
+                    report,
+                    "SFO FILE %s bytes=%lu magic=0x%08x "
+                    "entries=%u keys=%u values=%u\n",
+                    ids[i], (unsigned long)bytes,
+                    bytes >= 4 ? u32(sfo) : 0,
+                    bytes >= 20 ? u32(sfo + 16) : 0,
+                    bytes >= 20 ? u32(sfo + 8) : 0,
+                    bytes >= 20 ? u32(sfo + 12) : 0
+                );
+                fflush(report);
+            }
+
             int parsed = parse_sfo(sfo, bytes, ids[i], source);
-            if (parsed == 0)
-                status = -21;
+            if (parsed < 0) {
+                status = parsed;
+                ++sfo_invalid;
+            }
         }
 
         if (status != 0) {
@@ -885,7 +905,7 @@ static int save_inventory(const char *path) {
     fputs(
         "{\n"
         "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v05\",\n"
+        "  \"source\":\"ftp_loopback_readonly_v061\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
         fp
@@ -965,10 +985,10 @@ int main(void) {
 
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v06.json";
+        ROOT "/inventory_v061.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v06.txt";
+        ROOT "/diagnostic_v061.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1004,7 +1024,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.0 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.1 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -1098,6 +1118,8 @@ int main(void) {
             ++unknown;
     }
 
+    logmsg("Directory candidates", (int)directory_candidates);
+    logmsg("SFO invalid", (int)sfo_invalid);
     logmsg("Metadata records", (int)found);
     logmsg("Installed confirmed", (int)confirmed);
     logmsg("Installation unknown", (int)unknown);

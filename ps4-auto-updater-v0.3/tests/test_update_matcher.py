@@ -43,6 +43,7 @@ class UpdateMatcherTests(unittest.TestCase):
                 "content_id": DEMO_CONTENT_ID,
                 "version": "01.02",
                 "min_fw": "11.00",
+                "required_base_version": "01.00",
             }]
         }
 
@@ -154,8 +155,13 @@ class UpdateMatcherTests(unittest.TestCase):
 
         self.assertEqual(
             self.status(),
-            "BASE_VERSION_MISMATCH"
+            "BASE_VERSION_NOT_CONFIRMED"
         )
+
+    def test_missing_base_requirement_never_counts_as_review_eligible(self):
+        del self.catalog["updates"][0]["required_base_version"]
+        self.assertEqual(self.status(), "BASE_VERSION_NOT_CONFIRMED")
+        self.assertIsNone(self.result()["results"][0]["candidate_version"])
 
     def test_choose_highest_eligible_not_highest_unsupported(self):
         self.catalog["updates"].append({

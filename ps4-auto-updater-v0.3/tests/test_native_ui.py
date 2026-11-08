@@ -13,6 +13,7 @@ UI_SOURCE = ROOT / "ps4" / "src" / "scanner_ui.cpp"
 UI_NAV = ROOT / "ps4" / "src" / "ui_navigation.c"
 MOCK_DIR = Path(__file__).resolve().parent / "ui_mocks"
 MOCK_TEST = MOCK_DIR / "ui_smoke.cpp"
+LABEL_SCRIPT = ROOT / "ps4" / "tools" / "generate_ui_arabic.py"
 
 
 class NativeUiSmokeTests(unittest.TestCase):
@@ -24,10 +25,18 @@ class NativeUiSmokeTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             binary = Path(tmp) / "ui-smoke"
+            generated = Path(tmp) / "ui_arabic_generated.h"
+            generation = subprocess.run(
+                ["python3", str(LABEL_SCRIPT), "--output", str(generated)],
+                capture_output=True, text=True, timeout=40
+            )
+            self.assertEqual(generation.returncode, 0,
+                             generation.stdout + generation.stderr)
             compile_process = subprocess.run(
                 [
                     cxx, "-std=c++17", "-O2", "-Wall", "-Wextra",
                     "-Werror", "-DPS4_UI_HOST_TEST", "-I", str(MOCK_DIR),
+                    "-I", str(Path(tmp)),
                     str(UI_SOURCE), str(UI_NAV), str(MOCK_TEST), "-o", str(binary),
                 ],
                 capture_output=True, text=True, timeout=40

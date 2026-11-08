@@ -71,6 +71,8 @@ static int final_view_is_stale;
 static unsigned job_selected=0;
 static unsigned job_scroll=0;
 static UiRecord navigation_records[UI_MAX_TITLES];
+/* A read-only async cover worker may be polled, but never invoked in draw(). */
+static int (*cover_tick)(const char *cusa)=nullptr;
 
 static const uint8_t *glyph(char c) {
     unsigned char x = (unsigned char)c;
@@ -913,10 +915,17 @@ extern "C" int scanner_ui_offer_thumbnail(
     const char *cusa, const uint32_t *pixels, size_t pixel_count
 ) {
     /* Render thread only: worker never modifies the UI's LRU cache. */
-    return ui_icon_cache_offer_pixels(cusa,pixels,pixel_count);
+    const int result=ui_icon_cache_offer_pixels(cusa,pixels,pixel_count);
+    if(result==0)blurred_for[0]=0; /* Refresh backdrop only after a new icon. */
+    return result;
+}
+
+extern "C" void scanner_ui_set_cover_tick(int (*tick)(const char *)) {
+    cover_tick=tick;
 }
 
 extern "C" int scanner_ui_begin(void) {
+    cover_tick=nullptr;
     ui_icon_cache_reset();
     previous_scan_count=0;
     final_view_is_stale=0;
@@ -1097,6 +1106,28 @@ extern "C" void scanner_ui_results(
     unsigned pad_read_failures=0;
     for(;;) {
         (void)sceKernelUsleep(100000);
+        /* Icon requests are nonblocking atomic mailbox operations.
+         * Poll selected title first, then six visible rows; never decode
+         * images or access FTP on the VideoOut/Pad thread. */
+        int cover_updated=0;
+        if(cover_tick && entries &&
+           (navigation.page==UI_PAGE_HOME ||
+            navigation.page==UI_PAGE_DETAILS)) {
+            const unsigned selected=ui_nav_resolve(
+                &navigation,navigation.selected);
+            if(selected<count && entries[selected].cusa)
+                cover_updated |= cover_tick(entries[selected].cusa);
+            const unsigned end=navigation.scroll+UI_VISIBLE_ROWS;
+            for(unsigned i=navigation.scroll;
+                i<end && i<navigation.available;++i) {
+                const unsigned index=ui_nav_resolve(&navigation,i);
+                if(index<count && index!=selected && entries[index].cusa)
+                    cover_updated |= cover_tick(entries[index].cusa);
+            }
+        }
+        if(cover_updated)
+            draw(entries,count,metadata_count,errors,
+                 scan_complete,inventory_saved,navigation.scroll,0);
         if(pad<0) {
             /* No controller fallback: do not trap the app indefinitely. */
             if(++no_pad_wait>=300)break;

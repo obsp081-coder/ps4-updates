@@ -10,7 +10,7 @@
 | الملف/الوحدة | ما تنفذه الآن | مستوى الدليل |
 |---|---|---|
 | ps4/src/scanner_ui.cpp | Royal Blue و6 صفوف وتفاصيل وبحث وإعدادات؛ تصفح Snapshot خلال الفحص؛ إعادة اختيار CUSA بعد الفحص؛ طلب صور مختارة/ظاهرة من Lazy Worker عبر Callback غير حاجب؛ Pad Polling نحو 33ms | Host framebuffer tests + OpenOrbis Build؛ **يحتاج PS4 hardware** |
-| ps4/src/ui_snapshot.c/h | Cache محلي ثنائي للعبة الأساسية فقط، 256 سجلًا كحد أقصى؛ CRC وفحص حجم/إصدارات/هوية وعدم التكرار، مع استبدال الملف عبر Rename بعد التحقق؛ لا حالة تثبيت معتمدة | اختبار Host للتلف والتكرار والملفات الناقصة + بناء OpenOrbis |
+| ps4/src/ui_snapshot.c/h | Cache ثنائي للعبة الأساسية بحد 256 سجلًا وCRC؛ سياسة جديدة تمنع الفحص الجزئي من استبدال Snapshot صالح سابق. أول فحص داخلي جزئي يمكنه تكوين Snapshot فقط عند غياب Snapshot صالح؛ وحتى Snapshot فارغ صحيح لا يُستبدل بنتيجة ناقصة | اختبار Host للتلف والتكرار والحفظ الجزئي والسياسة + Native Build |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
 | ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع الاحتفاظ باختيار CUSA والاستعلام ولوحة المفاتيح، وإغلاق Details إذا اختفت اللعبة | اختبارات Host |
 | ps4/src/ui_title_layout.c/h | تقسيم اسم اللعبة إلى LTR/RTL runs بحسب أول حرف واضح، مع حدود 191 codepoint وبدون Heap؛ معالجة الحركات وعلامات الترقيم كعناصر محايدة للاتجاه؛ **ليس UAX #9 الكامل** | اختبارات Host مستقلة + اختبارات Framebuffer |
@@ -18,7 +18,7 @@
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
 | ps4/src/ui_icon_cache.c/h | 8 صور LRU؛ استلام Thumbnail متحقق منه على UI Thread من Mailbox بعد اكتمال طلب الصورة؛ رفض حجم خاطئ مع عدم إفساد Cache | اختبارات Host |
 | ps4/src/ui_png_transport.c/h | فحص CRC لكل جزء PNG، ومحاولة استعادة النقل FTP ASCII فقط إذا تطابقت CRCs | اختبارات Host |
-| ps4/src/ftp_scanner_v05.c | GoldHEN FTP read-only على Scan Thread منفصل؛ بعد Join يُنشأ Cover Worker اختياري لصور الألعاب المطلوبة فقط عبر Single-slot Atomic Mailbox؛ CRC/PNG Decode خارج UI، Cancel/Join عند الخروج | Host scanner + Native Build؛ **لم يثبت Cover Worker على FW14 الحقيقي** |
+| ps4/src/ftp_scanner_v05.c | GoldHEN FTP read-only؛ Scanner Worker وCover Worker منفصلان عن UI؛ Covers تستخدم PASV-first ولا ترسل TYPE I الذي قد يفسد بروتوكول GoldHEN؛ Anonymous Auth يُعاد ضبطه لكل اتصال؛ عند Cancel يُتجنب QUIT على قناة قد تكون غير متزامنة؛ تحقُّق صارم من أكواد FTP وMultiline Replies | Host Mock FTP + اختبارات بنية Cover Worker + Native Build؛ **لم يثبت Cover Worker على FW14 الحقيقي** |
 | ps4/src/ps4_shell_exit.c | إنهاء عبر SystemService بدل libc exit | تم التحقق من الخروج على FW14 في الإصدار السابق v0.6.5، **وليس** هذا الفرع |
 
 ## واجهة المستخدم حسب اختياراتك
@@ -35,13 +35,23 @@
 ## نواقص الواجهة قبل اعتبارها كاملة
 
 1. **Background Worker للـScanner:** تم فصل FTP وSFO وصور الألعاب عن VideoOut/Pad عبر `scePthreadCreate` في الكود، مع `scePthreadJoin` وCancel متعاون وإعادة عرض Snapshot أثناء الفحص. اختبارات Host تغطي التنقل إلى التفاصيل والإعدادات والعودة أثناء انتظار Worker، واختبار الخروج قبل اكتمال Worker. **مع ذلك: لا توجد حتى الآن تجربة حقيقية تثبت توافق API/استقرار الواجهة على Firmware 14.00.** عند فشل إنشاء Worker لا يتم إجراء فحص متزامن يجمّد الواجهة، بل تعرض حالة Cache غير مؤكدة. أول تشغيل دون Snapshot يبدأ بقائمة فارغة مؤقتًا؛ نقل بيانات JSON القديمة غير منفذ.
-2. **صور الأغلفة:** أزيل Prefetch الثابت لأول ثماني ألعاب؛ يوجد الآن Lazy Loading عند اختيار اللعبة/التمرير عبر Worker منفصل وMailbox وتحقق CRC وPNG، مع Cache لثماني صور. اختبارات Host تثبت أن UI يطلب غلاف لعبة بعد الثامنة ويعيد الرسم بعد وصول صورة متأخرة. **لكن التعامل الفعلي مع GoldHEN FTP على FW14 غير مختبر بعد**؛ الصور غير محفوظة على القرص من Snapshot، ولا توجد Retry Policy مستقلة للأغلفة غير المتاحة، والبحث لا يحمّل أغلفة أثناء لوحة المفاتيح.
+2. **صور الأغلفة:** أزيل Prefetch الثابت لأول ثماني ألعاب؛ يوجد الآن Lazy Loading عند اختيار اللعبة/التمرير عبر Worker منفصل وMailbox وتحقق CRC وPNG، مع Cache لثماني صور. أُصلح إرسال TYPE I غير المدعوم على بعض GoldHEN FTP Servers، وأُعيد تعيين Anonymous Auth لكل اتصال. اختبارات Host تثبت أن UI يطلب غلاف لعبة بعد الثامنة ويعيد الرسم بعد وصول صورة متأخرة؛ واختبارات بنية المصدر تتحقق من PASV-first والقراءة فقط. **لكن التعامل الفعلي مع GoldHEN FTP على FW14 غير مختبر بعد**؛ الصور غير محفوظة على القرص من Snapshot، ولا توجد Retry Policy مستقلة للأغلفة غير المتاحة، والبحث لا يحمّل أغلفة أثناء لوحة المفاتيح.
 3. **عناوين الألعاب بلغات مختلطة:** تحسن أول مقطع عربي/Latin مع اتجاه حسب أول حرف واضح، وتم اختبار لقطتين من Native Host Framebuffer؛ لكنه **ليس Unicode Bidi كاملًا** ولا يطبع الحركات العربية فوق الحروف ولا يدعم أسماء Asian/Indic/Emoji بشكل صحيح. ما زلنا نحتاج اختبارات نصوص فعلية متنوعة وعلاجًا ثابتًا أو Renderer أوسع بعد قياس أثره على RAM/CPU.
 4. **القياس الدقيق:** عرض حجم لعبة/منطقة/نوع Retail أو FPKG/النسخة ومتطلبات FW لا يُملأ إلا من مصادر مؤكدة، ولا يجوز استنتاجه من SFO وحده. حاليًا تظهر «غير متوفر» لهذه الخانات.
 5. **جودة مطابقة التصميم المعتمد:** الأيقونات والحدود وخط العناوين والتدرجات وتوقيت الحركة، وتناسق RTL في شاشة 1080p على جهاز فعلي؛ ما زالت بحاجة مراجعة بصرية ومقارنة بالـMockups.
 6. **التنقل/الأداء:** تم تغيير Polling للـPad من 100ms إلى ~33ms دون إعادة رسم كل Frame، لكن **30 FPS ليس مثبتًا**. أُضيف Host Native Framebuffer test لمكتبة فارغة و256 سجلًا وحالة Count أكبر من الحد، مع فحص تحرير موارد VideoOut. العدد المعروض يُحصر ضمن 256. ما زلنا نحتاج قياس التوقيت وRAM على PS4 الأساسي مع 0 و256 لعبة، واختبار 100 فتح/خروج، وانقطاع FTP، وPNG تالف/كبير والتراجع عند فشل إنشاء Cover Worker.
 7. **الإشعارات والصوت:** لا تُفعَّل حتى الحصول على واجهات PS4 Native مثبتة؛ طلب المستخدم أصواتًا فقط عند اكتمال التنزيل أو حدوث خطأ.
 8. **بيانات تنزيلات حقيقية/تحذير الخروج:** صفحة Downloads الأساسية جاهزة بصريًا لكنها لا تتعامل مع Jobs حقيقية؛ ربط Queue لاحقًا لن يُعرض كمكتمل قبل إثبات تنزيل/Resume/Install على FW14.
+
+
+## تدقيق ثبات المكتبة وGoldHEN FTP — 2026-11-08
+
+- **FIXED IN CODE:** فشل LIST الخارجي لم يعد يمحو Snapshot سابقًا صالحًا ببيانات داخلية جزئية؛ يسمح بحفظ نتيجة جزئية فقط عند عدم وجود Cache صالح، ويظل العرض يصرح بأن البيانات غير مؤكدة.
+- **FIXED IN CODE:** أمر TYPE I أُزيل من Cover Worker واستخدم نفس مسار PASV-first الخاص بالـScanner؛ هذا علاج خطأ بروتوكول متوقع من ملاحظات GoldHEN السابقة، وليس إثبات تشغيل الصور على الجهاز.
+- **FIXED IN CODE:** منع مشاركة قرار Anonymous Auth بين اتصالي الفحص والأغلفة؛ وعند Cancel لا يُرسل QUIT على قناة FTP بعد نقل غير مكتمل.
+- **FIXED IN CODE:** اشتراط أن يكون رد FTP من ثلاثة أرقام يتبعها مسافة أو شرطة، وتجاهل الأسطر القصيرة داخل Multiline Replies بدل قراءتها ببايتات قديمة.
+- **HOST VERIFICATION:** اختبارات Snapshot Policy، وMock FTP، وفحص Contract لبنية Cover Worker. فحص Contract لا يشغّل PS4 APIs؛ نجاحه وحده ليس إثباتًا لسلوك FTP على Firmware 14.00.
+- **OPEN BLOCKER:** اختبار فتح التطبيق مع مكتبة كاملة ثم فصل وسائط التخزين الخارجية، وتكرار Cancel أثناء نقل PNG وعند إنهاء التطبيق على جهاز PS4 حقيقي دون المساس بالملفات أو المحفوظات.
 
 ## نقاط الأمان
 - لا تثبيت ولا تنزيل غير مصرّح؛ لا تحميل صورة من الإنترنت.
@@ -52,4 +62,4 @@
 
 **التحقق من هذه المرحلة (2026-11-08):** اختبارات Host تتضمن Rebind يحافظ على الهوية عند إعادة ترتيب الألعاب، واختبار Lazy Cover Mock يرسم الصورة عند وصولها واختبار طلب صورة بعد اللعبة الثامنة؛ راجع نتيجة CI على **آخر Commit** قبل اعتماد البناء. نجاح OpenOrbis لا يثبت اتصال Cover Worker على FW14 ولا FPS ولا استقرار التشغيل الحقيقي. لا يوجد اختبار Hardware لهذه التغييرات بعد.
 
-**ملفات اختبار Host:** test_native_ui.py وtest_ui_settings_truth.py وtest_ui_title_layout.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py. لقطات `mixed_ltr` و`mixed_rtl` مسجلة من Host Framebuffer فقط وليست من PS4.
+**ملفات اختبار Host:** test_cover_ftp_safety.py وtest_ftp_scanner_v05.py وtest_native_ui.py وtest_ui_settings_truth.py وtest_ui_title_layout.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py. لقطات `mixed_ltr` و`mixed_rtl` مسجلة من Host Framebuffer فقط وليست من PS4.

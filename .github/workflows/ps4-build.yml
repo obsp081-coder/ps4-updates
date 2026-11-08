@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# One toolchain download per branch; avoid saturating release-asset CDN.
+concurrency:
+  group: ps4-native-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   host-tests:
     name: PC Simulation Tests
@@ -58,7 +63,8 @@ jobs:
 
       - name: Download OpenOrbis Toolchain
         run: |
-          curl -fL --retry 3 \
+          curl -fL --retry 8 --retry-all-errors --retry-delay 4 \
+            --connect-timeout 20 --max-time 300 \
             https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz \
             -o /tmp/openorbis.tar.gz
 

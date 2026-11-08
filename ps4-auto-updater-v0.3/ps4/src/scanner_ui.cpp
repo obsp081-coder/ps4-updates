@@ -5,6 +5,7 @@
  */
 #include "scanner_ui.h"
 #include "ui_navigation.h"
+#include "ui_title_layout.h"
 #include "ui_icon_cache.h"
 #include "ui_models.h"
 #include "ui_arabic_generated.h"
@@ -217,10 +218,8 @@ static void arabic(uint32_t *p,int x,int y,UiArabicLabel label,uint32_t color) {
         }
     }
 }
-/* A compact conservative Arabic title renderer: presentation-form joining
- * for Arabic code points, byte-validating UTF-8, basic LTR ASCII runs.
- * Does not claim full ICU/HarfBuzz Unicode bidi coverage. Static navigation
- * captions are fully Raqm-shaped by the separate build-time atlas. */
+/* UTF-8 byte validation and build-time Arabic glyph atlas.
+ * Directional run ordering is delegated to ui_title_layout. */
 static size_t utf8_title(const char *text,uint32_t out[192]) {
     size_t count=0;
     if(!text)return 0;
@@ -273,62 +272,98 @@ static void ui_draw_arabic_form(uint32_t *p,int x,int y,
         *dst=0xFF000000u|(r<<16)|(gch<<8)|b;
     }
 }
-static void ui_title(uint32_t *p,int x,int y,int width,
-                     const char *string,uint32_t color,int ascii_scale) {
-    if(!string || width<=0)return;
-    uint32_t cp[192]={};
-    size_t n=utf8_title(string,cp);
-    int has_arabic=0;
-    for(size_t i=0;i<n;++i)
-        if(ui_joining(cp[i])) {has_arabic=1;break;}
-    if(!has_arabic) {
-        ascii(p,x,y,string,color,ascii_scale,width/(6*ascii_scale));
-        return;
+/* Dynamic title renderer: Arabic presentation-form joining plus bounded
+ * Latin runs. ui_title_layout() chooses LTR or RTL by first strong letter.
+ * Explicitly limited: no full UAX #9 bidi, ligatures, Indic/CJK shaping,
+ * Arabic harakat rendering, or general Unicode line breaking. */
+static int ui_title_mark(uint32_t cp) {
+    return (cp>=0x064Bu && cp<=0x065Fu) || cp==0x0670u ||
+           (cp>=0x06D6u && cp<=0x06EDu);
+}
+static uint16_t ui_title_shape(const uint32_t *cp,size_t n,size_t i) {
+    const UiArabicJoining *curr=ui_joining(cp[i]);
+    if(!curr)return 65535u;
+    size_t before=i,after=i+1;
+    while(before>0 && ui_title_mark(cp[before-1]))--before;
+    while(after<n && ui_title_mark(cp[after]))++after;
+    const UiArabicJoining *prev=before?ui_joining(cp[before-1]):nullptr;
+    const UiArabicJoining *next=after<n?ui_joining(cp[after]):nullptr;
+    const int connected_prev=prev && curr->final!=65535u &&
+                             prev->initial!=65535u;
+    const int connected_next=next && curr->initial!=65535u &&
+                             next->final!=65535u;
+    uint16_t shape=curr->isolated;
+    if(connected_prev && connected_next && curr->medial!=65535u)
+        shape=curr->medial;
+    else if(connected_prev && curr->final!=65535u)
+        shape=curr->final;
+    else if(connected_next && curr->initial!=65535u)
+        shape=curr->initial;
+    return shape;
+}
+static char ui_title_ascii(uint32_t cp) {
+    return cp>=32u && cp<=126u ? (char)cp : '?';
+}
+static int ui_title_advance(const uint32_t *cp,size_t n,size_t i,
+                            int scale) {
+    if(ui_title_mark(cp[i]))return 0;
+    const uint16_t shape=ui_title_shape(cp,n,i);
+    if(shape<UI_AR_DYNAMIC_COUNT)
+        return (int)UI_AR_DYNAMIC_GLYPHS[shape].width;
+    const char c[2]={ui_title_ascii(cp[i]),0};
+    return latin_width(c,scale,1);
+}
+/* Caller ensures its measured run fits. We still clip the complete glyph
+ * to the allocated title column to avoid painting neighbouring panels. */
+static void ui_title_paint(uint32_t *p,int pen,int y,int left,int right,
+                           uint32_t cp,const uint32_t *codepoints,size_t n,
+                           size_t index,uint32_t color,int scale) {
+    if(ui_title_mark(cp))return;
+    const uint16_t shape=ui_title_shape(codepoints,n,index);
+    if(shape<UI_AR_DYNAMIC_COUNT) {
+        const int w=(int)UI_AR_DYNAMIC_GLYPHS[shape].width;
+        if(pen>=left && pen+w<=right)
+            ui_draw_arabic_form(p,pen,y-4,shape,color);
+    } else {
+        const char single[2]={ui_title_ascii(cp),0};
+        const unsigned c=(unsigned char)single[0];
+        const int w=(int)UI_LATIN_GLYPHS[scale-2][c-32u].width;
+        if(pen>=left && pen+w<=right)
+            ascii(p,pen,y+18,single,color,scale,1);
     }
-    int pen=x+width;
-    for(size_t i=0;i<n && pen>x;) {
-        const UiArabicJoining *curr=ui_joining(cp[i]);
-        if(curr) {
-            const UiArabicJoining *prev=i?ui_joining(cp[i-1]):nullptr;
-            const UiArabicJoining *next=i+1<n?ui_joining(cp[i+1]):nullptr;
-            int connected_prev=prev && curr->final!=65535u &&
-                prev->initial!=65535u;
-            int connected_next=next && curr->initial!=65535u &&
-                next->final!=65535u;
-            uint16_t shape=curr->isolated;
-            if(connected_prev && connected_next && curr->medial!=65535u)
-                shape=curr->medial;
-            else if(connected_prev && curr->final!=65535u)
-                shape=curr->final;
-            else if(connected_next && curr->initial!=65535u)
-                shape=curr->initial;
-            if(shape<UI_AR_DYNAMIC_COUNT) {
-                pen-=(int)UI_AR_DYNAMIC_GLYPHS[shape].width;
-                if(pen<x)break;
-                ui_draw_arabic_form(p,pen,y-4,shape,color);
-            }
-            ++i;
-        } else {
-            /* ASCII segment remains LTR within this RTL title. */
-            char segment[96]={};
-            size_t length=0;
-            while(i<n && cp[i]<128 && !ui_joining(cp[i]) && length<95)
-                segment[length++]=(char)cp[i++];
-            if(length) {
-                const int w=latin_width(segment,ascii_scale,
-                                         (int)length);
-                pen-=w;
-                if(pen<x)break;
-                const int chars_by_width=(w+6*ascii_scale-1)/
-                                         (6*ascii_scale);
-                const int allowed=chars_by_width>(int)length ?
-                                  chars_by_width:(int)length;
-                ascii(p,pen,y+18,segment,color,ascii_scale,allowed);
-            } else {
-                pen-=12;
-                ++i;
-            }
+}
+static void ui_title(uint32_t *p,int x,int y,int width,
+                      const char *string,uint32_t color,int ascii_scale) {
+    if(!p || !string || width<=0 || ascii_scale<2 || ascii_scale>4 ||
+       x<0 || x>=WIDTH)return;
+    if(width>WIDTH-x)width=WIDTH-x;
+    uint32_t cp[192]={};
+    const size_t n=utf8_title(string,cp);
+    UiTitleLayout layout={};
+    if(ui_title_layout(cp,n,&layout)!=0)return;
+    const int right=x+width;
+    int cursor=layout.paragraph==UI_TITLE_RTL?right:x;
+    for(unsigned r=0;r<layout.count;++r) {
+        const UiTitleRun run=layout.runs[r];
+        int advance=0;
+        for(unsigned j=run.start;j<run.start+run.length;++j) {
+            const int cell=ui_title_advance(cp,n,j,ascii_scale);
+            if(cell<0 || advance>width-cell) {advance=width+1;break;}
+            advance+=cell;
         }
+        if(advance>width)break;
+        const int left=layout.paragraph==UI_TITLE_RTL?
+                       cursor-advance:cursor;
+        if(left<x || left+advance>right)break;
+        int pen=run.direction==UI_TITLE_RTL?left+advance:left;
+        for(unsigned j=run.start;j<run.start+run.length;++j) {
+            const int step=ui_title_advance(cp,n,j,ascii_scale);
+            if(run.direction==UI_TITLE_RTL)pen-=step;
+            ui_title_paint(p,pen,y,x,right,cp[j],cp,n,j,color,
+                           ascii_scale);
+            if(run.direction==UI_TITLE_LTR)pen+=step;
+        }
+        cursor=layout.paragraph==UI_TITLE_RTL?left:left+advance;
     }
 }
 static UiArabicLabel category_label(const ScannerUiEntry *g) {

@@ -70,6 +70,13 @@ static uint32_t checksum(const unsigned char hdr[CACHE_HEADER_BYTES],
     return crc^0xFFFFFFFFu;
 }
 
+int ui_snapshot_should_save(int complete_scan,
+                            int verified_internal_base_metadata,
+                            int valid_previous_snapshot) {
+    if(complete_scan)return 1; /* including zero base games */
+    return verified_internal_base_metadata && !valid_previous_snapshot;
+}
+
 int ui_snapshot_save(const char *path,const UiSnapshotGame *rows,
                      unsigned count) {
     if(!path || !*path || !valid_rows(rows,count))return -1;

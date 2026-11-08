@@ -1,6 +1,6 @@
 
 TITLE       := PS4 Auto Updater - Read Only Preview
-VERSION     := 01.11
+VERSION     := 01.12
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -10,7 +10,7 @@ INTDIR      := build
 
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
-LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil -lSceVideoOut -lScePad -lSceUserService
+LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceVideoOut -lScePad -lSceUserService
 
 CFLAGS      := -D__ORBIS__ -include stdbool.h -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf \

@@ -23,6 +23,8 @@ static bool saw_job_scroll = false;
 static bool saw_update_row = false;
 static bool capture_cached_preview = false;
 static bool saw_cached_sixth_row = false;
+static bool check_offline_cache = false;
+static bool saw_offline_cache = false;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
  * is submitted to the host VideoOut mock; this is not a browser mock. */
@@ -83,6 +85,7 @@ static void reset() {
     capture_live_ui = false;
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     capture_cached_preview = saw_cached_sixth_row = false;
+    check_offline_cache = saw_offline_cache = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -132,6 +135,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(check_offline_cache) {
+            const uint32_t *frame=display_buffers[index];
+            if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
+               frame[901u*SCREEN_WIDTH+1250u]==0xFF102D50u)
+                saw_offline_cache=true;
+        }
         if(capture_cached_preview) {
             /* This is a real host CPU-framebuffer capture of the cached
              * native UI, not a screenshot from PS4 hardware. */
@@ -272,6 +281,8 @@ int main() {
     }
     capture_cached_preview=true;
     const int first_flip=flip_count;
+    assert(scanner_ui_preview_snapshot(nullptr,1)==0);
+    assert(scanner_ui_preview_snapshot(cache_entries,257)==0);
     assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
     capture_cached_preview=false;
     assert(flip_count>first_flip && saw_cached_sixth_row);
@@ -311,6 +322,18 @@ int main() {
     assert(saw_job_progress);
     assert(saw_job_scroll);
     assert(saw_update_row);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Failed FTP result must preserve the previous cache on screen,
+     * with disabled installs and a visible stale-data warning. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
+    check_offline_cache=true;
+    scanner_ui_results(nullptr,0,0,1,0,0);
+    check_offline_cache=false;
+    assert(saw_offline_cache);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

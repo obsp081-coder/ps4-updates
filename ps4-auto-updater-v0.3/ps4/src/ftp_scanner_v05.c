@@ -543,14 +543,17 @@ static int reply(
     char *line,
     size_t cap
 ) {
-    /* A numeric FTP reply needs three digits and a delimiter. */
+    /* A numeric FTP reply needs three digits and a valid delimiter.
+     * Accepting 220X or reusing leftover bytes from a short multiline
+     * response could falsely report a successful handshake. */
     if (readline(fd, line, cap) < 4)
         return -1;
 
     if (
         !isdigit((unsigned char)line[0]) ||
         !isdigit((unsigned char)line[1]) ||
-        !isdigit((unsigned char)line[2])
+        !isdigit((unsigned char)line[2]) ||
+        (line[3] != ' ' && line[3] != '-')
     ) return -1;
 
     int code =
@@ -560,8 +563,11 @@ static int reply(
 
     if (line[3] == '-') {
         for (int i = 0; i < 60; ++i) {
-            if (readline(fd, line, cap) < 0)
+            const int line_length=readline(fd, line, cap);
+            if (line_length < 0)
                 return -1;
+            if (line_length < 4)
+                continue; /* Legal intermediate text, never a final code. */
 
             if (
                 line[0] == (char)('0' + code / 100) &&

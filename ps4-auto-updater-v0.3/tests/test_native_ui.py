@@ -14,6 +14,7 @@ UI_SOURCE = ROOT / "ps4" / "src" / "scanner_ui.cpp"
 UI_NAV = ROOT / "ps4" / "src" / "ui_navigation.c"
 UI_IMAGE = ROOT / "ps4" / "src" / "ui_image.c"
 UI_ICON_CACHE = ROOT / "ps4" / "src" / "ui_icon_cache.c"
+UI_MODELS = ROOT / "ps4" / "src" / "ui_models.c"
 MOCK_DIR = Path(__file__).resolve().parent / "ui_mocks"
 MOCK_TEST = MOCK_DIR / "ui_smoke.cpp"
 LABEL_SCRIPT = ROOT / "ps4" / "tools" / "generate_ui_arabic.py"
@@ -65,7 +66,8 @@ class NativeUiSmokeTests(unittest.TestCase):
                     "-Werror", "-DPS4_UI_HOST_TEST", "-I", str(MOCK_DIR),
                     "-I", str(Path(tmp)),
                     str(UI_SOURCE), str(UI_NAV), str(UI_IMAGE),
-                    str(UI_ICON_CACHE), str(MOCK_TEST), "-o", str(binary),
+                    str(UI_ICON_CACHE), str(UI_MODELS), str(MOCK_TEST),
+                    "-o", str(binary),
                     "-lm",
                 ],
                 capture_output=True, text=True, timeout=40

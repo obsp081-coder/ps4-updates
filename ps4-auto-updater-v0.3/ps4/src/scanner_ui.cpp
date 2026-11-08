@@ -162,10 +162,24 @@ static const uint32_t WHITE = 0xFFEAF4FFu;
 static const uint32_t MUTED = 0xFF9FB8D7u;
 static const uint32_t AMBER = 0xFFFFC37Du;
 
+/* Two-rectangle rounded panels, a one-pixel royal-blue border and
+ * optional selection halo. All CPU raster primitives: no fragment shaders,
+ * shadow textures, alpha framebuffers or per-frame allocations. */
 static void panel(uint32_t *p, int x, int y, int w, int h,
                   uint32_t color) {
-    rect(p, x+8, y, w-16, h, color);
-    rect(p, x, y+8, w, h-16, color);
+    if(w<18 || h<18) return;
+    const int focused=(color==ACCENT || color==0xFF164881u);
+    const uint32_t edge=focused?CYAN:0xFF205079u;
+    if(focused && y>=4) {
+        rect(p,x+12,y-3,w-24,2,0xFF15518Du);
+        rect(p,x+12,y+h+1,w-24,2,0xFF15518Du);
+    }
+    rect(p,x+8,y,w-16,h,color);
+    rect(p,x,y+8,w,h-16,color);
+    rect(p,x+8,y,w-16,1,edge);
+    rect(p,x+8,y+h-1,w-16,1,edge);
+    rect(p,x,y+8,1,h-16,edge);
+    rect(p,x+w-1,y+8,1,h-16,edge);
 }
 static void ascii(uint32_t *p, int x, int y, const char *s,
                   uint32_t color, int scale, int max_chars) {

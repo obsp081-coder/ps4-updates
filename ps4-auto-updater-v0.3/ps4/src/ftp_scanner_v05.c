@@ -753,12 +753,21 @@ static int transfer(
     int fail = 0;
     size_t discarded = 0;
     unsigned char discard[2048];
+#ifdef __ORBIS__
+    int cancelled = 0;
+#endif
 
     /*
      * Read until EOF. Never interpret a truncated LIST or SFO, and
      * cap the amount discarded after the caller's buffer fills.
      */
     for (;;) {
+#ifdef __ORBIS__
+        if(scan_should_abort()) {
+            cancelled=1;
+            break;
+        }
+#endif
         unsigned char *destination;
         size_t available;
 
@@ -790,6 +799,9 @@ static int transfer(
 
     NET_CLOSE(data);
 
+#ifdef __ORBIS__
+    if(cancelled)return -18; /* Closing control on abort is caller's job. */
+#endif
     code = reply(control, line, sizeof line);
     if (report) {
         fprintf(report, "FTP_READ_END_CODE: %d\n", code);
@@ -1436,7 +1448,13 @@ static int scan_readonly(void) {
     }
 #endif
 
-    int saved = save_inventory(outpath);
+    int saved;
+#ifdef __ORBIS__
+    /* An aborted partial scan must not overwrite the old inventory. */
+    saved=scan_should_abort() ? -2 : save_inventory(outpath);
+#else
+    saved=save_inventory(outpath);
+#endif
     logmsg("SCAN_STAGE_INVENTORY_SAVE_RETURNED", saved);
 
     unsigned confirmed = 0;

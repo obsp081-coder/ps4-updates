@@ -142,7 +142,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.11\n"
+              "Build version: 01.12\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"
@@ -176,8 +176,8 @@ jobs:
             exit 0
           fi
 
-          TAG="scanner-v0.6.2"
-          ASSET="PS4-Auto-Updater-v0.6.2.pkg"
+          TAG="scanner-v0.6.3"
+          ASSET="PS4-Auto-Updater-v0.6.3.pkg"
           ROOT="ps4-auto-updater-v0.3/ps4"
           PKG="$ROOT/IV0000-BREW00197_00-PS4SCANNERTEST00.pkg"
           MANIFEST="$ROOT/BUILD_MANIFEST.txt"
@@ -192,7 +192,7 @@ jobs:
           gh release create "$TAG" "$ASSET" "$MANIFEST" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "PS4 Auto Updater v0.6.2 — SFO diagnostics & scanner fixes (experimental)" \
-            --notes "Read-only PS4 scanner v0.6.1 (PKG 01.10): FTP scanning fixed, detailed SFO reason codes/header checks, playable category detection and separate unverified CUSA directory candidates. New /data/PS4AutoUpdater/diagnostic_v062.txt. Hardware SFO metadata recognition is not yet verified. No downloads or game installation. SHA256 manifest included."
+            --title "PS4 Auto Updater v0.6.3 — Crash isolation, READ ONLY (experimental)" \
+            --notes "READ-ONLY experimental PS4 scanner (PKG 01.12). v0.6.2 hardware crash CE-34878-0 after AppInstUtil direct initialize was attempted; this version gates AppInstUtil OFF by default. Real PS4 retest required. Known evidence: SFO CRLF recovery succeeded on 9/9 SFOs, but no native results screen verified. Diagnostics: /data/PS4AutoUpdater/diagnostic_v063.txt. No downloads or installation."
 
           echo "Direct PKG: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

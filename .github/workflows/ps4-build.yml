@@ -77,10 +77,51 @@ jobs:
         run: |
           make -C ps4-auto-updater-v0.3/ps4
 
+      - name: Verify PS4 package header and publish SHA256
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          target = Path("ps4-auto-updater-v0.3/ps4")
+          files = list(target.glob("*.pkg"))
+          assert len(files) == 1, f"Expected exactly one PKG, found {len(files)}"
+          pkg = files[0]
+          with pkg.open("rb") as handle:
+              header = handle.read(0x1000)
+
+          assert len(header) == 0x1000, "Truncated PKG header"
+          assert header[:4] == b"\x7fCNT", "Wrong PS4 PKG magic"
+          expected_id = "IV0000-BREW00197_00-PS4SCANNERTEST00"
+          actual_id = header[0x40:0x64].split(b"\x00", 1)[0].decode("ascii")
+          assert actual_id == expected_id, (
+              f"Wrong PKG Content ID: {actual_id!r}"
+          )
+          assert pkg.stat().st_size >= 1024 * 1024, "PKG suspiciously small"
+
+          digest = hashlib.sha256()
+          with pkg.open("rb") as handle:
+              for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(chunk)
+
+          manifest = (
+              "PS4 Scanner experimental — NOT tested on console\n"
+              "Build version: 01.06\n"
+              f"Filename: {pkg.name}\n"
+              f"Content ID: {actual_id}\n"
+              f"Size bytes: {pkg.stat().st_size}\n"
+              f"SHA256: {digest.hexdigest()}\n"
+          )
+          (target / "BUILD_MANIFEST.txt").write_text(manifest)
+          print(manifest)
+          PY
+
       - name: Upload PS4 Package
         uses: actions/upload-artifact@v4
         with:
           name: ps4-scanner-experimental
-          path: ps4-auto-updater-v0.3/ps4/*.pkg
+          path: |
+            ps4-auto-updater-v0.3/ps4/*.pkg
+            ps4-auto-updater-v0.3/ps4/BUILD_MANIFEST.txt
           if-no-files-found: error
           retention-days: 14

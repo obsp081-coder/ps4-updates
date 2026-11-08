@@ -88,8 +88,18 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
-    if (pad_reads == 2) data->buttons = ORBIS_PAD_BUTTON_DOWN;
+    /* Exercise actual controller flow: home -> details -> home ->
+     * downloads -> home -> Arabic/English search -> home -> exit.
+     * These are host input mocks, not simulated success of networking. */
+    if (pad_reads == 2) data->buttons = ORBIS_PAD_BUTTON_CROSS;
     if (pad_reads == 4) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 6) data->buttons = ORBIS_PAD_BUTTON_SQUARE;
+    if (pad_reads == 8) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 10) data->buttons = ORBIS_PAD_BUTTON_TRIANGLE;
+    if (pad_reads == 12) data->buttons = ORBIS_PAD_BUTTON_CROSS;
+    if (pad_reads == 14) data->buttons = ORBIS_PAD_BUTTON_SQUARE;
+    if (pad_reads == 16) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 18) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
     return 0;
 }
 size_t sceKernelGetDirectMemorySize(void) { return 512u * 1024u * 1024u; }
@@ -132,8 +142,8 @@ int main() {
     scanner_ui_progress("CUSA02343", 1, 3);
     scanner_ui_results(entries, 3, 2, 1, 0, 1);
     scanner_ui_shutdown(trace);
-    assert(flip_count >= 3);
-    assert(pad_reads >= 4);
+    assert(flip_count >= 8);
+    assert(pad_reads >= 18);
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);

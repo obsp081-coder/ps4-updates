@@ -52,6 +52,7 @@ static size_t mem_size = 0;
 static void *mapped = nullptr;
 static uint32_t *surface[2] = {nullptr, nullptr};
 static int64_t frame_id = 0;
+static char progress_line[128] = "CONNECTING TO GOLDHEN FTP";
 
 static const uint8_t *glyph(char c) {
     unsigned char x = (unsigned char)c;
@@ -103,7 +104,7 @@ static void draw(const ScannerUiEntry *entries,
     if (scanning) {
         text(p, 120, 360, "SCANNING LOCAL METADATA...",
              0xFFF2FBFFu, 4, 60);
-        text(p, 120, 450, "GOLDHEN FTP MUST BE ENABLED",
+        text(p, 120, 450, progress_line,
              0xFFBFD7F0u, 3, 60);
     } else {
         char line[160];
@@ -207,6 +208,19 @@ extern "C" int scanner_ui_begin(void) {
     usable = 1;
     draw(nullptr, 0, 0, 0, 0, 0, 0, 1);
     return 1;
+}
+
+extern "C" void scanner_ui_progress(
+    const char *cusa, unsigned current, unsigned total
+) {
+    if (!usable) return;
+    if (total > 0 && cusa)
+        snprintf(progress_line, sizeof(progress_line),
+                 "READING %u OF %u - %s", current, total, cusa);
+    else
+        snprintf(progress_line, sizeof(progress_line),
+                 "%s", cusa ? cusa : "WORKING");
+    draw(nullptr, 0, 0, 0, 0, 0, 0, 1);
 }
 
 extern "C" void scanner_ui_results(

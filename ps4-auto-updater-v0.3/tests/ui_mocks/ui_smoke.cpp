@@ -118,7 +118,10 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         /* Source is the synthetic 2x2 PNG in icon_smoke.c, decoded to
          * 0xFF194BB4. The selected-game blurred backdrop is 25% icon and
          * 75% royal-blue with blending performed once, not per pixel. */
-        const uint32_t sample = display_buffers[index][500u*SCREEN_WIDTH];
+        /* x=72 is outside the 69px sidebar rail and outside
+         * content panels, so it genuinely measures the blurred art. */
+        const uint32_t sample =
+            display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];

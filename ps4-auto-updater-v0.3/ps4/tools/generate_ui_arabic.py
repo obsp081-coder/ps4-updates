@@ -15,6 +15,8 @@ LABELS = (
     ("JOB_QUEUED", "في الانتظار"),
     ("JOB_PAUSED", "متوقف مؤقتا"),
     ("JOB_COMPLETED", "اكتمل التنزيل"),
+    ("FINISHED_DOWNLOAD", "تنزيلات مكتملة"),
+    ("FOOTER_JOBS", "الأسهم: تصفح    دائرة: رجوع    حالات للعرض فقط"),
     ("JOB_FAILED", "فشل التنزيل"),
     ("JOB_BLOCKED", "التنزيل محظور"),
     ("UPDATE_REVIEW", "تحديث للعرض فقط"),

@@ -165,7 +165,8 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
                 ++state->selected;
                 return 1;
             }
-            if(action==UI_ACT_DOWN)return 0;
+            if(action==UI_ACT_DOWN ||
+               action==UI_ACT_LEFT || action==UI_ACT_RIGHT)return 0;
         }
         if (action == UI_ACT_TOGGLE_KEYBOARD ||
             action == UI_ACT_NEXT_TAB || action == UI_ACT_PREVIOUS_TAB) {

@@ -365,13 +365,17 @@ static void header(uint32_t *p, UiPage page) {
     ascii(p,154,29,"GAME UPDATE MANAGER",WHITE,4,32);
     ascii(p,156,73,"ROYAL BLUE  |  LOCAL LIBRARY",MUTED,2,38);
 
-    const int positions[3]={1110,1370,1610};
-    const UiArabicLabel labels[3]={UI_AR_HOME,UI_AR_DETAILS,UI_AR_DOWNLOADS};
-    for (int i=0;i<3;++i) {
-        int highlighted=(page==UI_PAGE_HOME&&i==0) ||
-                        (page==UI_PAGE_DETAILS&&i==1) ||
-                        (page==UI_PAGE_DOWNLOADS&&i==2);
-        panel(p,positions[i],31,i==1?225:190,58,
+    const int positions[4]={920,1100,1335,1580};
+    const int widths[4]={165,215,230,240};
+    const UiArabicLabel labels[4]={
+        UI_AR_HOME,UI_AR_DETAILS,UI_AR_DOWNLOADS,UI_AR_SETTINGS
+    };
+    const UiPage sections[4]={
+        UI_PAGE_HOME,UI_PAGE_DETAILS,UI_PAGE_DOWNLOADS,UI_PAGE_SETTINGS
+    };
+    for(int i=0;i<4;++i) {
+        const int highlighted=page==sections[i];
+        panel(p,positions[i],31,widths[i],58,
               highlighted?ACCENT:0xFF102D50u);
         arabic(p,positions[i]+18,40,labels[i],highlighted?WHITE:MUTED);
     }
@@ -492,6 +496,14 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
         rect(p,x+8,cy+8,13,13,0xFF081D39u);
         rect(p,x+23,cy+23,5,5,ink);
         rect(p,x+27,cy+27,5,5,ink);
+    } else if(section==UI_PAGE_SETTINGS) {
+        rect(p,x+4,cy+6,24,24,ink);
+        rect(p,x+8,cy+10,16,16,0xFF081D39u);
+        rect(p,x+12,cy+14,8,8,ink);
+        rect(p,x+13,cy,6,5,ink);
+        rect(p,x+13,cy+30,6,5,ink);
+        rect(p,x,cy+15,5,6,ink);
+        rect(p,x+27,cy+15,5,6,ink);
     }
 }
 static void rail(uint32_t *p,UiPage page) {
@@ -501,6 +513,7 @@ static void rail(uint32_t *p,UiPage page) {
     rail_item(p,297,UI_PAGE_DETAILS,page);
     rail_item(p,395,UI_PAGE_DOWNLOADS,page);
     rail_item(p,493,UI_PAGE_SEARCH,page);
+    rail_item(p,591,UI_PAGE_SETTINGS,page);
 }
 static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
@@ -627,6 +640,29 @@ static void downloads(uint32_t *p) {
     arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
     footer(p,UI_AR_FOOTER_DOWNLOADS);
 }
+static void settings_screen(uint32_t *p) {
+    arabic(p,100,143,UI_AR_SETTINGS_HEADER,WHITE);
+    panel(p,90,222,1655,690,PANEL);
+    const UiArabicLabel labels[5]={
+        UI_AR_LANGUAGE_SETTING, UI_AR_THEME_SETTING,
+        UI_AR_STORAGE_SETTING, UI_AR_SOURCE_SETTING,
+        UI_AR_INSTALL_SETTING
+    };
+    const UiArabicLabel values[5]={
+        UI_AR_ARABIC_SETTING, UI_AR_ROYAL_BLUE_SETTING,
+        UI_AR_INTERNAL_SETTING, UI_AR_TRUSTED_SETTING,
+        UI_AR_INSTALL_OFF_SETTING
+    };
+    for(int i=0;i<5;++i) {
+        const int y=268+i*112;
+        panel(p,132,y,1558,91,0xFF123158u);
+        rect(p,155,y+16,4,55,i==4?AMBER:CYAN);
+        arabic(p,185,y+20,labels[i],MUTED);
+        arabic(p,620,y+20,values[i],i==4?AMBER:WHITE);
+    }
+    arabic(p,159,860,UI_AR_SETTINGS_NOTE,MUTED);
+    footer(p,UI_AR_FOOTER_SETTINGS);
+}
 static void search_screen(uint32_t *p) {
     arabic(p,92,143,UI_AR_SEARCH_HINT,WHITE);
     panel(p,90,230,1655,104,0xFF0E2A51u);
@@ -682,6 +718,8 @@ static void draw(const ScannerUiEntry *entries,
         footer(p,UI_AR_FOOTER_SCANNING);
     }else if(navigation.page==UI_PAGE_SEARCH) {
         search_screen(p);
+    }else if(navigation.page==UI_PAGE_SETTINGS) {
+        settings_screen(p);
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
@@ -820,6 +858,7 @@ extern "C" void scanner_ui_results(
             navigation.page==UI_PAGE_SEARCH?UI_ACT_TOGGLE_KEYBOARD:UI_ACT_SEARCH;
         else if(pressed&ORBIS_PAD_BUTTON_SQUARE) action=
             navigation.page==UI_PAGE_SEARCH?UI_ACT_REMOVE:UI_ACT_DOWNLOADS;
+        else if(pressed&ORBIS_PAD_BUTTON_OPTIONS) action=UI_ACT_SETTINGS;
         else if(pressed&ORBIS_PAD_BUTTON_R1) action=UI_ACT_NEXT_TAB;
         else if(pressed&ORBIS_PAD_BUTTON_L1) action=UI_ACT_PREVIOUS_TAB;
         else if(pressed&ORBIS_PAD_BUTTON_DOWN) action=UI_ACT_DOWN;

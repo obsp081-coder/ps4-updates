@@ -944,11 +944,12 @@ int main(void) {
         errno != EEXIST
     ) return 2;
 
+    /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v05.json";
+        ROOT "/inventory_v06.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v05.txt";
+        ROOT "/diagnostic_v06.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;

@@ -24,6 +24,7 @@
 #include "ui_snapshot.h"
 #include "ui_png_transport.h"
 #include "ui_image.h"
+#include "ui_icon_cache.h"
 #include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)

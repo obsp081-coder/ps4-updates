@@ -413,29 +413,55 @@ static int command(
     return reply(fd, replybuf, cap);
 }
 
+/*
+ * GoldHEN deployments differ: some allow TYPE I on a fresh control
+ * connection, while others require USER anonymous first. Try the
+ * no-credential path before sending a USER command; only negotiate
+ * authentication after an explicit FTP 530 response. Never guess
+ * passwords, send extra FTP feature probes, or print credentials.
+ */
 static int login(sock_t fd) {
     char line[512];
-
     int code = reply(fd, line, sizeof line);
 
+    if (code == 120) {
+        logmsg("FTP_GREETING_WAIT_CODE", code);
+        code = reply(fd, line, sizeof line);
+    }
+    logmsg("FTP_GREETING_CODE", code);
     if (code != 220)
         return 0;
 
-    code = command(
-        fd, line, sizeof line, "USER anonymous"
-    );
+    code = command(fd, line, sizeof line, "TYPE I");
+    logmsg("FTP_INITIAL_TYPE_CODE", code);
 
-    if (code == 331)
-        code = command(
-            fd, line, sizeof line, "PASS guest@"
-        );
+    if (code == 200) {
+        logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 0);
+        return 1;
+    }
 
-    if (code != 230)
+    /* Only try USER if server explicitly says authentication required. */
+    if (code != 530)
         return 0;
 
-    return command(
-        fd, line, sizeof line, "TYPE I"
-    ) == 200;
+    code = command(fd, line, sizeof line, "USER anonymous");
+    logmsg("FTP_USER_CODE", code);
+
+    if (code == 331) {
+        code = command(fd, line, sizeof line, "PASS guest@");
+        logmsg("FTP_PASS_CODE", code);
+    }
+
+    if (code != 230 && code != 202)
+        return 0;
+
+    code = command(fd, line, sizeof line, "TYPE I");
+    logmsg("FTP_AUTH_TYPE_CODE", code);
+    if (code != 200)
+        return 0;
+
+    logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 1);
+    return 1;
 }
 
 static int pasv_port(const char *line) {
@@ -733,6 +759,9 @@ static void confirm_games(void) {
         );
 
     if (load != 0) {
+        /* 0x80020008 = kernel ENOEXEC; do not claim app absent. */
+        if (load == 0x80020008u)
+            logmsg("AppInstUtil ENOEXEC", 1);
         api_stage = 1;
         return;
     }
@@ -905,7 +934,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.5.1 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.5.2 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -945,6 +974,7 @@ int main(void) {
             logmsg("CONTROL_CONNECT_FAILED", -1);
             ++errors;
         } else {
+            logmsg("FTP_CONTROL_CONNECT_OK", 1);
             int authenticated = login(control);
 
             logmsg("FTP_LOGIN_OK", authenticated);

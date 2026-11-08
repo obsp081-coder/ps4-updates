@@ -3,6 +3,7 @@
 Host tests exercise control flow and resource cleanup, not PS4 hardware.
 """
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -47,11 +48,35 @@ class NativeUiSmokeTests(unittest.TestCase):
             )
             self.assertEqual(compile_process.returncode, 0,
                              compile_process.stdout + compile_process.stderr)
+            preview = Path(tmp) / "screenshots"
+            preview.mkdir()
+            env = dict(os.environ)
+            env["PS4_UI_PREVIEW_DIR"] = str(preview)
             run = subprocess.run(
-                [str(binary)], capture_output=True, text=True, timeout=12
+                [str(binary)], capture_output=True, text=True,
+                timeout=30, env=env
             )
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("UI_HOST_SMOKE_OK", run.stdout)
+
+            # These are captures of the native C++ framebuffer renderer,
+            # NOT proof of how it appears on an actual PS4 television.
+            from PIL import Image
+            export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
+            for page in ("home", "details", "downloads", "search"):
+                ppm = preview / (page + ".ppm")
+                self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
+                with Image.open(ppm) as pixels:
+                    self.assertEqual(pixels.size, (1920, 1080))
+                    self.assertEqual(pixels.mode, "RGB")
+                    # Main royal-blue header must be nonblank for every page.
+                    self.assertNotEqual(pixels.getpixel((200, 45)),
+                                        pixels.getpixel((0, 550)))
+                    if export:
+                        destination = Path(export)
+                        destination.mkdir(parents=True, exist_ok=True)
+                        pixels.save(destination / (page + ".png"),
+                                    optimize=True)
 
 
 if __name__ == "__main__":

@@ -506,7 +506,7 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertTrue(inventory["scan_complete"])
 
     def test_truncated_content_id_does_not_restore_missing_title_id(self):
-        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\\r\\n"
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, _ = self.with_server(
             listing, {"CUSA02343": sfo(
                 "CUSA02343", include_title_id=False,
@@ -516,7 +516,7 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("SFO CUSA02343: -33", diagnostic)
 
     def test_invalid_content_id_suffix_is_rejected(self):
-        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\\r\\n"
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, _ = self.with_server(
             listing, {"CUSA02343": sfo(
                 "CUSA02343", content_id="IV0000-CUSA02343_00-0123456789ABC_EF")})
@@ -526,7 +526,7 @@ class ScannerFTPTests(unittest.TestCase):
 
     def test_listing_over_capacity_cannot_claim_complete_scan(self):
         listing = b"".join(
-            ("drwxr-xr-x root root 0 Nov 08 12:00 CUSA%05d\\r\\n" % i).encode()
+            ("drwxr-xr-x root root 0 Nov 08 12:00 CUSA%05d\r\n" % i).encode()
             for i in (2343, 411, 8032)
         )
         metadata = {

@@ -84,18 +84,65 @@ static void rect(uint32_t *pixels, int x, int y,
     }
 }
 
+/* Proportional OFL Noto Sans Latin glyphs are rasterized at build time,
+ * so PS4 never loads a font or runs a dynamic text-shaping engine.
+ * Three sizes map to existing 2/3/4 UI scales; the old 5x7 font remains
+ * only for uncommon sizes. Text remains bounded to each caller's column. */
+static int latin_width(const char *s,int scale,int max_chars) {
+    if(!s || scale<2 || scale>4 || max_chars<=0) return 0;
+    int width=0;
+    for(int i=0; s[i] && i<max_chars; ++i) {
+        unsigned c=(unsigned char)s[i];
+        if(c<32u || c>126u)c='?';
+        width+=(int)UI_LATIN_GLYPHS[scale-2][c-32u].advance;
+    }
+    return width;
+}
 static void text(uint32_t *pixels, int x, int y, const char *s,
                  uint32_t color, int scale, int max_chars) {
-    if (!s) return;
+    if (!pixels || !s || max_chars<=0 || scale<=0) return;
+    if(scale>=2 && scale<=4) {
+        const int cap=x+max_chars*6*scale<WIDTH ?
+                      x+max_chars*6*scale:WIDTH;
+        int pen=x;
+        for(int i=0; s[i] && i<max_chars; ++i) {
+            unsigned c=(unsigned char)s[i];
+            if(c<32u || c>126u)c='?';
+            const UiLatinGlyph g=UI_LATIN_GLYPHS[scale-2][c-32u];
+            if(pen+(int)g.width>cap)break;
+            if(pen>=0 && y>=0 && y+(int)g.height<HEIGHT) {
+                for(unsigned row=0;row<g.height;++row)
+                    for(unsigned col=0;col<g.width;++col) {
+                        const size_t k=(size_t)row*g.width+col;
+                        const unsigned a=(UI_LATIN_BITS[g.offset+k/4]>>
+                                          (2*(3-k%4)))&3u;
+                        if(!a)continue;
+                        uint32_t *dst=&pixels[(size_t)(y+(int)row)*WIDTH+
+                                               (size_t)(pen+(int)col)];
+                        if(a==3u) {*dst=color;continue;}
+                        const uint32_t old=*dst;
+                        const unsigned r=(((old>>16)&255u)*(3-a)+
+                                          ((color>>16)&255u)*a)/3u;
+                        const unsigned gch=(((old>>8)&255u)*(3-a)+
+                                            ((color>>8)&255u)*a)/3u;
+                        const unsigned b=((old&255u)*(3-a)+
+                                          (color&255u)*a)/3u;
+                        *dst=0xFF000000u|(r<<16)|(gch<<8)|b;
+                    }
+            }
+            pen+=(int)g.advance;
+        }
+        return;
+    }
     for (int i = 0; s[i] && i < max_chars; ++i) {
-        int bx = x + i * 6 * scale;
-        if (bx + 5 * scale >= WIDTH) break;
-        const uint8_t *rows = glyph(s[i]);
-        for (int row = 0; row < 7; ++row)
-            for (int bit = 0; bit < 5; ++bit)
-                if (rows[row] & (1u << (4 - bit)))
-                    rect(pixels, bx + bit * scale, y + row * scale,
-                         scale, scale, color);
+        const int bx=x+i*6*scale;
+        if(bx+5*scale>=WIDTH)break;
+        const uint8_t *rows=glyph(s[i]);
+        for(int row=0;row<7;++row)
+            for(int bit=0;bit<5;++bit)
+                if(rows[row]&(1u<<(4-bit)))
+                    rect(pixels,bx+bit*scale,y+row*scale,
+                         scale,scale,color);
     }
 }
 
@@ -239,10 +286,15 @@ static void ui_title(uint32_t *p,int x,int y,int width,
             while(i<n && cp[i]<128 && !ui_joining(cp[i]) && length<95)
                 segment[length++]=(char)cp[i++];
             if(length) {
-                int w=(int)length*6*ascii_scale;
+                const int w=latin_width(segment,ascii_scale,
+                                         (int)length);
                 pen-=w;
                 if(pen<x)break;
-                ascii(p,pen,y+18,segment,color,ascii_scale,(int)length);
+                const int chars_by_width=(w+6*ascii_scale-1)/
+                                         (6*ascii_scale);
+                const int allowed=chars_by_width>(int)length ?
+                                  chars_by_width:(int)length;
+                ascii(p,pen,y+18,segment,color,ascii_scale,allowed);
             } else {
                 pen-=12;
                 ++i;

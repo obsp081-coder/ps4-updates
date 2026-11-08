@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 UI_SOURCE = ROOT / "ps4" / "src" / "scanner_ui.cpp"
+UI_NAV = ROOT / "ps4" / "src" / "ui_navigation.c"
 MOCK_DIR = Path(__file__).resolve().parent / "ui_mocks"
 MOCK_TEST = MOCK_DIR / "ui_smoke.cpp"
 
@@ -27,7 +28,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                 [
                     cxx, "-std=c++17", "-O2", "-Wall", "-Wextra",
                     "-Werror", "-DPS4_UI_HOST_TEST", "-I", str(MOCK_DIR),
-                    str(UI_SOURCE), str(MOCK_TEST), "-o", str(binary),
+                    str(UI_SOURCE), str(UI_NAV), str(MOCK_TEST), "-o", str(binary),
                 ],
                 capture_output=True, text=True, timeout=40
             )

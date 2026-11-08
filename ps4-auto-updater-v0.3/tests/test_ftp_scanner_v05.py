@@ -76,8 +76,14 @@ class MockHandler(socketserver.StreamRequestHandler):
                         logged_in = True
                         self.respond("230 OK")
                 elif command == "TYPE":
-                    self.respond("200 binary" if logged_in else "530 Not logged in")
+                    if self.server.type_unknown:
+                        self.respond("500 Unknown command TYPE")
+                    else:
+                        self.respond("200 binary" if logged_in else "530 Not logged in")
                 elif command == "PASV":
+                    if self.server.require_login and not logged_in:
+                        self.respond("530 Not logged in")
+                        continue
                     data_socket = socket.socket()
                     data_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     data_socket.bind(("127.0.0.1", 0))
@@ -136,6 +142,7 @@ class MockFTP(socketserver.TCPServer):
         self.deny_login = False
         self.require_login = False
         self.challenge_password = False
+        self.type_unknown = False
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -309,6 +316,38 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("FTP_USER_CODE: 331", diagnostic)
         self.assertIn("FTP_PASS_CODE: 230", diagnostic)
         self.assertEqual(commands[:4], ["TYPE", "USER", "PASS", "TYPE"])
+
+    def test_real_console_type_500_still_lists_games(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing,
+            {"CUSA02343": sfo("CUSA02343", "Uncharted Test", "01.04")},
+            passthrough=lambda server: setattr(server, "type_unknown", True),
+        )
+        self.assertEqual([g["cusa"] for g in inventory["games"]], ["CUSA02343"])
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("FTP_INITIAL_TYPE_CODE: 500", diagnostic)
+        self.assertIn("FTP_TYPE_UNSUPPORTED_CONTINUING: 500", diagnostic)
+        self.assertNotIn("USER", commands)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_type_500_then_pasv_530_requires_anonymous(self):
+        def configure(server):
+            server.type_unknown = True
+            server.require_login = True
+
+        inventory, diagnostic, commands = self.with_server(
+            b"", {}, passthrough=configure
+        )
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("FTP_INITIAL_TYPE_CODE: 500", diagnostic)
+        self.assertIn("FTP_PASV_CODE: 530", diagnostic)
+        self.assertIn("FTP_USER_CODE: 230", diagnostic)
+        self.assertIn("FTP_AUTH_TYPE_CODE: 500", diagnostic)
+        self.assertIn("FTP_PASV_AFTER_AUTH_CODE: 227", diagnostic)
+        self.assertEqual(commands[:5], ["TYPE", "PASV", "USER", "TYPE", "PASV"])
+        self.assertNotIn("PASS", commands)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

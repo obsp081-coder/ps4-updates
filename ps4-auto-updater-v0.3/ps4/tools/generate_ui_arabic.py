@@ -126,6 +126,66 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     for i in range(0, len(atlas), 24):
         header.append("  " + ",".join(f"0x{x:02x}" for x in atlas[i:i+24]) + ",")
     header.append("};")
+
+    # Build a small presentation-form atlas for dynamic Arabic game titles.
+    # This is intentionally conservative: basic Arabic joining, not a claim
+    # to implement full Unicode Bidirectional Algorithm or every script.
+    import unicodedata
+    forms = ("isolated", "final", "initial", "medial")
+    decompositions = {}
+    for codepoint in [*range(0xFB50, 0xFE00), *range(0xFE70, 0xFF00)]:
+        parts = unicodedata.decomposition(chr(codepoint)).split()
+        if (len(parts) == 2 and parts[0].startswith("<") and
+                parts[0][1:-1] in forms):
+            base = int(parts[1], 16)
+            if 0x0621 <= base <= 0x08FF:
+                decompositions.setdefault(base, {})[parts[0][1:-1]] = codepoint
+    cps = sorted(set(c for entry in decompositions.values() for c in entry.values()))
+    if not 50 <= len(cps) <= 600:
+        raise ValueError(f"Unexpected Arabic presentation forms: {len(cps)}")
+    codepoint_to_index = {cp: index for index, cp in enumerate(cps)}
+    dynamic_atlas = bytearray()
+    dynamic_entries = []
+    for cp in cps:
+        char = chr(cp)
+        width = max(8, int(round(font.getlength(char, direction="ltr"))) + 6)
+        height = font_size * 2 + 8
+        if width > 110:
+            raise ValueError(f"Suspicious Arabic glyph {cp:04X} width {width}")
+        image = Image.new("L", (width, height), 0)
+        drawer = ImageDraw.Draw(image)
+        drawer.text((3, font_size + 11), char, font=font,
+                    anchor="ls", direction="ltr", fill=255)
+        raw = list(image.getdata())
+        packed = bytearray((len(raw) + 3)//4)
+        for k, a in enumerate(raw):
+            packed[k//4] |= min(3, (a + 42)//85) << (2*(3-k%4))
+        dynamic_entries.append((len(dynamic_atlas), width, height))
+        dynamic_atlas.extend(packed)
+    header.append("typedef struct UiArabicDynamicGlyph {")
+    header.append(" uint32_t offset; uint16_t width; uint16_t height;")
+    header.append("} UiArabicDynamicGlyph;")
+    header.append(f"#define UI_AR_DYNAMIC_COUNT {len(cps)}u")
+    header.append("static const UiArabicDynamicGlyph UI_AR_DYNAMIC_GLYPHS[] = {")
+    for offset, width, height in dynamic_entries:
+        header.append(f" {{{offset}u,{width}u,{height}u}},")
+    header.append("};")
+    header.append(f"static const uint8_t UI_AR_DYNAMIC_BITS[{len(dynamic_atlas)}] = {{")
+    for i in range(0, len(dynamic_atlas), 24):
+        header.append(" " + ",".join(f"0x{x:02x}" for x in dynamic_atlas[i:i+24]) + ",")
+    header.append("};")
+    header.append("typedef struct UiArabicJoining {")
+    header.append(" uint32_t base; uint16_t isolated, final, initial, medial;")
+    header.append("} UiArabicJoining;")
+    header.append(f"#define UI_AR_JOINING_COUNT {len(decompositions)}u")
+    header.append("static const UiArabicJoining UI_AR_JOINING[] = {")
+    for base, variants in sorted(decompositions.items()):
+        indexes = [codepoint_to_index.get(variants.get(form), 65535)
+                   for form in forms]
+        header.append(" {0x%04Xu,%s}," % (
+            base, ",".join("%du" % idx for idx in indexes)
+        ))
+    header.append("};")
     header.append("#endif")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(header)+"\n", encoding="ascii")

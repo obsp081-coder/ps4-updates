@@ -1,3 +1,4 @@
+
 name: PS4 Retail Patch Metadata Report
 
 on:
@@ -44,8 +45,7 @@ jobs:
           from pathlib import Path
           from official_patch_lookup import discover
 
-          # Already listed in this public workflow. Historical data only.
-          # Do not publish the original console inventory or Content IDs.
+          # Historical inventory, not live console data.
           snapshot = [
               ("CUSA00001", "THE PLAYROOM", "01.07"),
               ("CUSA06122", "Roblox", "02.62"),
@@ -57,16 +57,27 @@ jobs:
               ("CUSA03551", "Canis Canem Edit", "01.00"),
               ("CUSA02343", "Uncharted: The Nathan Drake Collection", "01.00"),
           ]
+
           raw = discover([item[0] for item in snapshot])
-          counts = Counter(item["status"] for item in raw["titles"])
+
+          counts = Counter(
+              item["status"] for item in raw["titles"]
+          )
+
           if counts["LOOKUP_FAILED"] == len(snapshot):
-              raise SystemExit("All retail lookups failed; keeping last published data")
+              raise SystemExit(
+                  "All retail lookups failed; keeping last published data"
+              )
 
           generated = datetime.now(timezone.utc).isoformat()
-          names = {cusa: (name, ver) for cusa, name, ver in snapshot}
 
-          # Safe public data: no Sony metadata URL, no console Content ID,
-          # no PKG link, no installation claim.
+          names = {
+              cusa: (name, ver)
+              for cusa, name, ver in snapshot
+          }
+
+          # Public data contains no console Content IDs,
+          # download URLs, PKG files or installation claims.
           public_retail = {
               "schema": 1,
               "source_kind": "official_retail_metadata",
@@ -79,18 +90,121 @@ jobs:
                   {
                       "cusa": item["cusa"],
                       "status": item["status"],
-                      **({"latest_retail_version": item["latest_retail_version"]}
-                         if item.get("latest_retail_version") else {}),
+                      **(
+                          {
+                              "latest_retail_version":
+                                  item["latest_retail_version"]
+                          }
+                          if item.get("latest_retail_version")
+                          else {}
+                      ),
                   }
                   for item in raw["titles"]
               ],
           }
+
           public_inventory = {
               "schema": 4,
               "source": "historical_public_summary_not_live_console",
               "metadata_only": True,
               "public_summary_only": True,
               "games": [
-                  {"cusa": cusa, "name": name, "app_ver": ver}
+                  {
+                      "cusa": cusa,
+                      "name": name,
+                      "app_ver": ver
+                  }
                   for cusa, name, ver in snapshot
               ],
+          }
+
+          public_dir = Path("data")
+          public_dir.mkdir(exist_ok=True)
+
+          files = {
+              public_dir / "retail_patch_report.json": public_retail,
+              public_dir / "public_inventory.json": public_inventory,
+          }
+
+          for path, data in files.items():
+              path.write_text(
+                  json.dumps(
+                      data,
+                      ensure_ascii=False,
+                      indent=2
+                  ) + "\n",
+                  encoding="utf-8",
+              )
+
+          lines = [
+              "## PS4 Official Retail Update Report",
+              "",
+              "Historical inventory only.",
+              "NOT live PS4 data or FPKG compatibility.",
+              "No game packages downloaded or installed.",
+              "",
+              "| Title | CUSA | Last scan | Latest official | Status |",
+              "|---|---|---:|---:|---|",
+          ]
+
+          for item in raw["titles"]:
+              name, previous = names[item["cusa"]]
+              latest = item.get(
+                  "latest_retail_version",
+                  "—"
+              )
+
+              lines.append(
+                  f'| {name} | {item["cusa"]} | '
+                  f'{previous} | {latest} | '
+                  f'{item["status"]} |'
+              )
+
+          lines.extend([
+              "",
+              f'Listed: {counts["RETAIL_PATCH_LISTED"]}/{len(snapshot)}',
+              f'Not listed: {counts["NOT_LISTED"]}',
+              f'Lookup failed: {counts["LOOKUP_FAILED"]}',
+              "",
+              "Public JSON files:",
+              "data/public_inventory.json",
+              "data/retail_patch_report.json",
+          ])
+
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+
+          with open(
+              os.environ["GITHUB_STEP_SUMMARY"],
+              "a",
+              encoding="utf-8"
+          ) as stream:
+              stream.write(summary)
+          PY
+
+      - name: Publish report for GitHub Pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            data/public_inventory.json \
+            data/retail_patch_report.json
+
+          if git diff --cached --quiet; then
+            echo "No change in published data"
+          else
+            git commit -m "Update public PS4 retail metadata snapshot"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload report files as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps4-public-retail-metadata
+          path: |
+            data/public_inventory.json
+            data/retail_patch_report.json
+          if-no-files-found: warn
+          retention-days: 14

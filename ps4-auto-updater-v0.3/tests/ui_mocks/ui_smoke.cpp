@@ -181,13 +181,6 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
         if(mixed_title_probe) {
-            /* Persist mixed-script regression frames for offline design QA.
-             * They are rendered by native C++ with mocked VideoOut, never
-             * claimed as physical-console screenshots. */
-            if(mixed_title_probe==1)
-                capture_ppm(display_buffers[index],"mixed_ltr",128u);
-            if(mixed_title_probe==2)
-                capture_ppm(display_buffers[index],"mixed_rtl",256u);
             /* Native framebuffer pixel checks: mixed LTR-leading titles
              * start near the left edge, RTL-leading titles at the right.
              * The sampled row excludes CUSA/category/footer labels. */
@@ -203,11 +196,18 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++right_ink;
                 }
             }
-            if(mixed_title_probe==1 && left_ink>8)
+            /* Capture the first FRAME WITH ACTUAL TITLE INK, not the
+             * blank initialization frame from scanner_ui_begin(). */
+            if(mixed_title_probe==1 && left_ink>8) {
                 saw_ltr_title_left=true;
+                capture_ppm(frame,"mixed_ltr",128u);
+            }
             if(mixed_title_probe==2 && right_ink>8) {
                 saw_rtl_title_right=true;
-                if(left_ink==0)saw_rtl_title_clear_left=true;
+                if(left_ink==0) {
+                    saw_rtl_title_clear_left=true;
+                    capture_ppm(frame,"mixed_rtl",256u);
+                }
             }
         }
         if(check_offline_cache) {

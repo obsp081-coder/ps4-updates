@@ -990,7 +990,8 @@ extern "C" void scanner_ui_progress(
     else
         snprintf(progress_line, sizeof(progress_line),
                  "%s", cusa ? cusa : "...");
-    draw(nullptr, 0, 0, 0, 0, 0, 0, 1);
+    draw(previous_scan_count?previous_scan:nullptr,previous_scan_count,
+         previous_scan_count,0,0,1,navigation.scroll,1);
 }
 
 /* Called on the VideoOut/Pad owner thread while the read-only scanner

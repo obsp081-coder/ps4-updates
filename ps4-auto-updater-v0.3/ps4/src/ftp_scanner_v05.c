@@ -20,6 +20,7 @@
 #include <orbis/Sysmodule.h>
 #include <orbis/AppInstUtil.h>
 #include <orbis/libkernel.h>
+#include "scanner_ui.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)
 #define NET_RECV sceNetRecv
@@ -1035,7 +1036,7 @@ static int save_inventory(const char *path) {
     fputs(
         "{\n"
         "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v061\",\n"
+        "  \"source\":\"ftp_loopback_readonly_v062\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
         fp
@@ -1133,10 +1134,10 @@ int main(void) {
 
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v061.json";
+        ROOT "/inventory_v062.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v061.txt";
+        ROOT "/diagnostic_v062.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1172,7 +1173,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.1 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.2 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -1180,6 +1181,11 @@ int main(void) {
         );
         fflush(report);
     }
+
+#ifdef __ORBIS__
+    int native_ui = scanner_ui_begin();
+    logmsg("NATIVE_UI_AVAILABLE", native_ui);
+#endif
 
     if (pool < 0) {
         logmsg("NET_UNAVAILABLE", pool);
@@ -1285,6 +1291,33 @@ int main(void) {
 
     if (report)
         fclose(report);
+
+#ifdef __ORBIS__
+    /* Display candidates separately from metadata-verified games. */
+    static ScannerUiEntry ui_items[MAX_GAMES];
+    for (unsigned i = 0; i < candidate_count; ++i) {
+        ui_items[i].cusa = candidate_list[i].cusa;
+        ui_items[i].title = NULL;
+        ui_items[i].version = NULL;
+        ui_items[i].metadata_verified = 0;
+        ui_items[i].install_state = -1;
+        for (unsigned j = 0; j < found; ++j) {
+            if (strcmp(candidate_list[i].cusa, games[j].cusa) != 0)
+                continue;
+            ui_items[i].title = games[j].name;
+            ui_items[i].version = games[j].version;
+            ui_items[i].metadata_verified = 1;
+            ui_items[i].install_state = games[j].installed;
+            break;
+        }
+    }
+    scanner_ui_results(
+        ui_items, candidate_count, found, (unsigned)errors,
+        ftp_login_ok && primary_listing_ok && errors == 0,
+        saved == 0
+    );
+    scanner_ui_shutdown();
+#endif
 
     return saved == 0 ? 0 : 1;
 }

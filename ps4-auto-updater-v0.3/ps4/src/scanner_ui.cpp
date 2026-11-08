@@ -1076,12 +1076,20 @@ extern "C" void scanner_ui_results(
         metadata_count=count;
     }
     if(count>UI_MAX_TITLES)count=UI_MAX_TITLES;
+    /* Navigation records are about to be replaced. Save the selected ID
+     * first so a completed rescan cannot jump Details to a different game. */
+    char selected_cusa[10]={0};
+    const unsigned old_idx=ui_nav_resolve(&navigation,navigation.selected);
+    if(navigation.items && old_idx<navigation.item_count &&
+       navigation.items[old_idx].cusa)
+        (void)snprintf(selected_cusa,sizeof selected_cusa,"%s",
+                       navigation.items[old_idx].cusa);
     for(unsigned i=0;i<count;++i) {
         navigation_records[i].cusa=entries[i].cusa;
         navigation_records[i].name=entries[i].title;
     }
     if(!final_view_is_stale)previous_scan_count=0;
-    ui_nav_init(&navigation,navigation_records,count);
+    ui_nav_rebind(&navigation,navigation_records,count,selected_cusa);
     draw(entries,count,metadata_count,errors,
          scan_complete,inventory_saved,0,0);
     uint32_t prior=0;

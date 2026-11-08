@@ -19,7 +19,7 @@ void scanner_ui_results(
     unsigned metadata_count, unsigned errors,
     int scan_complete, int inventory_saved
 );
-void scanner_ui_shutdown(void);
+void scanner_ui_shutdown(void (*trace)(const char *, int));
 
 #ifdef __cplusplus
 }

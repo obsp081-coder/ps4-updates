@@ -93,6 +93,44 @@ int main(void) {
     assert(nav.page==UI_PAGE_SEARCH);
     assert(ui_nav_action(&nav,UI_ACT_BACK));
 
+    /* Search is useful only if matches can be opened, not just counted.
+     * From the last keyboard row Down focuses a real CUSA match.
+     * Right selects the next result, Cross opens Details, Circle returns
+     * to the same search, then Circle again leaves keyboard to Home. */
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Sample");
+    assert(nav.available==7);
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(nav.search_result_focus==1 && nav.selected==0);
+    assert(ui_nav_resolve(&nav,nav.selected)==0);
+    assert(ui_nav_action(&nav,UI_ACT_RIGHT));
+    assert(nav.selected==1 && ui_nav_resolve(&nav,nav.selected)==2);
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.page==UI_PAGE_DETAILS && nav.details_from_search==1);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_SEARCH && nav.search_result_focus==1 &&
+           nav.selected==1 && nav.details_from_search==0);
+    assert(ui_nav_action(&nav,UI_ACT_LEFT));
+    assert(nav.selected==0);
+    assert(!ui_nav_action(&nav,UI_ACT_LEFT));
+    assert(nav.keyboard_index==36);
+    assert(ui_nav_action(&nav,UI_ACT_UP));
+    assert(nav.search_result_focus==0);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && !nav.exit_requested);
+
+    /* An empty search must not focus or open fabricated results. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"not-present");
+    nav.keyboard_index=36;
+    assert(!ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(!nav.search_result_focus);
+    assert(!ui_nav_action(&nav,UI_ACT_OPEN) || nav.page==UI_PAGE_SEARCH);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME);
+
     fill(256);
     assert(nav.available==256);
     for(unsigned i=0;i<300;i++) (void)ui_nav_action(&nav,UI_ACT_DOWN);

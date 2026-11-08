@@ -46,6 +46,36 @@ def sfo(title_id, name="Test Game", version="01.04", category="gd",
     return header + entries + keys + values
 
 
+def sfo_corruption_repro(title_id="CUSA02343"):
+    """23-entry valid PSF with exactly one LF in TITLE_ID length at entry 20.
+
+    Mirrors the user-observed 23-entry/entry-20 0x0a0d symptom.
+    Its byte layout is synthetic: not a console-file fixture.
+    """
+    fields = [("K%02d" % i, b"TEST", 0x0404) for i in range(20)]
+    fields.extend([
+        ("TITLE_ID", title_id.encode("ascii") + b"\0", 0x0204),
+        ("CATEGORY", b"gd\0", 0x0204),
+        ("APP_VER", b"01.07\0", 0x0204),
+    ])
+    keys = bytearray()
+    vals = bytearray()
+    index = bytearray()
+    for key, raw, fmt in fields:
+        kpos = len(keys)
+        vpos = len(vals)
+        keys.extend(key.encode("ascii") + b"\0")
+        vals.extend(raw)
+        index.extend(struct.pack("<HHIII", kpos, fmt, len(raw), len(raw), vpos))
+    header = struct.pack("<IIIII", 0x46535000, 0x101,
+                         20 + len(index), 20 + len(index) + len(keys),
+                         len(fields))
+    original = header + index + keys + vals
+    assert len(fields) == 23
+    assert original.count(b"\n") == 1, original.count(b"\n")
+    return original
+
+
 class MockHandler(socketserver.StreamRequestHandler):
     def respond(self, text):
         # Original FTPS4 often terminates control replies with LF only.
@@ -268,6 +298,21 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertTrue(inventory["scan_complete"])
         self.assertIn("SFO ASCII_RECOVERED CUSA02343", diagnostic)
         self.assertNotIn("TYPE", commands)
+
+    def test_exact_entry_twenty_ascii_expansion_safely_recovers(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        original = sfo_corruption_repro()
+        expanded = original.replace(b"\n", b"\r\n")
+        self.assertEqual(len(expanded), len(original) + 1)
+        # Entry 20's original string length 10 is converted to 0x0a0d.
+        self.assertEqual(struct.unpack_from("<I", expanded, 20 + 20*16 + 4)[0],
+                         0x0a0d)
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": expanded})
+        self.assertTrue(inventory["scan_complete"])
+        self.assertEqual(inventory["games"][0]["cusa"], "CUSA02343")
+        self.assertEqual(inventory["games"][0]["app_ver"], "01.07")
+        self.assertIn("SFO ASCII_RECOVERED CUSA02343", diagnostic)
 
     def test_ascii_recovery_cannot_accept_wrong_content_id(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

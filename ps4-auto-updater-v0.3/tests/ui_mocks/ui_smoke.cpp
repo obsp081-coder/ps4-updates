@@ -1,6 +1,7 @@
 #include "scanner_ui_host_mock.h"
 #include "../../ps4/src/scanner_ui.h"
 #include "../../ps4/src/ui_models.h"
+#include "../../ps4/src/ui_icon_cache.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -29,6 +30,9 @@ static bool test_async_scan = false;
 static bool test_async_exit = false;
 static bool saw_scan_details = false;
 static bool saw_scan_settings = false;
+static bool test_lazy_cover = false;
+static unsigned lazy_cover_polls = 0;
+static bool lazy_cover_offered = false;
 static volatile uint32_t mock_scan_status = 0;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
@@ -80,6 +84,22 @@ static void trace(const char *name, int) {
     if (std::strcmp(name, "UI_MEMORY_RETAINED_FOR_SAFETY") == 0) ++retained_warning;
 }
 
+/* Host-only mailbox fixture: the image is intentionally absent at first.
+ * A subsequent UI tick imports an already-decoded thumbnail and requests
+ * a repaint. This is not a real FTP fetch or PS4 device test. */
+static int lazy_cover_mock_tick(const char *cusa) {
+    if(!test_lazy_cover || !cusa ||
+       std::strcmp(cusa,"CUSA02343")!=0)return 0;
+    ++lazy_cover_polls;
+    if(lazy_cover_polls<3 || lazy_cover_offered)return 0;
+    static uint32_t pixels[UI_ICON_PIXELS];
+    for(size_t i=0;i<UI_ICON_PIXELS;++i)pixels[i]=0xFF194BB4u;
+    if(scanner_ui_offer_thumbnail("CUSA02343",pixels,UI_ICON_PIXELS)!=0)
+        return 0;
+    lazy_cover_offered=true;
+    return 1;
+}
+
 static void reset() {
     video_opened = video_closed = pad_closed = 0;
     flip_count = pad_reads = allocated = sleep_count = 0;
@@ -92,7 +112,8 @@ static void reset() {
     capture_cached_preview = saw_cached_sixth_row = false;
     check_offline_cache = saw_offline_cache = false;
     test_async_scan = test_async_exit = saw_scan_details =
-        saw_scan_settings = false;
+        saw_scan_settings = test_lazy_cover = lazy_cover_offered = false;
+    lazy_cover_polls = 0;
     mock_scan_status = 0;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
@@ -328,6 +349,20 @@ int main() {
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);
+
+    /* The selected cover can be absent at first render. A later,
+     * nonblocking UI tick imports it and repaints the blurred backdrop.
+     * The test uses synthetic pixels; no socket or file is opened. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    test_lazy_cover=true;
+    scanner_ui_set_cover_tick(lazy_cover_mock_tick);
+    scanner_ui_results(entries,3,2,0,1,1);
+    scanner_ui_set_cover_tick(nullptr);
+    assert(lazy_cover_offered && lazy_cover_polls>=3);
+    assert(saw_blurred_background);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
 
     /* Populate a fixture only for host tests, after scanner_ui_begin()
      * resets the model. Production has no provider yet and shows zero. */

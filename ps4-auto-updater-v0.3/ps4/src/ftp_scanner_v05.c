@@ -21,6 +21,7 @@
 #include <orbis/AppInstUtil.h>
 #include <orbis/libkernel.h>
 #include "scanner_ui.h"
+#include "ui_snapshot.h"
 #include "ui_png_transport.h"
 #include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
@@ -1285,6 +1286,30 @@ int main(void) {
 #ifdef __ORBIS__
     int native_ui = scanner_ui_begin();
     logmsg("NATIVE_UI_AVAILABLE", native_ui);
+
+    /* The cache is bounded, atomically written by this app and checked
+     * before display. It is NOT evidence a title is installed today. */
+    static UiSnapshotGame previous_games[MAX_GAMES];
+    static ScannerUiEntry previous_items[MAX_GAMES];
+    unsigned previous_count=0;
+    const int previous_status=ui_snapshot_load(
+        ROOT "/snapshot_v1.bin", previous_games, MAX_GAMES,
+        &previous_count
+    );
+    logmsg("UI_PREVIOUS_CACHE_READ",previous_status);
+    if(native_ui && previous_status==1 && previous_count) {
+        for(unsigned i=0;i<previous_count;++i) {
+            previous_items[i].cusa=previous_games[i].cusa;
+            previous_items[i].title=previous_games[i].title;
+            previous_items[i].version=previous_games[i].version;
+            previous_items[i].category=previous_games[i].category;
+            previous_items[i].metadata_verified=0;
+            previous_items[i].install_state=-1;
+        }
+        logmsg("UI_PREVIOUS_CACHE_COUNT",(int)previous_count);
+        logmsg("UI_PREVIOUS_CACHE_DISPLAYED",
+               scanner_ui_preview_snapshot(previous_items,previous_count));
+    }
 #endif
 
     if (pool < 0) {
@@ -1363,6 +1388,32 @@ int main(void) {
     logmsg("SCAN_STAGE_FINISHED", 1);
     confirm_games();
     logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
+
+#ifdef __ORBIS__
+    /* Preserve the last useful cache when FTP fails. A missing external
+     * listing is a known FW14 limitation; the next start displays this
+     * partial internal metadata with an explicit stale-data warning. */
+    if(ftp_login_ok && primary_listing_ok && errors==0 &&
+       sfo_invalid==0 && !candidate_overflow &&
+       (found>0u || external_listing_ok)) {
+        static UiSnapshotGame current[MAX_GAMES];
+        for(unsigned i=0;i<found;++i) {
+            memset(&current[i],0,sizeof current[i]);
+            memcpy(current[i].cusa,games[i].cusa,
+                   sizeof current[i].cusa);
+            memcpy(current[i].title,games[i].name,
+                   sizeof current[i].title);
+            memcpy(current[i].version,games[i].version,
+                   sizeof current[i].version);
+            memcpy(current[i].category,games[i].category,
+                   sizeof current[i].category);
+        }
+        logmsg("UI_CACHE_WRITE_RC",ui_snapshot_save(
+            ROOT "/snapshot_v1.bin",current,found));
+    } else {
+        logmsg("UI_CACHE_PRESERVED_DUE_TO_INCOMPLETE_SCAN",1);
+    }
+#endif
 
     int saved = save_inventory(outpath);
     logmsg("SCAN_STAGE_INVENTORY_SAVE_RETURNED", saved);

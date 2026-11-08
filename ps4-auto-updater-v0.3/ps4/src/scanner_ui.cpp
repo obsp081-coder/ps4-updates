@@ -141,6 +141,115 @@ static void arabic(uint32_t *p,int x,int y,UiArabicLabel label,uint32_t color) {
         }
     }
 }
+/* A compact conservative Arabic title renderer: presentation-form joining
+ * for Arabic code points, byte-validating UTF-8, basic LTR ASCII runs.
+ * Does not claim full ICU/HarfBuzz Unicode bidi coverage. Static navigation
+ * captions are fully Raqm-shaped by the separate build-time atlas. */
+static size_t utf8_title(const char *text,uint32_t out[192]) {
+    size_t count=0;
+    if(!text)return 0;
+    const unsigned char *s=(const unsigned char *)text;
+    while(*s && count<191) {
+        uint32_t cp=0;
+        unsigned char c=*s++;
+        if(c<0x80) cp=c;
+        else if(c>=0xC2 && c<=0xDF && (s[0]&0xC0)==0x80) {
+            cp=((uint32_t)(c&31)<<6)|(s[0]&63); ++s;
+        } else if(c>=0xE0 && c<=0xEF && s[0] && s[1] &&
+                  (s[0]&0xC0)==0x80 && (s[1]&0xC0)==0x80 &&
+                  !(c==0xE0 && s[0]<0xA0) &&
+                  !(c==0xED && s[0]>=0xA0)) {
+            cp=((uint32_t)(c&15)<<12)|((uint32_t)(s[0]&63)<<6)|(s[1]&63);
+            s+=2;
+        } else if(c>=0xF0 && c<=0xF4 && s[0] && s[1] && s[2] &&
+                  (s[0]&0xC0)==0x80 && (s[1]&0xC0)==0x80 &&
+                  (s[2]&0xC0)==0x80 && !(c==0xF0 && s[0]<0x90) &&
+                  !(c==0xF4 && s[0]>=0x90)) {
+            cp=((uint32_t)(c&7)<<18)|((uint32_t)(s[0]&63)<<12)|
+               ((uint32_t)(s[1]&63)<<6)|(s[2]&63);
+            s+=3;
+        } else cp='?';
+        out[count++]=cp;
+    }
+    return count;
+}
+static const UiArabicJoining *ui_joining(uint32_t cp) {
+    for(unsigned i=0;i<UI_AR_JOINING_COUNT;++i)
+        if(UI_AR_JOINING[i].base==cp)return &UI_AR_JOINING[i];
+    return nullptr;
+}
+static void ui_draw_arabic_form(uint32_t *p,int x,int y,
+                                uint16_t form,uint32_t color) {
+    if(form>=UI_AR_DYNAMIC_COUNT)return;
+    const UiArabicDynamicGlyph g=UI_AR_DYNAMIC_GLYPHS[form];
+    if(x<0||y<0||x+(int)g.width>WIDTH||y+(int)g.height>HEIGHT)return;
+    for(unsigned row=0;row<g.height;++row)for(unsigned col=0;col<g.width;++col) {
+        const size_t k=(size_t)row*g.width+col;
+        const unsigned alpha=(UI_AR_DYNAMIC_BITS[g.offset+k/4]>>
+                               (2*(3-k%4)))&3u;
+        if(!alpha)continue;
+        uint32_t *dst=&p[(size_t)(y+(int)row)*WIDTH+x+col];
+        if(alpha==3u) {*dst=color;continue;}
+        const uint32_t old=*dst;
+        const unsigned r=(((old>>16)&255u)*(3-alpha)+((color>>16)&255u)*alpha)/3u;
+        const unsigned gch=(((old>>8)&255u)*(3-alpha)+((color>>8)&255u)*alpha)/3u;
+        const unsigned b=((old&255u)*(3-alpha)+(color&255u)*alpha)/3u;
+        *dst=0xFF000000u|(r<<16)|(gch<<8)|b;
+    }
+}
+static void ui_title(uint32_t *p,int x,int y,int width,
+                     const char *string,uint32_t color,int ascii_scale) {
+    if(!string || width<=0)return;
+    uint32_t cp[192]={};
+    size_t n=utf8_title(string,cp);
+    int has_arabic=0;
+    for(size_t i=0;i<n;++i)
+        if(ui_joining(cp[i])) {has_arabic=1;break;}
+    if(!has_arabic) {
+        ascii(p,x,y,string,color,ascii_scale,width/(6*ascii_scale));
+        return;
+    }
+    int pen=x+width;
+    for(size_t i=0;i<n && pen>x;) {
+        const UiArabicJoining *curr=ui_joining(cp[i]);
+        if(curr) {
+            const UiArabicJoining *prev=i?ui_joining(cp[i-1]):nullptr;
+            const UiArabicJoining *next=i+1<n?ui_joining(cp[i+1]):nullptr;
+            int connected_prev=prev && curr->final!=65535u &&
+                prev->initial!=65535u;
+            int connected_next=next && curr->initial!=65535u &&
+                next->final!=65535u;
+            uint16_t shape=curr->isolated;
+            if(connected_prev && connected_next && curr->medial!=65535u)
+                shape=curr->medial;
+            else if(connected_prev && curr->final!=65535u)
+                shape=curr->final;
+            else if(connected_next && curr->initial!=65535u)
+                shape=curr->initial;
+            if(shape<UI_AR_DYNAMIC_COUNT) {
+                pen-=(int)UI_AR_DYNAMIC_GLYPHS[shape].width;
+                if(pen<x)break;
+                ui_draw_arabic_form(p,pen,y-4,shape,color);
+            }
+            ++i;
+        } else {
+            /* ASCII segment remains LTR within this RTL title. */
+            char segment[96]={};
+            size_t length=0;
+            while(i<n && cp[i]<128 && !ui_joining(cp[i]) && length<95)
+                segment[length++]=(char)cp[i++];
+            if(length) {
+                int w=(int)length*6*ascii_scale;
+                pen-=w;
+                if(pen<x)break;
+                ascii(p,pen,y+18,segment,color,ascii_scale,(int)length);
+            } else {
+                pen-=12;
+                ++i;
+            }
+        }
+    }
+}
 static const char *category_label(const ScannerUiEntry *g) {
     if (!g || !g->metadata_verified) return "NOT VERIFIED";
     if (!g->category) return "METADATA";
@@ -217,7 +326,7 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     panel(p,76,y,1090,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) rect(p,76,y+10,5,68,CYAN);
     cover(p,92,y+11,68,66,g?g->cusa:nullptr);
-    ascii(p,187,y+15,fallback_name(g),WHITE,2,39);
+    ui_title(p,187,y+5,630,fallback_name(g),WHITE,2);
     ascii(p,187,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     ascii(p,877,y+16,fallback_version(g),CYAN,2,16);
     ascii(p,877,y+52,category_label(g),
@@ -258,7 +367,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
             cover(p,1232,240,208,231,g->cusa);
-            ascii(p,1472,262,fallback_name(g),WHITE,2,23);
+            ui_title(p,1472,252,340,fallback_name(g),WHITE,2);
             ascii(p,1472,309,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
             arabic(p,1472,337,UI_AR_VERSION,MUTED);
             ascii(p,1472,377,fallback_version(g),WHITE,3,14);
@@ -292,7 +401,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,93,137,UI_AR_DETAILS,WHITE);
     panel(p,90,225,1730,705,PANEL);
     cover(p,1465,271,285,317,g->cusa);
-    ascii(p,135,271,fallback_name(g),WHITE,4,35);
+    ui_title(p,135,251,1275,fallback_name(g),WHITE,4);
     ascii(p,140,348,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
     arabic(p,143,405,UI_AR_VERSION,MUTED);
     ascii(p,143,452,fallback_version(g),WHITE,4,15);

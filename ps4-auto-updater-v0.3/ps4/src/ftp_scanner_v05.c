@@ -73,6 +73,7 @@ typedef struct {
 } DirectoryCandidate;
 static DirectoryCandidate candidate_list[MAX_GAMES];
 static unsigned candidate_count = 0;
+static int candidate_overflow = 0;
 
 static void logmsg(const char *name, int value) {
     if (report) {
@@ -123,8 +124,14 @@ static void remember_candidate(const char *id, const char *source) {
         if (!strcmp(candidate_list[i].cusa, id))
             return;
 
-    if (candidate_count == MAX_GAMES)
+    if (candidate_count == MAX_GAMES) {
+        if (!candidate_overflow) {
+            candidate_overflow = 1;
+            ++errors;
+            logmsg("CANDIDATE_CAPACITY_EXCEEDED", 1);
+        }
         return;
+    }
 
     DirectoryCandidate *c = &candidate_list[candidate_count++];
     memcpy(c->cusa, id, 10);

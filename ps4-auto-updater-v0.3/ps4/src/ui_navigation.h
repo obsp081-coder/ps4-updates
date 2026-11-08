@@ -51,6 +51,11 @@ typedef struct UiNavigation {
 void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count);
 void ui_nav_filter(UiNavigation *state, const UiRecord *items,
                    unsigned count, const char *query);
+/* Replace scanned inventory without losing selected CUSA or search state.
+ * selected_cusa is copied by the caller BEFORE its old record array changes.
+ * Missing selected IDs close Details instead of showing another game. */
+void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
+                   unsigned count, const char *selected_cusa);
 unsigned ui_nav_resolve(const UiNavigation *state, unsigned filtered_index);
 /* Returns 1 if UI needs repaint; 0 for an ignored action. */
 int ui_nav_action(UiNavigation *state, UiAction action);

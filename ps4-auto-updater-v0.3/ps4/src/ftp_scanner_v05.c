@@ -994,6 +994,50 @@ static int scan_root(
     return count;
 }
 
+#ifdef __ORBIS__
+/* Optional local icon prefetch. A PNG may be corrupted by FTP ASCII
+ * LF -> CRLF conversion: never decode images unless TYPE I was accepted.
+ * This preloads only the first eight library entries and does not block
+ * the later VideoOut input loop. Future pages need a bounded async worker.
+ * No file is written; only GoldHEN loopback FTP RETR is used. */
+static void prefetch_local_icons(sock_t control) {
+    if (candidate_count == 0) return;
+    char reply_line[512];
+    const int type = command(control, reply_line, sizeof reply_line, "TYPE I");
+    logmsg("ICON_FTP_TYPE_I_RC", type);
+    if (type != 200) {
+        logmsg("ICON_BINARY_FTP_UNSUPPORTED", 1);
+        return;
+    }
+    static unsigned char icon_png[2 * 1024 * 1024];
+    unsigned attempted = candidate_count < 8 ? candidate_count : 8;
+    for (unsigned i=0; i<attempted; ++i) {
+        const DirectoryCandidate *candidate = &candidate_list[i];
+        if (!valid_id(candidate->cusa)) continue;
+        const char *root = strcmp(candidate->source,"external") == 0
+            ? "/system_data/priv/appmeta/external"
+            : "/system_data/priv/appmeta";
+        char cmd[320];
+        const int n = snprintf(cmd,sizeof cmd,"RETR %s/%s/icon0.png",
+                               root,candidate->cusa);
+        if (n < 0 || n >= (int)sizeof cmd) continue;
+        size_t got=0;
+        const int rc=transfer(control,cmd,icon_png,sizeof icon_png,&got);
+        if(rc!=0) {
+            logmsg("ICON_FTP_READ_RC",rc);
+            continue;
+        }
+        const int decoded=scanner_ui_offer_icon(candidate->cusa,icon_png,(unsigned)got);
+        logmsg("ICON_THUMBNAIL_RC",decoded);
+        if(report) {
+            fprintf(report,"ICON_RESULT %s transfer_bytes=%lu decode_rc=%d\\n",
+                    candidate->cusa,(unsigned long)got,decoded);
+            fflush(report);
+        }
+    }
+}
+#endif
+
 /* The fw14 hardware crash after the scan is under investigation.
  * AppInstUtil direct init is EXPERIMENTAL and disabled in official builds.
  * Without a safe lookup, all installation states stay UNKNOWN. */
@@ -1291,6 +1335,9 @@ int main(void) {
                     "external",
                     1
                 );
+#ifdef __ORBIS__
+                if(native_ui) prefetch_local_icons(control);
+#endif
             } else {
                 ++errors;
             }

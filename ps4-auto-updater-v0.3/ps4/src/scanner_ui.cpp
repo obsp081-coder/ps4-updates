@@ -826,9 +826,9 @@ static void draw(const ScannerUiEntry *entries,
        navigation.page!=UI_PAGE_SEARCH)
         prepare_blurred_background(entries,count);
     background(p);
-    rail(p,scanning?UI_PAGE_HOME:navigation.page);
-    header(p,scanning?UI_PAGE_HOME:navigation.page);
-    if(scanning && previous_scan_count) {
+    rail(p,navigation.page);
+    header(p,navigation.page);
+    if(scanning && previous_scan_count && navigation.page==UI_PAGE_HOME) {
         /* Make the library visible immediately, but keep this strictly
          * non-interactive until the synchronous scanner finishes.
          * Cached names/versions are ALWAYS unverified and stale. */
@@ -840,7 +840,7 @@ static void draw(const ScannerUiEntry *entries,
         arabic(p,1223,832,UI_AR_CACHE_PREVIEW,AMBER);
         arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
         ascii(p,1238,928,progress_line,CYAN,2,28);
-    }else if(scanning) {
+    }else if(scanning && navigation.page==UI_PAGE_HOME) {
         arabic(p,118,218,UI_AR_READING_METADATA,WHITE);
         panel(p,108,328,1700,344,PANEL);
         ascii(p,150,408,progress_line,CYAN,4,75);
@@ -852,7 +852,7 @@ static void draw(const ScannerUiEntry *entries,
         settings_screen(p);
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
-        if(final_view_is_stale) {
+        if(final_view_is_stale || scanning) {
             panel(p,90,937,1730,67,0xFF102D50u);
             arabic(p,128,943,UI_AR_CACHE_PREVIEW,AMBER);
         }
@@ -907,6 +907,13 @@ extern "C" int scanner_ui_offer_icon(
     const char *cusa, const unsigned char *png, unsigned png_bytes
 ) {
     return ui_icon_cache_offer(cusa,png,png_bytes);
+}
+
+extern "C" int scanner_ui_offer_thumbnail(
+    const char *cusa, const uint32_t *pixels, size_t pixel_count
+) {
+    /* Render thread only: worker never modifies the UI's LRU cache. */
+    return ui_icon_cache_offer_pixels(cusa,pixels,pixel_count);
 }
 
 extern "C" int scanner_ui_begin(void) {
@@ -977,10 +984,76 @@ extern "C" void scanner_ui_progress(
     if (total > 0 && cusa)
         snprintf(progress_line, sizeof(progress_line),
                  "%u / %u - %s", current, total, cusa);
+    else if(total>0)
+        snprintf(progress_line, sizeof(progress_line),
+                 "%u / %u", current, total);
     else
         snprintf(progress_line, sizeof(progress_line),
                  "%s", cusa ? cusa : "...");
     draw(nullptr, 0, 0, 0, 0, 0, 0, 1);
+}
+
+/* Called on the VideoOut/Pad owner thread while the read-only scanner
+ * runs on a separate scePthread. The scanner publishes a single atomic
+ * progress word and never touches framebuffer, navigation, or icon cache.
+ * Navigation remains responsive even when FTP commands are blocking. */
+extern "C" int scanner_ui_wait_for_scan(
+    const volatile uint32_t *atomic_status
+) {
+    if(!usable || !atomic_status)return 0;
+    uint32_t last_progress=0;
+    uint32_t prior=0;
+    unsigned no_pad_wait=0, pad_failures=0;
+    draw(previous_scan_count?previous_scan:nullptr,previous_scan_count,
+         previous_scan_count,0,0,1,navigation.scroll,1);
+    for(;;) {
+        const uint32_t status=__atomic_load_n(atomic_status,__ATOMIC_ACQUIRE);
+        if(status&SCANNER_UI_SCAN_DONE)return 0;
+        if((status&~SCANNER_UI_SCAN_DONE)!=last_progress) {
+            last_progress=status&~SCANNER_UI_SCAN_DONE;
+            scanner_ui_progress(nullptr,(status>>16)&0x7FFFu,status&0xFFFFu);
+        }
+        (void)sceKernelUsleep(33000);
+        if(pad<0) {
+            if(++no_pad_wait>=900)return 1;
+            continue;
+        }
+        OrbisPadData state={};
+        if(scePadReadState(pad,&state)<0) {
+            if(++pad_failures>=300)return 1;
+            continue;
+        }
+        pad_failures=0;
+        const uint32_t pressed=state.buttons & ~prior;
+        prior=state.buttons;
+        UiAction action;
+        if(pressed&ORBIS_PAD_BUTTON_CIRCLE) action=UI_ACT_BACK;
+        else if(pressed&ORBIS_PAD_BUTTON_CROSS) action=UI_ACT_OPEN;
+        else if(pressed&ORBIS_PAD_BUTTON_TRIANGLE) action=
+            navigation.page==UI_PAGE_SEARCH?UI_ACT_TOGGLE_KEYBOARD:UI_ACT_SEARCH;
+        else if(pressed&ORBIS_PAD_BUTTON_SQUARE) action=
+            navigation.page==UI_PAGE_SEARCH?UI_ACT_REMOVE:UI_ACT_DOWNLOADS;
+        else if(pressed&ORBIS_PAD_BUTTON_OPTIONS) action=UI_ACT_SETTINGS;
+        else if(pressed&ORBIS_PAD_BUTTON_R1) action=UI_ACT_NEXT_TAB;
+        else if(pressed&ORBIS_PAD_BUTTON_L1) action=UI_ACT_PREVIOUS_TAB;
+        else if(pressed&ORBIS_PAD_BUTTON_DOWN) action=UI_ACT_DOWN;
+        else if(pressed&ORBIS_PAD_BUTTON_UP) action=UI_ACT_UP;
+        else if(pressed&ORBIS_PAD_BUTTON_LEFT) action=UI_ACT_LEFT;
+        else if(pressed&ORBIS_PAD_BUTTON_RIGHT) action=UI_ACT_RIGHT;
+        else continue;
+        if(navigation.page==UI_PAGE_DOWNLOADS &&
+           (action==UI_ACT_UP || action==UI_ACT_DOWN)) {
+            const unsigned n=ui_model_download_count(),prev=job_selected;
+            if(action==UI_ACT_UP && job_selected>0)--job_selected;
+            if(action==UI_ACT_DOWN && job_selected+1<n)++job_selected;
+            if(prev==job_selected)continue;
+            if(job_selected<job_scroll)job_scroll=job_selected;
+            if(job_selected>=job_scroll+5u)job_scroll=job_selected-4u;
+        }else if(!ui_nav_action(&navigation,action))continue;
+        if(navigation.exit_requested)return 1;
+        draw(previous_scan_count?previous_scan:nullptr,previous_scan_count,
+             previous_scan_count,0,0,1,navigation.scroll,1);
+    }
 }
 
 extern "C" void scanner_ui_results(

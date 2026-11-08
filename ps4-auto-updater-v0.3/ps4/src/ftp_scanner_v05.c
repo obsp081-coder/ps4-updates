@@ -59,6 +59,8 @@ static unsigned found;
 static FILE *report;
 static int errors;
 static int api_stage = -1;
+static int ftp_login_ok = 0;
+static int primary_listing_ok = 0;
 
 static void logmsg(const char *name, int value) {
     if (report) {
@@ -360,7 +362,8 @@ static int reply(
     char *line,
     size_t cap
 ) {
-    if (readline(fd, line, cap) < 3)
+    /* A numeric FTP reply needs three digits and a delimiter. */
+    if (readline(fd, line, cap) < 4)
         return -1;
 
     if (
@@ -510,49 +513,55 @@ static int transfer(
 
     int overflow = 0;
     int fail = 0;
+    size_t discarded = 0;
+    unsigned char discard[2048];
 
-    while (1) {
-        if (*actual == cap) {
-            unsigned char tmp;
-            int nr = NET_RECV(data, &tmp, 1, 0);
+    /*
+     * Read until EOF. Never interpret a truncated LIST or SFO, and
+     * cap the amount discarded after the caller's buffer fills.
+     */
+    for (;;) {
+        unsigned char *destination;
+        size_t available;
 
-            if (nr > 0)
-                overflow = 1;
-            else if (nr < 0)
-                fail = 1;
-
-            break;
+        if (*actual < cap) {
+            destination = buf + *actual;
+            available = cap - *actual;
+        } else {
+            destination = discard;
+            available = sizeof(discard);
         }
 
-        int nr = NET_RECV(
-            data,
-            buf + *actual,
-            cap - *actual,
-            0
-        );
-
+        int nr = NET_RECV(data, destination, available, 0);
         if (nr < 0) {
             fail = 1;
             break;
         }
-
         if (nr == 0)
             break;
 
-        *actual += (size_t)nr;
+        if (*actual < cap) {
+            *actual += (size_t)nr;
+        } else {
+            overflow = 1;
+            discarded += (size_t)nr;
+            if (discarded >= cap)
+                break;
+        }
     }
 
     NET_CLOSE(data);
 
     code = reply(control, line, sizeof line);
 
-    if (code != 226 && code != 250)
-        return -14;
-
+    /* Preserve the most informative diagnostic on oversized files. */
+    if (overflow)
+        return -16;
     if (fail)
         return -15;
-
-    return overflow ? -16 : 0;
+    if (code != 226 && code != 250)
+        return -14;
+    return 0;
 }
 
 static int listing_names(
@@ -612,7 +621,8 @@ static int listing_names(
 static int scan_root(
     sock_t control,
     const char *path,
-    const char *source
+    const char *source,
+    int optional
 ) {
     static unsigned char listing[MAX_LIST];
     size_t bytes = 0;
@@ -638,9 +648,13 @@ static int scan_root(
         );
 
     if (status != 0) {
-        ++errors;
+        if (!optional)
+            ++errors;
         return -1;
     }
+
+    if (!optional)
+        primary_listing_ok = 1;
 
     static char ids[MAX_GAMES][10];
 
@@ -772,6 +786,16 @@ static int save_inventory(const char *path) {
         "  \"schema\":5,\n"
         "  \"source\":\"ftp_loopback_readonly_v05\",\n"
         "  \"metadata_only\":true,\n"
+        "  \"scan_complete\":",
+        fp
+    );
+    fputs(
+        ftp_login_ok && primary_listing_ok && errors == 0
+            ? "true" : "false",
+        fp
+    );
+    fputs(
+        ",\n"
         "  \"download_enabled\":false,\n"
         "  \"install_enabled\":false,\n"
         "  \"games\":[\n",
@@ -878,7 +902,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.5 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.5.1 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -921,18 +945,21 @@ int main(void) {
             int authenticated = login(control);
 
             logmsg("FTP_LOGIN_OK", authenticated);
+            ftp_login_ok = authenticated;
 
             if (authenticated) {
                 scan_root(
                     control,
                     "/system_data/priv/appmeta",
-                    "internal"
+                    "internal",
+                    0
                 );
 
                 scan_root(
                     control,
                     "/system_data/priv/appmeta/external",
-                    "external"
+                    "external",
+                    1
                 );
             } else {
                 ++errors;
@@ -976,6 +1003,8 @@ int main(void) {
     );
 
     logmsg("Scan errors", errors);
+    logmsg("Primary listing available", primary_listing_ok);
+    logmsg("Scan complete", ftp_login_ok && primary_listing_ok && errors == 0);
     logmsg("Inventory saved (0=OK)", saved);
 
     if (report)

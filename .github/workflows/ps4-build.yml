@@ -108,7 +108,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.08\n"
+              "Build version: 01.09\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"
@@ -142,8 +142,8 @@ jobs:
             exit 0
           fi
 
-          TAG="scanner-v0.5.3"
-          ASSET="PS4-Auto-Updater-v0.5.3.pkg"
+          TAG="scanner-v0.6.0"
+          ASSET="PS4-Auto-Updater-v0.6.0.pkg"
           ROOT="ps4-auto-updater-v0.3/ps4"
           PKG="$ROOT/IV0000-BREW00197_00-PS4SCANNERTEST00.pkg"
           MANIFEST="$ROOT/BUILD_MANIFEST.txt"
@@ -158,7 +158,7 @@ jobs:
           gh release create "$TAG" "$ASSET" "$MANIFEST" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "PS4 Auto Updater v0.5.3 — experimental scanner" \
-            --notes "Experimental read-only GoldHEN FTP diagnostic build (PKG 01.08). Not verified on real PS4 firmware 14.00. Does not download, install, or delete game updates. Includes SHA256 manifest."
+            --title "PS4 Auto Updater v0.6.0 — FTPS4 protocol fix (experimental)" \
+            --notes "Read-only PS4 scanner v0.6.0 (PKG 01.09) with single-write FTP framing, PASV-first, FTPS4 one-recv compatibility and versioned diagnostic_v06.txt. Real hardware behavior requires verification. Does not download, install or delete game updates. Includes SHA256 manifest."
 
           echo "Direct PKG: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

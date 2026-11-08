@@ -184,7 +184,11 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     dynamic_entries = []
     for cp in cps:
         char = chr(cp)
-        width = max(8, int(round(font.getlength(char, direction="ltr"))) + 6)
+        # The glyph canvas has a 3px transparent safety margin on each
+        # side. The pen advance must NOT include those margins, otherwise
+        # connected Arabic presentation forms are visibly separated.
+        advance = max(2, int(round(font.getlength(char, direction="ltr"))))
+        width = max(8, advance + 6)
         height = font_size * 2 + 8
         if width > 110:
             raise ValueError(f"Suspicious Arabic glyph {cp:04X} width {width}")
@@ -196,15 +200,16 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         packed = bytearray((len(raw) + 3)//4)
         for k, a in enumerate(raw):
             packed[k//4] |= min(3, (a + 42)//85) << (2*(3-k%4))
-        dynamic_entries.append((len(dynamic_atlas), width, height))
+        dynamic_entries.append((len(dynamic_atlas), width, height, advance))
         dynamic_atlas.extend(packed)
     header.append("typedef struct UiArabicDynamicGlyph {")
     header.append(" uint32_t offset; uint16_t width; uint16_t height;")
+    header.append(" uint16_t advance; /* excludes 3px canvas margins */")
     header.append("} UiArabicDynamicGlyph;")
     header.append(f"#define UI_AR_DYNAMIC_COUNT {len(cps)}u")
     header.append("static const UiArabicDynamicGlyph UI_AR_DYNAMIC_GLYPHS[] = {")
-    for offset, width, height in dynamic_entries:
-        header.append(f" {{{offset}u,{width}u,{height}u}},")
+    for offset, width, height, advance in dynamic_entries:
+        header.append(f" {{{offset}u,{width}u,{height}u,{advance}u}},")
     header.append("};")
     header.append(f"static const uint8_t UI_AR_DYNAMIC_BITS[{len(dynamic_atlas)}] = {{")
     for i in range(0, len(dynamic_atlas), 24):

@@ -249,7 +249,7 @@ class ScannerFTPTests(unittest.TestCase):
 
     def test_invalid_ftp_greeting_delimiter_is_not_authenticated(self):
         """220X is not a valid success response, even with three digits."""
-        listing = b"drwxr-xr-x 1 root root 0 CUSA02343\\r\\n"
+        listing = b"drwxr-xr-x 1 root root 0 CUSA02343\r\n"
         data, diagnostic, commands = self.with_server(
             listing, {"CUSA02343": sfo("CUSA02343")},
             passthrough=lambda s: setattr(s, "greeting", "220X invalid")
@@ -265,7 +265,7 @@ class ScannerFTPTests(unittest.TestCase):
             b"",
             {},
             passthrough=lambda s: setattr(
-                s, "greeting", "220-welcome\\nx\\n220 ready"
+                s, "greeting", "220-welcome\nx\n220 ready"
             )
         )
         self.assertTrue(data["scan_complete"])

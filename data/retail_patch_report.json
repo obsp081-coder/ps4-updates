@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "source_kind": "official_retail_metadata",
+  "generated_at_utc": "2026-11-08T03:24:49.336171+00:00",
+  "is_fpkg_update_catalog": false,
+  "fpkg_compatibility_confirmed": false,
+  "downloads_enabled": false,
+  "install_enabled": false,
+  "titles": [
+    {
+      "cusa": "CUSA00001",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.07"
+    },
+    {
+      "cusa": "CUSA06122",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "02.62"
+    },
+    {
+      "cusa": "CUSA57220",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.07"
+    },
+    {
+      "cusa": "CUSA03506",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.01"
+    },
+    {
+      "cusa": "CUSA01116",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "02.39"
+    },
+    {
+      "cusa": "CUSA08032",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "03.83"
+    },
+    {
+      "cusa": "CUSA00411",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.57"
+    },
+    {
+      "cusa": "CUSA03551",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.01"
+    },
+    {
+      "cusa": "CUSA02343",
+      "status": "RETAIL_PATCH_LISTED",
+      "latest_retail_version": "01.02"
+    }
+  ]
+}

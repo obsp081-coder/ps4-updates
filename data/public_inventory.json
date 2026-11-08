@@ -1,0 +1,53 @@
+{
+  "schema": 4,
+  "source": "historical_public_summary_not_live_console",
+  "metadata_only": true,
+  "public_summary_only": true,
+  "games": [
+    {
+      "cusa": "CUSA00001",
+      "name": "THE PLAYROOM",
+      "app_ver": "01.07"
+    },
+    {
+      "cusa": "CUSA06122",
+      "name": "Roblox",
+      "app_ver": "02.62"
+    },
+    {
+      "cusa": "CUSA57220",
+      "name": "EA SPORTS FC 27",
+      "app_ver": "01.07"
+    },
+    {
+      "cusa": "CUSA03506",
+      "name": "Grand Theft Auto: San Andreas",
+      "app_ver": "01.00"
+    },
+    {
+      "cusa": "CUSA01116",
+      "name": "YouTube",
+      "app_ver": "02.39"
+    },
+    {
+      "cusa": "CUSA08032",
+      "name": "Dead by Daylight",
+      "app_ver": "03.83"
+    },
+    {
+      "cusa": "CUSA00411",
+      "name": "Grand Theft Auto V",
+      "app_ver": "01.57"
+    },
+    {
+      "cusa": "CUSA03551",
+      "name": "Canis Canem Edit",
+      "app_ver": "01.00"
+    },
+    {
+      "cusa": "CUSA02343",
+      "name": "Uncharted: The Nathan Drake Collection",
+      "app_ver": "01.00"
+    }
+  ]
+}

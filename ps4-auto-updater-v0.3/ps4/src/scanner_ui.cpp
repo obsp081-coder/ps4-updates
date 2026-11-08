@@ -6,6 +6,7 @@
 #include "scanner_ui.h"
 #include "ui_navigation.h"
 #include "ui_icon_cache.h"
+#include "ui_models.h"
 #include "ui_arabic_generated.h"
 #ifdef PS4_UI_HOST_TEST
 #include "scanner_ui_host_mock.h"
@@ -62,6 +63,8 @@ static uint32_t *surface[2] = {nullptr, nullptr};
 static int64_t frame_id = 0;
 static char progress_line[128] = "CONNECTING TO GOLDHEN FTP";
 static UiNavigation navigation;
+static unsigned job_selected=0;
+static unsigned job_scroll=0;
 static UiRecord navigation_records[UI_MAX_TITLES];
 
 static const uint8_t *glyph(char c) {
@@ -362,8 +365,8 @@ static void header(uint32_t *p, UiPage page) {
     rect(p,0,112,WIDTH,3,ACCENT);
     panel(p,68,27,62,62,ACCENT);
     ascii(p,84,49,"PS4",WHITE,2,3);
-    ascii(p,154,29,"GAME UPDATE MANAGER",WHITE,4,32);
-    ascii(p,156,73,"ROYAL BLUE  |  LOCAL LIBRARY",MUTED,2,38);
+    arabic(p,154,29,UI_AR_APP_NAME,WHITE);
+    arabic(p,156,73,UI_AR_LOCAL_READ_ONLY,MUTED);
 
     const int positions[4]={920,1100,1335,1580};
     const int widths[4]={165,215,230,240};
@@ -619,26 +622,129 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,143,564,UI_AR_UNAVAILABLE,AMBER);
     rect(p,130,641,1270,2,0xFF22527Bu);
     arabic(p,142,660,UI_AR_AVAILABLE_UPDATES,CYAN);
-    arabic(p,143,714,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-    arabic(p,143,766,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+    /* Strictly view-only metadata. A supplied UI_UPDATE_VERIFIED value
+     * does not grant install/download permission: the independent
+     * compatibility and authorization checks are not connected yet. */
+    const UiUpdateInfo *first=ui_model_update_for(g->cusa,0);
+    if(!first) {
+        arabic(p,143,714,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+        arabic(p,143,766,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+    } else {
+        for(unsigned i=0;i<3u;++i) {
+            const UiUpdateInfo *row=ui_model_update_for(g->cusa,i);
+            if(!row)break;
+            const int y=700+(int)i*52;
+            panel(p,140,y,1260,47,0xFF102D50u);
+            ascii(p,167,y+7,row->version,WHITE,2,15);
+            if(row->minimum_fw[0])
+                ascii(p,430,y+7,row->minimum_fw,CYAN,2,15);
+            if(row->size_bytes) {
+                char size[40];
+                (void)snprintf(size,sizeof size,"%llu MB",
+                    (unsigned long long)(row->size_bytes/1048576u));
+                ascii(p,680,y+7,size,MUTED,2,18);
+            }
+            arabic(p,970,y+5,row->verdict==UI_UPDATE_BLOCKED ?
+                UI_AR_UPDATE_BLOCKED:UI_AR_UPDATE_REVIEW,
+                row->verdict==UI_UPDATE_BLOCKED?AMBER:MUTED);
+        }
+        arabic(p,143,861,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+    }
     panel(p,1464,646,290,96,0xFF283648u);
     arabic(p,1490,667,UI_AR_INSTALL_BLOCKED,MUTED);
     arabic(p,141,861,complete?UI_AR_DATA_NOT_PROOF:
           UI_AR_SCAN_INCOMPLETE,MUTED);
     footer(p,UI_AR_FOOTER_DETAILS);
 }
+/* Render only status records supplied by a verified higher-level owner.
+ * This module never starts networking, writes PKGs or authorizes install.
+ * Zero jobs means zero displayed progress, not a simulated queue. */
+static UiArabicLabel job_status_label(UiJobStatus status) {
+    switch(status) {
+        case UI_JOB_QUEUED: return UI_AR_JOB_QUEUED;
+        case UI_JOB_DOWNLOADING: return UI_AR_JOB_DOWNLOADING;
+        case UI_JOB_PAUSED: return UI_AR_JOB_PAUSED;
+        case UI_JOB_COMPLETED: return UI_AR_JOB_COMPLETED;
+        case UI_JOB_FAILED: return UI_AR_JOB_FAILED;
+        default: return UI_AR_JOB_BLOCKED;
+    }
+}
+static uint32_t job_status_color(UiJobStatus status) {
+    switch(status) {
+        case UI_JOB_DOWNLOADING: return CYAN;
+        case UI_JOB_COMPLETED: return 0xFF6CCFACu;
+        case UI_JOB_BLOCKED:
+        case UI_JOB_FAILED: return AMBER;
+        default: return MUTED;
+    }
+}
 static void downloads(uint32_t *p) {
     arabic(p,90,138,UI_AR_DOWNLOADS,WHITE);
-    summary(p,90,540,UI_AR_NO_ACTIVE_DOWNLOAD,"0",CYAN);
-    summary(p,645,540,UI_AR_NO_QUEUED_DOWNLOAD,"0",ACCENT);
-    summary(p,1200,540,UI_AR_NO_INSTALL_JOB,"0",AMBER);
+    const unsigned total=ui_model_download_count();
+    unsigned running=0,queued=0,finished=0;
+    for(unsigned i=0;i<total;++i) {
+        const UiDownloadInfo *r=ui_model_download(i);
+        if(!r)continue;
+        if(r->status==UI_JOB_DOWNLOADING)++running;
+        if(r->status==UI_JOB_QUEUED)++queued;
+        if(r->status==UI_JOB_COMPLETED)++finished;
+    }
+    char n[24];
+    (void)snprintf(n,sizeof n,"%u",running);
+    summary(p,90,540,UI_AR_NO_ACTIVE_DOWNLOAD,n,CYAN);
+    (void)snprintf(n,sizeof n,"%u",queued);
+    summary(p,645,540,UI_AR_NO_QUEUED_DOWNLOAD,n,ACCENT);
+    (void)snprintf(n,sizeof n,"%u",finished);
+    summary(p,1200,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
     panel(p,90,288,1655,640,PANEL);
-    arabic(p,151,330,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
-    arabic(p,151,393,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
-    rect(p,150,475,1510,2,0xFF22527Bu);
-    arabic(p,151,529,UI_AR_INSTALL_BLOCKED,AMBER);
-    arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
-    footer(p,UI_AR_FOOTER_DOWNLOADS);
+    if(!total) {
+        arabic(p,151,330,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
+        arabic(p,151,393,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
+        rect(p,150,475,1510,2,0xFF22527Bu);
+        arabic(p,151,529,UI_AR_INSTALL_BLOCKED,AMBER);
+        arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
+        footer(p,UI_AR_FOOTER_DOWNLOADS);
+        return;
+    }
+    /* Bounded list: at most five jobs visible; Up/Down scrolls all 16.
+     * Percent and downloaded bytes are derived from measured model data. */
+    for(unsigned i=0;i<5u && job_scroll+i<total;++i) {
+        const unsigned idx=job_scroll+i;
+        const UiDownloadInfo *r=ui_model_download(idx);
+        if(!r)continue;
+        const int y=307+(int)i*120;
+        panel(p,118,y,1578,108,idx==job_selected?
+              0xFF164881u:0xFF102D50u);
+        if(idx==job_selected)rect(p,120,y+12,5,84,CYAN);
+        ui_title(p,158,y+7,678,r->title[0]?r->title:r->cusa,WHITE,2);
+        ascii(p,158,y+45,r->cusa,MUTED,2,12);
+        ascii(p,490,y+45,r->version,CYAN,2,15);
+        arabic(p,1230,y+12,job_status_label(r->status),
+               job_status_color(r->status));
+        rect(p,158,y+82,1015,10,0xFF254465u);
+        if(r->bytes_total>0u) {
+            /* The size is bounded before multiplication to avoid
+             * 64-bit overflow even for malformed provider metadata. */
+            const double ratio=(double)r->bytes_done/(double)r->bytes_total;
+            unsigned width=(unsigned)(ratio*1015.0);
+            if(width>1015u)width=1015u;
+            if(width)rect(p,158,y+82,(int)width,10,CYAN);
+            const unsigned percent=(unsigned)(ratio*100.0);
+            char pcent[16];
+            (void)snprintf(pcent,sizeof pcent,"%u%%",percent>100u?100u:percent);
+            ascii(p,1190,y+77,pcent,WHITE,2,8);
+        } else {
+            ascii(p,1190,y+77,"--",MUTED,2,4);
+        }
+        char bytes[64];
+        (void)snprintf(bytes,sizeof bytes,"%llu / %llu MB",
+            (unsigned long long)(r->bytes_done/1048576u),
+            (unsigned long long)(r->bytes_total/1048576u));
+        ascii(p,1380,y+75,bytes,MUTED,2,25);
+    }
+    (void)snprintf(n,sizeof n,"%u / %u",job_selected+1,total);
+    ascii(p,1490,936,n,MUTED,2,20);
+    footer(p,UI_AR_FOOTER_JOBS);
 }
 static void settings_screen(uint32_t *p) {
     arabic(p,100,143,UI_AR_SETTINGS_HEADER,WHITE);
@@ -752,6 +858,9 @@ extern "C" int scanner_ui_offer_icon(
 
 extern "C" int scanner_ui_begin(void) {
     ui_icon_cache_reset();
+    ui_model_reset();
+    job_selected=0;
+    job_scroll=0;
     blurred_for[0]=0;
     blur_available=0;
     OrbisUserServiceInitializeParams init = {};
@@ -866,6 +975,19 @@ extern "C" void scanner_ui_results(
         else if(pressed&ORBIS_PAD_BUTTON_LEFT) action=UI_ACT_LEFT;
         else if(pressed&ORBIS_PAD_BUTTON_RIGHT) action=UI_ACT_RIGHT;
         else continue;
+        if(navigation.page==UI_PAGE_DOWNLOADS &&
+           (action==UI_ACT_UP || action==UI_ACT_DOWN)) {
+            const unsigned n=ui_model_download_count();
+            const unsigned prev=job_selected;
+            if(action==UI_ACT_UP && job_selected>0)--job_selected;
+            if(action==UI_ACT_DOWN && job_selected+1<n)++job_selected;
+            if(prev==job_selected)continue;
+            if(job_selected<job_scroll)job_scroll=job_selected;
+            if(job_selected>=job_scroll+5u)job_scroll=job_selected-4u;
+            draw(entries,count,metadata_count,errors,
+                 scan_complete,inventory_saved,navigation.scroll,0);
+            continue;
+        }
         if(!ui_nav_action(&navigation,action))continue;
         if(navigation.exit_requested)break;
         draw(entries,count,metadata_count,errors,

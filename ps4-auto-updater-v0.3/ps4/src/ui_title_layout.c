@@ -12,16 +12,16 @@ static int strong_direction(uint32_t cp) {
         (cp >= 0x0660u && cp <= 0x0669u) ||
         (cp >= 0x06F0u && cp <= 0x06F9u))
         return UI_TITLE_LTR;
-    if ((cp >= 0x0620u && cp <= 0x08FFu) &&
-        !(cp >= 0x064Bu && cp <= 0x065Fu) &&
-        !(cp >= 0x0670u && cp <= 0x0670u) &&
-        !(cp >= 0x06D6u && cp <= 0x06EDu))
-        return UI_TITLE_RTL;
-    /* Combining Arabic marks are direction-transparent. They must not
-     * split a shaped Arabic word into synthetic LTR/RTL segments. */
-    if ((cp >= 0x064Bu && cp <= 0x065Fu) || cp==0x0670u ||
-        (cp >= 0x06D6u && cp <= 0x06EDu))
+    /* Arabic punctuation and transparent marks must not override the
+     * first strong letter or incorrectly start a new directional run. */
+    if ((cp>=0x0610u && cp<=0x061Au) ||
+        (cp>=0x064Bu && cp<=0x065Fu) || cp==0x0670u ||
+        (cp>=0x06D6u && cp<=0x06EDu) ||
+        cp==0x060Cu || cp==0x061Bu || cp==0x061Fu ||
+        (cp>=0x066Au && cp<=0x066Du) || cp==0x06D4u)
         return -1;
+    if (cp>=0x0620u && cp<=0x08FFu)
+        return UI_TITLE_RTL;
     if (cp >= 0x0080u)
         return UI_TITLE_LTR; /* Unsupported scripts use '?' placeholder. */
     return -1; /* ASCII separators/spaces inherit adjacent run. */

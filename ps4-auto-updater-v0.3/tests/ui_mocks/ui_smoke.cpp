@@ -132,9 +132,15 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             const uint32_t *frame=display_buffers[index];
             if(frame[394u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
                 saw_job_progress=true;
-            if(pad_reads>=16 &&
-               frame[810u*SCREEN_WIDTH+150u]==0xFF164881u)
-                saw_job_scroll=true;
+            if(pad_reads>=14 && pad_reads<=19) {
+                const uint32_t focus=frame[810u*SCREEN_WIDTH+150u];
+                const uint32_t first=frame[330u*SCREEN_WIDTH+150u];
+                if(pad_reads==16 || pad_reads==18)
+                    std::fprintf(stderr,"SCROLL_TRACE reads=%d focus=%08x first=%08x\\n",
+                                pad_reads,focus,first);
+                if(focus==0xFF164881u)
+                    saw_job_scroll=true;
+            }
         }
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];

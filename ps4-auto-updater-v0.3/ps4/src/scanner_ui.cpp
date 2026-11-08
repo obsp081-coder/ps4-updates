@@ -5,6 +5,7 @@
  */
 #include "scanner_ui.h"
 #include "ui_navigation.h"
+#include "ui_arabic_generated.h"
 #ifdef PS4_UI_HOST_TEST
 #include "scanner_ui_host_mock.h"
 #else
@@ -117,6 +118,28 @@ static void ascii(uint32_t *p, int x, int y, const char *s,
                   uint32_t color, int scale, int max_chars) {
     text(p,x,y,s,color,scale,max_chars);
 }
+/* The fixed Arabic UI captions are rasterized at build-time using Noto Sans
+ * Arabic + Raqm. They draw directly into the same two native framebuffers.
+ * 2 bits per source pixel keeps package memory small and text antialiased. */
+static void arabic(uint32_t *p,int x,int y,UiArabicLabel label,uint32_t color) {
+    if(!p || label<0 || label>=UI_AR_COUNT) return;
+    UiArabicGlyph g=UI_AR_GLYPHS[label];
+    if(x<0 || y<0 || x+(int)g.width>WIDTH || y+(int)g.height>HEIGHT) return;
+    for(unsigned row=0;row<g.height;++row) {
+        for(unsigned col=0;col<g.width;++col) {
+            size_t k=(size_t)row*g.width+col;
+            unsigned alpha=(UI_AR_PIXELS[g.offset+k/4] >> ((3-k%4)*2))&3u;
+            if(!alpha) continue;
+            uint32_t *dst=&p[(size_t)(y+(int)row)*WIDTH+x+col];
+            if(alpha==3) { *dst=color; continue; }
+            uint32_t old=*dst;
+            unsigned rr=(((old>>16)&255u)*(3-alpha)+((color>>16)&255u)*alpha)/3u;
+            unsigned gg=(((old>>8)&255u)*(3-alpha)+((color>>8)&255u)*alpha)/3u;
+            unsigned bb=((old&255u)*(3-alpha)+(color&255u)*alpha)/3u;
+            *dst=0xFF000000u|(rr<<16)|(gg<<8)|bb;
+        }
+    }
+}
 static const char *category_label(const ScannerUiEntry *g) {
     if (!g || !g->metadata_verified) return "NOT VERIFIED";
     if (!g->category) return "METADATA";
@@ -149,15 +172,14 @@ static void header(uint32_t *p, UiPage page) {
     ascii(p,156,73,"ROYAL BLUE  |  LOCAL LIBRARY",MUTED,2,38);
 
     const int positions[3]={1110,1370,1610};
-    const char *labels[3]={"HOME","GAME DETAILS","DOWNLOADS"};
+    const UiArabicLabel labels[3]={UI_AR_HOME,UI_AR_DETAILS,UI_AR_DOWNLOADS};
     for (int i=0;i<3;++i) {
         int highlighted=(page==UI_PAGE_HOME&&i==0) ||
                         (page==UI_PAGE_DETAILS&&i==1) ||
                         (page==UI_PAGE_DOWNLOADS&&i==2);
-        panel(p,positions[i],31,i==1?225:190,48,
+        panel(p,positions[i],31,i==1?225:190,58,
               highlighted?ACCENT:0xFF102D50u);
-        ascii(p,positions[i]+20,48,labels[i],
-              highlighted?WHITE:MUTED,2,20);
+        arabic(p,positions[i]+18,40,labels[i],highlighted?WHITE:MUTED);
     }
 }
 static void background(uint32_t *p) {
@@ -165,17 +187,17 @@ static void background(uint32_t *p) {
     for(int y=128;y<1030;y+=48)
         rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
 }
-static void footer(uint32_t *p, const char *hint) {
+static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
     rect(p,0,1000,WIDTH,2,0xFF1F5C9Eu);
-    ascii(p,85,1028,hint,MUTED,2,91);
+    arabic(p,85,1015,hint,MUTED);
 }
-static void summary(uint32_t *p, int x, int w, const char *name,
+static void summary(uint32_t *p, int x, int w, UiArabicLabel name,
                     const char *value, uint32_t color) {
     panel(p,x,145,w,110,PANEL);
     rect(p,x+16,166,4,66,color);
-    ascii(p,x+36,168,name,MUTED,2,28);
-    ascii(p,x+36,203,value,WHITE,3,28);
+    arabic(p,x+36,151,name,MUTED);
+    ascii(p,x+36,208,value,WHITE,3,28);
 }
 static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
@@ -193,15 +215,15 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       int complete,int saved) {
     char number[64];
     snprintf(number,sizeof(number),"%u",good);
-    summary(p,76,335,"BASE-GAME METADATA",number,CYAN);
+    summary(p,76,335,UI_AR_BASE_GAMES,number,CYAN);
     snprintf(number,sizeof(number),"%u",count);
-    summary(p,426,335,"CUSA DIRECTORIES",number,ACCENT);
+    summary(p,426,335,UI_AR_CUSA_FOLDERS,number,ACCENT);
     snprintf(number,sizeof(number),"%u",errors);
-    summary(p,776,390,"SCAN ERRORS",number,errors?AMBER:0xFF6CCFACu);
+    summary(p,776,390,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
 
-    ascii(p,86,286,"GAME LIBRARY",WHITE,3,30);
-    ascii(p,854,296,complete?"SCAN COMPLETE":"PARTIAL SCAN",
-          complete?0xFF6CCFACu:AMBER,2,17);
+    arabic(p,86,265,UI_AR_LIBRARY,WHITE);
+    arabic(p,854,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
+          complete?0xFF6CCFACu:AMBER);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;
     if(visible>ROWS)visible=ROWS;
@@ -212,13 +234,12 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                   navigation.selected==navigation.scroll+i);
     }
     if(!navigation.available)
-        ascii(p,124,411,count?"NO MATCHING TITLES":"NO LOCAL GAME METADATA",
-              AMBER,3,37);
+        arabic(p,124,397,count?UI_AR_NO_MATCHING_GAME:UI_AR_NO_GAME_METADATA,AMBER);
     if(!saved)
-        ascii(p,112,949,"WARNING: INVENTORY FILE NOT SAVED",AMBER,2,45);
+        arabic(p,112,925,UI_AR_MISSING_INVENTORY,AMBER);
 
     panel(p,1193,145,658,814,0xFF0B2142u);
-    ascii(p,1230,176,"SELECTED GAME",CYAN,3,24);
+    arabic(p,1230,158,UI_AR_SELECTED_GAME,CYAN);
     if(navigation.available && entries) {
         unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
         if(idx<count) {
@@ -226,70 +247,70 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
             placeholder(p,1232,240,208,231);
             ascii(p,1472,262,fallback_name(g),WHITE,2,23);
             ascii(p,1472,309,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
-            ascii(p,1472,348,"VERSION",MUTED,2,12);
+            arabic(p,1472,337,UI_AR_VERSION,MUTED);
             ascii(p,1472,377,fallback_version(g),WHITE,3,14);
-            ascii(p,1235,511,"METADATA CLASS",MUTED,2,25);
+            arabic(p,1235,490,UI_AR_CATEGORY,MUTED);
             ascii(p,1235,547,category_label(g),WHITE,3,23);
             rect(p,1234,598,568,2,0xFF244769u);
-            ascii(p,1235,635,"NO VERIFIED UPDATE SOURCE",AMBER,2,33);
-            ascii(p,1235,674,"DOWNLOAD / INSTALL LOCKED",MUTED,2,33);
+            arabic(p,1235,613,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+            arabic(p,1235,653,UI_AR_DOWNLOAD_BLOCKED,MUTED);
             panel(p,1231,764,562,71,0xFF15589Du);
-            ascii(p,1270,790,"CROSS: OPEN FULL DETAILS",WHITE,2,40);
+            arabic(p,1270,775,UI_AR_FULL_DETAILS,WHITE);
         }
     } else {
-        ascii(p,1240,387,"NO GAME SELECTED",MUTED,3,25);
+        arabic(p,1240,362,UI_AR_NO_SELECTED_GAME,MUTED);
     }
-    ascii(p,1240,899,"METADATA DOES NOT PROVE INSTALL",MUTED,2,42);
+    arabic(p,1240,875,UI_AR_DATA_NOT_PROOF,MUTED);
     snprintf(number,sizeof(number),"ITEM %u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);
     ascii(p,89,960,number,MUTED,2,28);
-    footer(p,"UP/DOWN: SELECT  CROSS: DETAILS  SQUARE/R1: DOWNLOADS  CIRCLE: EXIT");
+    footer(p,UI_AR_FOOTER_HOME);
 }
 static void details(uint32_t *p,const ScannerUiEntry *entries,
                     unsigned count,int complete) {
     unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
     if(!entries || idx>=count) {
-        ascii(p,120,337,"NO GAME SELECTED",AMBER,4,30);
-        footer(p,"CIRCLE: BACK");
+        arabic(p,120,337,UI_AR_NO_SELECTED_GAME,AMBER);
+        footer(p,UI_AR_FOOTER_DETAILS);
         return;
     }
     const ScannerUiEntry *g=&entries[idx];
-    ascii(p,93,152,"GAME DETAILS",WHITE,4,35);
+    arabic(p,93,137,UI_AR_DETAILS,WHITE);
     panel(p,90,225,1730,705,PANEL);
     placeholder(p,1465,271,285,317);
     ascii(p,135,271,fallback_name(g),WHITE,4,35);
     ascii(p,140,348,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
-    ascii(p,143,415,"CURRENT APP VERSION",MUTED,2,30);
+    arabic(p,143,405,UI_AR_VERSION,MUTED);
     ascii(p,143,452,fallback_version(g),WHITE,4,15);
-    ascii(p,625,415,"PACKAGE CATEGORY",MUTED,2,29);
+    arabic(p,625,405,UI_AR_PACKAGE,MUTED);
     ascii(p,625,455,category_label(g),WHITE,3,30);
-    ascii(p,143,538,"REGION / GAME SIZE / REQUIRED FW",MUTED,2,55);
-    ascii(p,143,575,"NOT AVAILABLE - DO NOT ASSUME",AMBER,2,55);
+    arabic(p,143,525,UI_AR_REGION,MUTED);
+    arabic(p,400,525,UI_AR_GAME_SIZE,MUTED);
+    arabic(p,680,525,UI_AR_FIRMWARE,MUTED);
+    arabic(p,143,564,UI_AR_UNAVAILABLE,AMBER);
     rect(p,130,641,1270,2,0xFF22527Bu);
-    ascii(p,142,674,"AVAILABLE UPDATE VERSIONS",CYAN,3,45);
-    ascii(p,143,727,"NO VERIFIED AUTHORIZED SOURCE",AMBER,2,55);
-    ascii(p,143,779,"RETAIL AND FPKG PATCHES ARE NOT INTERCHANGEABLE",
-          MUTED,2,60);
+    arabic(p,142,660,UI_AR_AVAILABLE_UPDATES,CYAN);
+    arabic(p,143,714,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+    arabic(p,143,766,UI_AR_RETAIL_FPKG_WARNING,MUTED);
     panel(p,1464,646,290,96,0xFF283648u);
-    ascii(p,1490,678,"INSTALL BLOCKED",MUTED,2,23);
-    ascii(p,141,873,complete?"SCAN METADATA: PARTIAL INSTALL PROOF":
-          "SCAN INCOMPLETE: CHECK DIAGNOSTIC",MUTED,2,55);
-    footer(p,"CIRCLE: BACK  R1: DOWNLOADS  NO DOWNLOAD/INSTALL API ENABLED");
+    arabic(p,1490,667,UI_AR_INSTALL_BLOCKED,MUTED);
+    arabic(p,141,861,complete?UI_AR_DATA_NOT_PROOF:
+          UI_AR_SCAN_INCOMPLETE,MUTED);
+    footer(p,UI_AR_FOOTER_DETAILS);
 }
 static void downloads(uint32_t *p) {
-    ascii(p,90,157,"DOWNLOAD MANAGER",WHITE,4,35);
-    summary(p,90,540,"ACTIVE DOWNLOADS","0",CYAN);
-    summary(p,645,540,"QUEUED DOWNLOADS","0",ACCENT);
-    summary(p,1200,540,"INSTALL JOBS","0",AMBER);
+    arabic(p,90,138,UI_AR_DOWNLOADS,WHITE);
+    summary(p,90,540,UI_AR_NO_ACTIVE_DOWNLOAD,"0",CYAN);
+    summary(p,645,540,UI_AR_NO_QUEUED_DOWNLOAD,"0",ACCENT);
+    summary(p,1200,540,UI_AR_NO_INSTALL_JOB,"0",AMBER);
     panel(p,90,288,1655,640,PANEL);
-    ascii(p,151,350,"NO AUTHORIZED DOWNLOAD TASKS",WHITE,4,53);
-    ascii(p,151,416,"UPDATES WILL APPEAR ONLY AFTER TRUST AND FW CHECKS",
-          MUTED,2,75);
+    arabic(p,151,330,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
+    arabic(p,151,393,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
     rect(p,150,475,1510,2,0xFF22527Bu);
-    ascii(p,151,553,"INSTALL AND AUTO-INSTALL ARE NOT ENABLED",AMBER,3,54);
-    ascii(p,151,612,"NO FAKE PROGRESS AND NO UNVERIFIED PACKAGE LINKS",MUTED,2,75);
-    footer(p,"CIRCLE/L1: BACK  DOWNLOADS ARE DISABLED UNTIL VERIFIED");
+    arabic(p,151,529,UI_AR_INSTALL_BLOCKED,AMBER);
+    arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
+    footer(p,UI_AR_FOOTER_DOWNLOADS);
 }
 static void draw(const ScannerUiEntry *entries,
                  unsigned count, unsigned good, unsigned errors,
@@ -300,11 +321,11 @@ static void draw(const ScannerUiEntry *entries,
     background(p);
     header(p,scanning?UI_PAGE_HOME:navigation.page);
     if(scanning) {
-        ascii(p,118,234,"READING LOCAL GAME METADATA",WHITE,4,50);
+        arabic(p,118,218,UI_AR_READING_METADATA,WHITE);
         panel(p,108,328,1700,344,PANEL);
         ascii(p,150,408,progress_line,CYAN,4,75);
-        ascii(p,150,546,"NO DOWNLOAD OR INSTALL OPERATIONS",MUTED,3,54);
-        footer(p,"SCANNER RUNNING  |  READ ONLY");
+        arabic(p,150,525,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+        footer(p,UI_AR_FOOTER_SCANNING);
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {

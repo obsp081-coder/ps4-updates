@@ -1,7 +1,7 @@
 # PS4 Auto Updater 0.3 - metadata scanner SMOKE TEST ONLY.
 # Build with OpenOrbis PS4 Toolchain. See README_AR.md before running.
 TITLE       := PS4 Game Scanner Test
-VERSION     := 01.01
+VERSION     := 01.02
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -11,7 +11,7 @@ INTDIR      := build
 # The OpenOrbis runtime stubs must be packaged inside sce_module/.
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 LIBS        := -lc -lkernel -lc++
-CFLAGS      := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+CFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
 LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr \
                -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o

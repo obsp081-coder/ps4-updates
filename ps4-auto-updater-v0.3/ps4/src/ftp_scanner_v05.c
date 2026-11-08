@@ -61,6 +61,8 @@ static int errors;
 static int api_stage = -1;
 static int ftp_login_ok = 0;
 static int primary_listing_ok = 0;
+static unsigned directory_candidates = 0;
+static unsigned sfo_invalid = 0;
 
 static void logmsg(const char *name, int value) {
     if (report) {
@@ -125,86 +127,103 @@ static void value(
     dst[i] = 0;
 }
 
+/*
+ * 1=game, 2=valid non-game/patch, 3=duplicate.
+ * Negative: -30 empty, -31 bad magic, -32 bad header offsets,
+ * -33 missing/invalid ID, -34 title-id mismatch, -35 content mismatch,
+ * -36 inventory capacity.
+ * Presence of an SFO does NOT confirm that an app is installed.
+ */
 static int parse_sfo(
     const unsigned char *p,
     size_t size,
     const char *id,
     const char *source
 ) {
-    if (size < 20 || u32(p) != 0x46535000u)
-        return 0;
+    if (size == 0) return -30;
+    if (size < 20 || u32(p) != 0x46535000u) return -31;
 
     size_t keys = u32(p + 8);
     size_t vals = u32(p + 12);
     size_t count = u32(p + 16);
 
     if (
-        count > 1024 ||
+        count == 0 || count > 1024 ||
         !bounds(20, count * 16, size) ||
-        keys >= size ||
-        vals >= size
-    ) return 0;
+        keys < 20 + count * 16 ||
+        keys >= vals || vals >= size
+    ) return -32;
 
     Game g;
-    memset(&g, 0, sizeof(g));
+    memset(&g, 0, sizeof g);
     g.installed = -1;
 
     for (size_t i = 0; i < count; ++i) {
-        const unsigned char *entry =
-            p + 20 + i * 16;
-
-        size_t key_off =
-            keys + (size_t)u16(entry);
-
-        size_t val_off =
-            vals + (size_t)u32(entry + 12);
-
-        size_t len =
-            (size_t)u32(entry + 4);
+        const unsigned char *entry = p + 20 + i * 16;
+        size_t key_off = keys + (size_t)u16(entry);
+        size_t val_off = vals + (size_t)u32(entry + 12);
+        size_t len = (size_t)u32(entry + 4);
+        uint16_t fmt = u16(entry + 2);
 
         if (
-            !bounds(key_off, 1, size) ||
+            key_off >= vals ||
             !bounds(val_off, len, size) ||
-            !memchr(p + key_off, 0, size - key_off)
+            !memchr(p + key_off, 0, vals - key_off)
         ) continue;
 
-        const char *key =
-            (const char *)(p + key_off);
+        if (fmt != 0x0204u && fmt != 0x0004u)
+            continue;
 
+        const char *key = (const char *)(p + key_off);
         if (!strcmp(key, "TITLE_ID"))
             value(g.cusa, sizeof g.cusa, p + val_off, len);
-
         else if (!strcmp(key, "TITLE"))
             value(g.name, sizeof g.name, p + val_off, len);
-
         else if (!strcmp(key, "APP_VER"))
             value(g.version, sizeof g.version, p + val_off, len);
-
         else if (!strcmp(key, "CONTENT_ID"))
             value(g.cid, sizeof g.cid, p + val_off, len);
-
         else if (!strcmp(key, "CATEGORY"))
             value(g.category, sizeof g.category, p + val_off, len);
     }
 
-    if (!valid_id(g.cusa) || strcmp(g.cusa, id))
-        return 0;
+    if (report) {
+        fprintf(
+            report,
+            "SFO FIELDS %s title_id=%.9s category=%.11s "
+            "app_ver=%.19s cid_matches=%d\n",
+            id, g.cusa[0] ? g.cusa : "(missing)",
+            g.category[0] ? g.category : "(missing)",
+            g.version[0] ? g.version : "(missing)",
+            g.cid[0] ? strstr(g.cid, id) != NULL : -1
+        );
+        fflush(report);
+    }
 
-    /* A syntactically valid DLC/non-game SFO is an expected skip. */
+    /* If TITLE_ID is absent, CONTENT_ID may independently confirm
+       the directory ID. The directory alone is insufficient. */
+    if (!g.cusa[0] && g.cid[0] && strstr(g.cid, id)) {
+        memcpy(g.cusa, id, 10);
+        if (report)
+            fprintf(report, "SFO ID from CONTENT_ID: %s\n", id);
+    }
+
+    if (!valid_id(g.cusa)) return -33;
+    if (strcmp(g.cusa, id)) return -34;
+    if (g.cid[0] && !strstr(g.cid, id)) return -35;
+
+    /* gd=game, gdO=PS2 classic. gp is a patch, not a base game;
+       gde, ac, and other values aren't validated base-game records. */
     if (
         g.category[0] &&
         strcmp(g.category, "gd") &&
-        strcmp(g.category, "gde")
+        strcmp(g.category, "gdO")
     ) return 2;
 
-    if (g.cid[0] && !strstr(g.cid, id))
-        return 0;
+    if (found >= MAX_GAMES) return -36;
+    if (duplicate(id)) return 3;
 
     snprintf(g.source, sizeof g.source, "%s", source);
-
-    if (found >= MAX_GAMES || duplicate(id))
-        return 0;
-
     games[found++] = g;
     return 1;
 }

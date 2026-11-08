@@ -21,6 +21,8 @@ static bool verify_jobs = false;
 static bool saw_job_progress = false;
 static bool saw_job_scroll = false;
 static bool saw_update_row = false;
+static bool capture_cached_preview = false;
+static bool saw_cached_sixth_row = false;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
  * is submitted to the host VideoOut mock; this is not a browser mock. */
@@ -80,6 +82,7 @@ static void reset() {
     captured_pages = 0;
     capture_live_ui = false;
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
+    capture_cached_preview = saw_cached_sixth_row = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -129,6 +132,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(capture_cached_preview) {
+            /* Sixth row is y=827..915. The stale warning must not cover it. */
+            if(display_buffers[index][903u*SCREEN_WIDTH+600u]==
+               0xFF0C244Au)
+                saw_cached_sixth_row=true;
+        }
         if(verify_jobs) {
             const uint32_t *frame=display_buffers[index];
             if(frame[394u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
@@ -246,10 +255,23 @@ int main() {
     assert(scanner_ui_offer_icon("CUSA02343",
                                  icon_png_sample,sizeof icon_png_sample) == 0);
     /* Cached metadata is painted before the real scanner completes.
-     * It remains visibly stale, unverified and non-interactive. */
-    const int first_flip = flip_count;
-    assert(scanner_ui_preview_snapshot(entries,3)==1);
-    assert(flip_count>first_flip);
+     * Its six rows must remain fully visible beneath the stale warning. */
+    ScannerUiEntry cache_entries[6]={};
+    char cache_ids[6][10]={};
+    for(unsigned i=0;i<6;++i) {
+        std::snprintf(cache_ids[i],10,"CUSA%05u",i+1u);
+        cache_entries[i].cusa=cache_ids[i];
+        cache_entries[i].title="Cached title";
+        cache_entries[i].version="01.00";
+        cache_entries[i].category="gd";
+        cache_entries[i].metadata_verified=1; /* must be downrated */
+        cache_entries[i].install_state=1; /* must be downrated */
+    }
+    capture_cached_preview=true;
+    const int first_flip=flip_count;
+    assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
+    capture_cached_preview=false;
+    assert(flip_count>first_flip && saw_cached_sixth_row);
     scanner_ui_progress("CUSA02343", 1, 3);
     capture_live_ui = true;
     scanner_ui_results(entries, 3, 2, 1, 0, 1);

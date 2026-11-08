@@ -9,6 +9,16 @@ from pathlib import Path
 
 LABELS = (
     ("HOME", "الرئيسية"),
+    ("APP_NAME", "مدير تحديثات ألعاب بلايستيشن"),
+    ("LOCAL_READ_ONLY", "المكتبة المحلية للعرض فقط"),
+    ("JOB_DOWNLOADING", "جار التنزيل"),
+    ("JOB_QUEUED", "في الانتظار"),
+    ("JOB_PAUSED", "متوقف مؤقتا"),
+    ("JOB_COMPLETED", "اكتمل التنزيل"),
+    ("JOB_FAILED", "فشل التنزيل"),
+    ("JOB_BLOCKED", "التنزيل محظور"),
+    ("UPDATE_REVIEW", "تحديث للعرض فقط"),
+    ("UPDATE_BLOCKED", "التحديث محظور"),
     ("DETAILS", "تفاصيل اللعبة"),
     ("DOWNLOADS", "التنزيلات"),
     ("SETTINGS", "الإعدادات"),

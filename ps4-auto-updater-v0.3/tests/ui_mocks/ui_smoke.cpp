@@ -35,6 +35,10 @@ static bool test_lazy_cover = false;
 static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
 static bool test_cover_scroll = false;
+static bool test_search_result_open = false;
+static bool saw_search_focus = false;
+static bool saw_search_details = false;
+static bool saw_search_return = false;
 static bool test_capacity_screen = false;
 static bool saw_capacity_sixth_row = false;
 static int mixed_title_probe = 0;
@@ -129,7 +133,9 @@ static void reset() {
     test_async_scan = test_async_exit = saw_scan_details =
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
         test_cover_scroll = saw_cover_beyond_eight =
-        test_capacity_screen = saw_capacity_sixth_row = false;
+        test_capacity_screen = saw_capacity_sixth_row =
+        test_search_result_open = saw_search_focus =
+        saw_search_details = saw_search_return = false;
     mixed_title_probe = 0;
     saw_ltr_title_left = saw_rtl_title_right =
         saw_rtl_title_clear_left = false;
@@ -214,6 +220,20 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 }
             }
         }
+        if(test_search_result_open) {
+            const uint32_t *frame=display_buffers[index];
+            /* This region is the bottom match preview only. The selected
+             * row uses focused royal blue and survives returning from
+             * Details; no download/install command is simulated. */
+            const uint32_t result=frame[967u*SCREEN_WIDTH+650u];
+            if(pad_reads==10 && result==0xFF164881u)
+                saw_search_focus=true;
+            if(pad_reads==12 &&
+               frame[50u*SCREEN_WIDTH+1112u]==0xFF116BCEu)
+                saw_search_details=true;
+            if(pad_reads==14 && result==0xFF164881u)
+                saw_search_return=true;
+        }
         if(test_capacity_screen) {
             /* Actual sixth visible title row at y=827..915. The first
              * initialization frame has no row; this must turn true only
@@ -290,6 +310,15 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_search_result_open) {
+        if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_TRIANGLE;
+        if(pad_reads==4 || pad_reads==6 || pad_reads==8 ||
+           pad_reads==10)data->buttons=ORBIS_PAD_BUTTON_DOWN;
+        if(pad_reads==12)data->buttons=ORBIS_PAD_BUTTON_CROSS;
+        if(pad_reads==14 || pad_reads==16 || pad_reads==18 ||
+           pad_reads==20)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_capacity_screen) {
         /* No need to issue 256 expensive framebuffer redraws. Navigation
          * bounds are separately checked in navigation_smoke.c. */
@@ -487,6 +516,18 @@ int main() {
     scanner_ui_results(capacity_entries,UI_MAX_TITLES+1u,
                        UI_MAX_TITLES+1u,0,1,1);
     assert(saw_capacity_sixth_row && pad_reads>=2);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Real C++ framebuffer and Pad mock: search -> keyboard last row ->
+     * focus first match -> real Details -> return to same focused match.
+     * This does not simulate installation, network, or device firmware. */
+    reset();
+    test_search_result_open=true;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(entries,3,3,0,1,1);
+    assert(saw_search_focus && saw_search_details && saw_search_return);
+    assert(pad_reads>=20);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

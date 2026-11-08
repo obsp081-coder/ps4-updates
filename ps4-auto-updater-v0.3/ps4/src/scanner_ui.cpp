@@ -556,8 +556,11 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     char number[64];
     snprintf(number,sizeof(number),"%u",good);
     summary(p,76,335,UI_AR_BASE_GAMES,number,CYAN);
-    snprintf(number,sizeof(number),"%u",count);
-    summary(p,426,335,UI_AR_CUSA_FOLDERS,number,ACCENT);
+    unsigned install_unknown=0;
+    for(unsigned i=0;i<count && entries;++i)
+        if(entries[i].install_state<0)++install_unknown;
+    snprintf(number,sizeof(number),"%u",install_unknown);
+    summary(p,426,335,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
     snprintf(number,sizeof(number),"%u",errors);
     summary(p,776,390,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
 

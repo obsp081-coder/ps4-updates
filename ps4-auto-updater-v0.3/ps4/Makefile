@@ -1,6 +1,6 @@
 
 TITLE       := PS4 Game Scanner Test
-VERSION     := 01.03
+VERSION     := 01.04
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -57,17 +57,9 @@ sce_sys/about/right.sprx:
 sce_module/%.prx:
 	@set -eu; \
 	  mkdir -p sce_module; \
-	  source_file=''; \
-	  for p in "$(TOOLCHAIN)/src/modules/$*.prx" "$(TOOLCHAIN)/bin/data/modules/$*.prx"; do \
-	    if [ -s "$$p" ]; then source_file="$$p"; break; fi; \
-	  done; \
-	  if [ -z "$$source_file" ]; then \
-	    source_file="$$(find '$(TOOLCHAIN)' -type f -name '$*.prx' -print -quit)"; \
-	  fi; \
-	  if [ -z "$$source_file" ] || [ ! -s "$$source_file" ]; then \
-	    echo 'ERROR: Runtime $*.prx not found' >&2; \
-	    exit 1; \
-	  fi; \
+	  source_file=$$(find '$(TOOLCHAIN)' -type f -name '$*.prx' -print -quit); \
+	  test -n "$$source_file" && test -s "$$source_file" || \
+	    { echo 'ERROR: $*.prx not found'; exit 1; }; \
 	  cp "$$source_file" "$@"
 
 pkg.gp4: eboot.bin sce_sys/param.sfo sce_sys/icon0.png sce_sys/about/right.sprx $(RUNTIME_PRXS)

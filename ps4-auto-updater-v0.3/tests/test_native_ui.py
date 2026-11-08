@@ -131,6 +131,16 @@ class NativeUiSmokeTests(unittest.TestCase):
                         pixels.save(destination / (page + ".png"),
                                     optimize=True)
 
+            # Both images must contain the rendered game title, not two
+            # identical frames captured before any game metadata arrived.
+            from PIL import ImageChops
+            with Image.open(preview / "mixed_ltr.ppm") as ltr, \
+                 Image.open(preview / "mixed_rtl.ppm") as rtl:
+                self.assertIsNotNone(
+                    ImageChops.difference(ltr, rtl).getbbox(),
+                    "Mixed-script previews are identical / blank"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

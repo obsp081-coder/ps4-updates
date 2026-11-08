@@ -288,7 +288,9 @@ int main() {
     assert(flip_count>first_flip && saw_cached_sixth_row);
     scanner_ui_progress("CUSA02343", 1, 3);
     capture_live_ui = true;
-    scanner_ui_results(entries, 3, 2, 1, 0, 1);
+    /* Only a complete scan replaces the cached entries; this verified
+     * fixture has the game icon needed for the blurred-background test. */
+    scanner_ui_results(entries, 3, 2, 0, 1, 1);
     capture_live_ui = false;
     assert(saw_blurred_background);
     scanner_ui_shutdown(trace);

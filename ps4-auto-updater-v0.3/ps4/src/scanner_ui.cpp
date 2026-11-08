@@ -247,14 +247,21 @@ extern "C" void scanner_ui_results(
          scan_complete, inventory_saved, start, 0);
     uint32_t prior = 0;
     unsigned no_pad_wait = 0;
+    unsigned pad_read_failures = 0;
     for (;;) {
         (void)sceKernelUsleep(100000);
         if (pad < 0) {
-            if (++no_pad_wait >= 1200) break;
+            /* Keep results visible briefly even without a controller,
+             * but do not trap users in a non-interactive app forever. */
+            if (++no_pad_wait >= 300) break;
             continue;
         }
         OrbisPadData state = {};
-        if (scePadReadState(pad, &state) < 0) continue;
+        if (scePadReadState(pad, &state) < 0) {
+            if (++pad_read_failures >= 100) break;
+            continue;
+        }
+        pad_read_failures = 0;
         uint32_t pressed = state.buttons & ~prior;
         prior = state.buttons;
         if (pressed & ORBIS_PAD_BUTTON_CIRCLE) break;

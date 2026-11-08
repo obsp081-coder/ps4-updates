@@ -46,14 +46,23 @@ def compare_updates(inventory, installed_check, catalog, firmware):
                 "Invalid input: missing list '" + key + "'"
             )
 
-    installation = {
-        item.get("cusa"): item.get("installed")
-        for item in installed_check["games"]
-        if (
-            isinstance(item, dict)
-            and isinstance(item.get("cusa"), str)
-        )
-    }
+    # A conflicting/duplicate installed-app report cannot prove presence.
+    # Fail closed rather than letting the final row silently override it.
+    installation = {}
+    duplicate_installations = set()
+    for item in installed_check["games"]:
+        if not isinstance(item, dict):
+            continue
+        ident = item.get("cusa")
+        flag = item.get("installed")
+        if not isinstance(ident, str) or not CUSA_PATTERN.fullmatch(ident):
+            continue
+        if flag is not None and type(flag) is not bool:
+            continue
+        if ident in installation:
+            duplicate_installations.add(ident)
+        else:
+            installation[ident] = flag
 
     results = []
 
@@ -83,7 +92,8 @@ def compare_updates(inventory, installed_check, catalog, firmware):
             row["status"] = "INVALID_GAME_ID"
             continue
 
-        installed = installation.get(cusa)
+        installed = (None if cusa in duplicate_installations
+                     else installation.get(cusa))
 
         if installed is not True:
             row["status"] = (

@@ -829,10 +829,12 @@ static void draw(const ScannerUiEntry *entries,
          * Cached names/versions are ALWAYS unverified and stale. */
         dashboard(p,previous_scan,previous_scan_count,
                   previous_scan_count,0,0,1);
-        panel(p,76,894,1090,93,0xFF102D50u);
-        arabic(p,100,901,UI_AR_CACHE_PREVIEW,AMBER);
-        arabic(p,100,939,UI_AR_CACHE_ONLY,MUTED);
-        ascii(p,690,945,progress_line,CYAN,2,36);
+        /* Warning is placed in the side panel so all six library rows
+         * remain fully visible while cached metadata is on screen. */
+        panel(p,1212,820,615,138,0xFF102D50u);
+        arabic(p,1223,832,UI_AR_CACHE_PREVIEW,AMBER);
+        arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
+        ascii(p,1238,928,progress_line,CYAN,2,28);
     }else if(scanning) {
         arabic(p,118,218,UI_AR_READING_METADATA,WHITE);
         panel(p,108,328,1700,344,PANEL);

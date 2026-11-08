@@ -1,5 +1,5 @@
 /*
- * PS4 Auto Updater v0.3 - READ-ONLY inventory smoke test.
+ * PS4 Auto Updater v0.3.2 - READ-ONLY inventory diagnostics.
  * Native/OpenOrbis prototype. No game downloads, patching, installation,
  * database writes, user modifications or console firmware updates.
  *
@@ -30,6 +30,11 @@ typedef struct {
 static unsigned g_count = 0;
 static char g_seen[MAX_GAMES][16];
 static unsigned g_errors = 0;
+static int g_root_stat_errno = -1;
+static int g_internal_opendir_errno = -1;
+static int g_external_opendir_errno = -1;
+static unsigned g_sfo_open_failures = 0;
+static unsigned g_sfo_parse_failures = 0;
 static uint16_t read16(const unsigned char *p) {
     return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
 }
@@ -61,7 +66,7 @@ static void val_string(char *out, size_t outlen, const unsigned char *p, size_t 
 }
 static int parse_sfo(const char *path, game_t *game) {
     FILE *f = fopen(path, "rb");
-    if (!f) return 0;
+    if (!f) { ++g_sfo_open_failures; return 0; }
     if (fseek(f, 0, SEEK_END)) { fclose(f); return 0; }
     long l = ftell(f);
     if (l < 20 || l > (long)MAX_SFO) { fclose(f); return 0; }
@@ -103,8 +108,20 @@ static void write_json_string(FILE *f, const char *s) {
     fputc('"', f);
 }
 static unsigned scan_directory(FILE *out, const char *root, const char *location) {
+    errno = 0;
     DIR *dir = opendir(root);
-    if (!dir) { if (!strcmp(location, "internal")) ++g_errors; return 0; }
+    if (!dir) {
+        int code = errno;
+        if (!strcmp(location, "internal")) {
+            ++g_errors;
+            g_internal_opendir_errno = code;
+        } else {
+            g_external_opendir_errno = code;
+        }
+        return 0;
+    }
+    if (!strcmp(location, "internal")) g_internal_opendir_errno = 0;
+    else g_external_opendir_errno = 0;
     unsigned found = 0;
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -114,7 +131,7 @@ static unsigned scan_directory(FILE *out, const char *root, const char *location
         int n = snprintf(path, sizeof(path), "%s/%s/param.sfo", root, id);
         if (n <= 0 || (size_t)n >= sizeof(path)) continue;
         game_t g;
-        if (!parse_sfo(path, &g)) continue;
+        if (!parse_sfo(path, &g)) { ++g_sfo_parse_failures; continue; }
         if (!valid_cusa(g.id) || strcmp(g.id, id)) continue;
         if (g.category[0] && strcmp(g.category, "gd") && strcmp(g.category, "gde")) continue;
         if (g_count) fputs(",\n", out);
@@ -154,6 +171,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 #endif
+    struct stat root_info;
+    errno = 0;
+    if (stat(root, &root_info) == 0) g_root_stat_errno = 0;
+    else g_root_stat_errno = errno;
+
     FILE *f = fopen(outname, "wb");
     if (!f) { fprintf(stderr, "Cannot create output %s (errno=%d)\n", outname, errno); return 1; }
     fputs("{\n  \"schema\": 3,\n  \"source\": \"ps4-appmeta-native-smoke-test\",\n"
@@ -166,8 +188,22 @@ int main(int argc, char **argv) {
     int fail = ferror(f);
     if (fclose(f) != 0) fail = 1;
     if (fail) { status_file("ERROR: could not finish inventory.json\n"); return 1; }
-    char msg[256];
-    snprintf(msg, sizeof(msg), "Metadata records: %u\nScan errors: %u\nMetadata only: YES\nInstalled games confirmed: NO\n", g_count, g_errors);
+    char msg[768];
+    snprintf(msg, sizeof(msg),
+             "PS4 Game Scanner Diagnostic v0.3.2\n"
+             "Metadata records: %u\n"
+             "Scan errors: %u\n"
+             "Root stat errno: %d\n"
+             "Internal opendir errno: %d\n"
+             "External opendir errno: %d\n"
+             "SFO open failures: %u\n"
+             "SFO parse failures: %u\n"
+             "Metadata only: YES\n"
+             "Installed games confirmed: NO\n"
+             "Errno 13=permission denied, 2=not found, 0=OK, -1=not checked.\n",
+             g_count, g_errors, g_root_stat_errno,
+             g_internal_opendir_errno, g_external_opendir_errno,
+             g_sfo_open_failures, g_sfo_parse_failures);
     status_file(msg);
     printf("%s", msg);
     return 0;

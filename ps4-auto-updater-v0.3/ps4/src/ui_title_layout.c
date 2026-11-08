@@ -17,6 +17,11 @@ static int strong_direction(uint32_t cp) {
         !(cp >= 0x0670u && cp <= 0x0670u) &&
         !(cp >= 0x06D6u && cp <= 0x06EDu))
         return UI_TITLE_RTL;
+    /* Combining Arabic marks are direction-transparent. They must not
+     * split a shaped Arabic word into synthetic LTR/RTL segments. */
+    if ((cp >= 0x064Bu && cp <= 0x065Fu) || cp==0x0670u ||
+        (cp >= 0x06D6u && cp <= 0x06EDu))
+        return -1;
     if (cp >= 0x0080u)
         return UI_TITLE_LTR; /* Unsupported scripts use '?' placeholder. */
     return -1; /* ASCII separators/spaces inherit adjacent run. */

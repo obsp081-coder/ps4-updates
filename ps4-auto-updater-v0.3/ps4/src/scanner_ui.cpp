@@ -114,7 +114,7 @@ static void draw(const ScannerUiEntry *entries,
     } else {
         char line[160];
         snprintf(line, sizeof(line),
-                 "CANDIDATES %u   METADATA %u   ERRORS %u",
+                 "CANDIDATES %u   BASE GAMES %u   ERRORS %u",
                  count, good, errors);
         text(p, 95, 219, line, 0xFFF2FBFFu, 3, 78);
         text(p, 95, 270, complete ? "SCAN COMPLETE" :
@@ -139,10 +139,20 @@ static void draw(const ScannerUiEntry *entries,
                  g->title : "UNTITLED", 0xFFEBF7FFu, 2, 42);
             text(p, 1170, y, g->version && g->version[0] ?
                  g->version : "UNKNOWN", 0xFFBFD7F0u, 2, 16);
-            text(p, 1460, y,
-                 g->install_state == 1 ? "INSTALLED" :
-                 g->install_state == 0 ? "NOT FOUND" : "UNKNOWN",
-                 0xFFFFBD7Au, 2, 21);
+            const char *type = "OTHER META";
+            if (g->category) {
+                if (!strcmp(g->category, "gp") ||
+                    !strcmp(g->category, "gdp")) type = "PATCH META";
+                else if (!strcmp(g->category, "ac")) type = "DLC META";
+                else if (!strcmp(g->category, "gd") ||
+                         !strcmp(g->category, "gda") ||
+                         !strcmp(g->category, "gdo") ||
+                         !strcmp(g->category, "gde")) {
+                    type = g->install_state == 1 ? "INSTALLED" :
+                           g->install_state == 0 ? "NOT FOUND" : "BASE UNKNOWN";
+                }
+            }
+            text(p, 1460, y, type, 0xFFFFBD7Au, 2, 21);
         }
         if (count == 0)
             text(p, 100, 400, "NO GAME METADATA FOUND",

@@ -1027,7 +1027,9 @@ int main(void) {
             logmsg("FTP_CONTROL_CONNECT_OK", 1);
             int authenticated = login(control);
 
-            logmsg("FTP_LOGIN_OK", authenticated);
+            /* Greeting accepted: authentication may not be necessary
+             * and may still fail later at PASV. */
+            logmsg("FTP_GREETING_ACCEPTED", authenticated);
             ftp_login_ok = authenticated;
 
             if (authenticated) {

@@ -14,6 +14,10 @@ const uint32_t *ui_icon_cache_find(const char *cusa);
 /* 0 on success, negative when a PNG is unsupported/malformed or CUSA invalid.
  * Data must originate from an already-authorized read-only local icon source. */
 int ui_icon_cache_offer(const char *cusa, const unsigned char *png, size_t bytes);
+/* Accept an already-decoded, validated thumbnail on the UI thread.
+ * Caller retains ownership; never use from the scanner worker. */
+int ui_icon_cache_offer_pixels(const char *cusa, const uint32_t *pixels,
+                               size_t pixel_count);
 #ifdef __cplusplus
 }
 #endif

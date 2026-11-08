@@ -61,7 +61,10 @@ class MockHandler(socketserver.StreamRequestHandler):
                 command = command.upper()
                 self.server.commands.append(command)
                 if command == "USER":
-                    self.respond("331 password needed")
+                    if self.server.deny_login:
+                        self.respond("530 rejected")
+                    else:
+                        self.respond("331 password needed")
                 elif command == "PASS":
                     self.respond("230 OK")
                 elif command == "TYPE":
@@ -73,8 +76,8 @@ class MockHandler(socketserver.StreamRequestHandler):
                     data_socket.listen(1)
                     data_socket.settimeout(5)
                     port = data_socket.getsockname()[1]
-                    self.respond("227 Entering Passive Mode (127,0,0,1,%d,%d)" %
-                                 (port // 256, port % 256))
+                    self.respond("227 Entering Passive Mode (%s,%d,%d)" %
+                                 (self.server.pasv_advertisement, port // 256, port % 256))
                 elif command in ("LIST", "RETR"):
                     payload = None
                     if command == "LIST":
@@ -121,6 +124,8 @@ class MockFTP(socketserver.TCPServer):
         self.listing = listing
         self.metadata = metadata
         self.commands = []
+        self.pasv_advertisement = "127,0,0,1"
+        self.deny_login = False
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -156,8 +161,10 @@ class ScannerFTPTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, proc.stderr)
             return json.loads(inv.read_text()), diagnostic.read_text()
 
-    def with_server(self, listing, metadata):
+    def with_server(self, listing, metadata, *, passthrough=None):
         with MockFTP(listing, metadata) as server:
+            if passthrough:
+                passthrough(server)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
@@ -182,6 +189,7 @@ class ScannerFTPTests(unittest.TestCase):
              "CUSA99999": sfo("CUSA99999", "DLC", "01.00", "ac")},
         )
         self.assertEqual(inventory["schema"], 5)
+        self.assertTrue(inventory["scan_complete"])
         self.assertEqual([g["cusa"] for g in inventory["games"]],
                          ["CUSA02343", "CUSA00411"])
         self.assertEqual(inventory["games"][0]["app_ver"], "01.07")
@@ -198,6 +206,7 @@ class ScannerFTPTests(unittest.TestCase):
         inventory, diagnostic, commands = self.with_server(
             listing, {"CUSA02343": b"not an SFO"})
         self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
         self.assertIn("SFO CUSA02343: -21", diagnostic)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
@@ -207,6 +216,7 @@ class ScannerFTPTests(unittest.TestCase):
             port = sock.getsockname()[1]
         inventory, diagnostic = self.run_client(port)
         self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
         self.assertIn("CONTROL_CONNECT_FAILED", diagnostic)
 
     def test_oversized_listing_cannot_create_partial_game(self):
@@ -214,8 +224,51 @@ class ScannerFTPTests(unittest.TestCase):
         inventory, diagnostic, commands = self.with_server(
             listing, {"CUSA02343": sfo("CUSA02343")})
         self.assertEqual(inventory["games"], [])
-        self.assertIn("LIST internal:", diagnostic)
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("LIST internal: -16", diagnostic)
         self.assertNotIn("Metadata records: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+
+    def test_empty_listing_is_valid_and_complete(self):
+        inventory, diagnostic, commands = self.with_server(b"", {})
+        self.assertEqual(inventory["games"], [])
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("Scan complete: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_pasv_server_cannot_redirect_to_another_host(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343")},
+            passthrough=lambda server: setattr(server, "pasv_advertisement",
+                                               "10,20,30,40"))
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertTrue(inventory["scan_complete"])
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_mismatched_title_id_is_never_in_inventory(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA00001")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -21", diagnostic)
+
+    def test_ftp_login_rejection_is_explicitly_incomplete(self):
+        inventory, diagnostic, commands = self.with_server(
+            b"", {},
+            passthrough=lambda server: setattr(server, "deny_login", True))
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("FTP_LOGIN_OK: 0", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_game_name_with_quotes_produces_valid_json(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, _, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", 'Game "A" \\ Test')})
+        self.assertEqual(inventory["games"][0]["name"], 'Game "A" \\ Test')
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
 

@@ -87,7 +87,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "settings"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -96,6 +96,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # Main royal-blue header must be nonblank for every page.
                     self.assertNotEqual(pixels.getpixel((200, 45)),
                                         pixels.getpixel((0, 550)))
+                    if page == "search_ar":
+                        # Dynamic Arabic glyphs must be visible inside key
+                        # rectangles rather than tofu squares or blank keys.
+                        for col in range(10):
+                            x = 128 + col * 163
+                            patch = pixels.crop((x + 10, 422, x + 130, 502))
+                            bright = sum(1 for r, g, b in patch.getdata()
+                                         if r >= 175 and g >= 175 and b >= 175)
+                            self.assertGreater(
+                                bright, 8,
+                                "Arabic keyboard key has no visible glyph"
+                            )
                     if page == "search":
                         # All A-J keys on the 10-column keyboard must have
                         # visible white glyphs; proportional fonts can be

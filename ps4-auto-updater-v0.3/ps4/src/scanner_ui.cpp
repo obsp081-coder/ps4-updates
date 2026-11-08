@@ -1135,13 +1135,14 @@ extern "C" void scanner_ui_results(
             draw(entries,count,metadata_count,errors,
                  scan_complete,inventory_saved,navigation.scroll,0);
         if(pad<0) {
-            /* No controller fallback: do not trap the app indefinitely. */
-            if(++no_pad_wait>=300)break;
+            /* ~30 seconds, preserving the previous no-Pad safety window. */
+            if(++no_pad_wait>=900)break;
             continue;
         }
         OrbisPadData state={};
         if(scePadReadState(pad,&state)<0) {
-            if(++pad_read_failures>=100)break;
+            /* ~10 seconds, independent of the faster input polling rate. */
+            if(++pad_read_failures>=300)break;
             continue;
         }
         pad_read_failures=0;

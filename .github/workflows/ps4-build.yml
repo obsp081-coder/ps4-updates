@@ -68,6 +68,10 @@ jobs:
             https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz \
             -o /tmp/openorbis.tar.gz
 
+          # Digest from the official OpenOrbis v0.5.4 GitHub release asset.
+          # Refuse unexpected SDK bytes before extracting/executing tools.
+          echo '3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526  /tmp/openorbis.tar.gz' | sha256sum --check --status
+
           mkdir -p "$RUNNER_TEMP/openorbis"
 
           tar -xzf /tmp/openorbis.tar.gz \

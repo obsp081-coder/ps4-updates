@@ -81,6 +81,8 @@ LABELS = (
     ("NO_SELECTED_GAME", "لم تحدد لعبة"),
     ("NO_MATCHING_GAME", "لا توجد ألعاب مطابقة"),
     ("READING_METADATA", "جار فحص بيانات الألعاب"),
+    ("CACHE_PREVIEW", "بيانات محفوظة من فحص سابق: جاري التحقق"),
+    ("CACHE_ONLY", "قد تكون الألعاب تغيرت منذ الفحص السابق"),
     ("NO_GAME_METADATA", "لا توجد بيانات ألعاب"),
     ("MISSING_INVENTORY", "تعذر حفظ قائمة الألعاب"),
     ("NO_FIRMWARE_DATA", "متطلبات النظام غير متوفرة"),

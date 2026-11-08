@@ -63,6 +63,9 @@ static uint32_t *surface[2] = {nullptr, nullptr};
 static int64_t frame_id = 0;
 static char progress_line[128] = "CONNECTING TO GOLDHEN FTP";
 static UiNavigation navigation;
+/* Borrowed static metadata from the scanner, never treated as installed. */
+static ScannerUiEntry previous_scan[UI_MAX_TITLES];
+static unsigned previous_scan_count;
 static unsigned job_selected=0;
 static unsigned job_scroll=0;
 static UiRecord navigation_records[UI_MAX_TITLES];
@@ -820,7 +823,17 @@ static void draw(const ScannerUiEntry *entries,
     background(p);
     rail(p,scanning?UI_PAGE_HOME:navigation.page);
     header(p,scanning?UI_PAGE_HOME:navigation.page);
-    if(scanning) {
+    if(scanning && previous_scan_count) {
+        /* Make the library visible immediately, but keep this strictly
+         * non-interactive until the synchronous scanner finishes.
+         * Cached names/versions are ALWAYS unverified and stale. */
+        dashboard(p,previous_scan,previous_scan_count,
+                  previous_scan_count,0,0,1);
+        panel(p,76,894,1090,93,0xFF102D50u);
+        arabic(p,100,901,UI_AR_CACHE_PREVIEW,AMBER);
+        arabic(p,100,939,UI_AR_CACHE_ONLY,MUTED);
+        ascii(p,690,945,progress_line,CYAN,2,36);
+    }else if(scanning) {
         arabic(p,118,218,UI_AR_READING_METADATA,WHITE);
         panel(p,108,328,1700,344,PANEL);
         ascii(p,150,408,progress_line,CYAN,4,75);
@@ -854,6 +867,26 @@ static void draw(const ScannerUiEntry *entries,
     }
 }
 
+extern "C" int scanner_ui_preview_snapshot(
+    const ScannerUiEntry *items,unsigned entries
+) {
+    if(!usable || !items || entries==0u || entries>UI_MAX_TITLES)
+        return 0;
+    for(unsigned i=0;i<entries;++i) {
+        if(!items[i].cusa)return 0;
+        previous_scan[i]=items[i];
+        /* Cache contents can never confirm installation or SFO identity. */
+        previous_scan[i].metadata_verified=0;
+        previous_scan[i].install_state=-1;
+        navigation_records[i].cusa=items[i].cusa;
+        navigation_records[i].name=items[i].title;
+    }
+    previous_scan_count=entries;
+    ui_nav_init(&navigation,navigation_records,entries);
+    draw(previous_scan,entries,entries,0,0,1,0,1);
+    return 1;
+}
+
 extern "C" int scanner_ui_offer_icon(
     const char *cusa, const unsigned char *png, unsigned png_bytes
 ) {
@@ -862,6 +895,8 @@ extern "C" int scanner_ui_offer_icon(
 
 extern "C" int scanner_ui_begin(void) {
     ui_icon_cache_reset();
+    previous_scan_count=0;
+    ui_nav_init(&navigation,nullptr,0);
     ui_model_reset();
     job_selected=0;
     job_scroll=0;
@@ -943,6 +978,7 @@ extern "C" void scanner_ui_results(
         navigation_records[i].cusa=entries[i].cusa;
         navigation_records[i].name=entries[i].title;
     }
+    previous_scan_count=0;
     ui_nav_init(&navigation,navigation_records,count);
     draw(entries,count,metadata_count,errors,
          scan_complete,inventory_saved,0,0);

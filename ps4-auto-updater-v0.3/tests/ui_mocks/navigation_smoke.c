@@ -43,6 +43,12 @@ int main(void) {
     assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
     assert(nav.page==UI_PAGE_DOWNLOADS);
     assert(ui_nav_action(&nav,UI_ACT_BACK) && nav.page==UI_PAGE_HOME);
+    assert(ui_nav_action(&nav,UI_ACT_SETTINGS));
+    assert(nav.page==UI_PAGE_SETTINGS && !nav.exit_requested);
+    assert(!ui_nav_action(&nav,UI_ACT_SETTINGS));
+    assert(!ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && !nav.exit_requested);
 
     ui_nav_filter(&nav,entries,9,"unCHARTed");
     assert(nav.available==1 && ui_nav_resolve(&nav,0)==3);

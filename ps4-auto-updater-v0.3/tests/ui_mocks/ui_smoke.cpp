@@ -2,6 +2,7 @@
 #include "../../ps4/src/scanner_ui.h"
 #include "../../ps4/src/ui_models.h"
 #include "../../ps4/src/ui_icon_cache.h"
+#include "../../ps4/src/ui_navigation.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +35,8 @@ static bool test_lazy_cover = false;
 static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
 static bool test_cover_scroll = false;
+static bool test_capacity_screen = false;
+static bool saw_capacity_sixth_row = false;
 static int mixed_title_probe = 0;
 static bool saw_ltr_title_left = false;
 static bool saw_rtl_title_right = false;
@@ -125,7 +128,8 @@ static void reset() {
     check_offline_cache = saw_offline_cache = false;
     test_async_scan = test_async_exit = saw_scan_details =
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
-        test_cover_scroll = saw_cover_beyond_eight = false;
+        test_cover_scroll = saw_cover_beyond_eight =
+        test_capacity_screen = saw_capacity_sixth_row = false;
     mixed_title_probe = 0;
     saw_ltr_title_left = saw_rtl_title_right =
         saw_rtl_title_clear_left = false;
@@ -210,6 +214,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 }
             }
         }
+        if(test_capacity_screen) {
+            /* Actual sixth visible title row at y=827..915. The first
+             * initialization frame has no row; this must turn true only
+             * after scanner_ui_results receives the full 256-title set. */
+            const uint32_t *frame=display_buffers[index];
+            if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au)
+                saw_capacity_sixth_row=true;
+        }
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
@@ -278,6 +290,12 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_capacity_screen) {
+        /* No need to issue 256 expensive framebuffer redraws. Navigation
+         * bounds are separately checked in navigation_smoke.c. */
+        if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_cover_scroll) {
         if(pad_reads>=2 && pad_reads<=16 && pad_reads%2==0)
             data->buttons=ORBIS_PAD_BUTTON_DOWN;
@@ -436,6 +454,39 @@ int main() {
     scanner_ui_results(long_library,12,12,0,1,1);
     scanner_ui_set_cover_tick(nullptr);
     assert(saw_cover_beyond_eight && pad_reads>=18);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Edge inventory sizes must be rendered by the real native UI
+     * without heap corruption, false installed-state claims or leaks:
+     * zero titles, exactly 256 titles, and a hostile oversized count.
+     * These are synthetic HOST records, not detected games. */
+    reset();
+    test_capacity_screen=true;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(nullptr,0,0,0,0,0);
+    assert(!saw_capacity_sixth_row && pad_reads>=2);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    static ScannerUiEntry capacity_entries[UI_MAX_TITLES];
+    static char capacity_ids[UI_MAX_TITLES][10];
+    for(unsigned i=0;i<UI_MAX_TITLES;++i) {
+        std::snprintf(capacity_ids[i],10,"CUSA%05u",i);
+        capacity_entries[i].cusa=capacity_ids[i];
+        capacity_entries[i].title=i%2?"لعبة PS4":"PS4 لعبة";
+        capacity_entries[i].version="01.00";
+        capacity_entries[i].category="gd";
+        capacity_entries[i].metadata_verified=1;
+        capacity_entries[i].install_state=-1;
+    }
+    reset();
+    test_capacity_screen=true;
+    assert(scanner_ui_begin()==1);
+    /* The UI must cap an inconsistent count BEFORE traversing its array. */
+    scanner_ui_results(capacity_entries,UI_MAX_TITLES+1u,
+                       UI_MAX_TITLES+1u,0,1,1);
+    assert(saw_capacity_sixth_row && pad_reads>=2);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

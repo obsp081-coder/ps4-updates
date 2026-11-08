@@ -826,7 +826,8 @@ static void settings_screen(uint32_t *p) {
     arabic(p,159,860,UI_AR_SETTINGS_NOTE,MUTED);
     footer(p,UI_AR_FOOTER_SETTINGS);
 }
-static void search_screen(uint32_t *p) {
+static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
+                          unsigned count) {
     arabic(p,92,143,UI_AR_SEARCH_HINT,WHITE);
     panel(p,90,230,1655,104,0xFF0E2A51u);
     if(navigation.query[0])
@@ -845,6 +846,7 @@ static void search_screen(uint32_t *p) {
         int col=(int)(i%10), row=(int)(i/10);
         int x=128+col*163, y=410+row*129;
         panel(p,x,y,140,105,
+              !navigation.search_result_focus &&
               i==navigation.keyboard_index?ACCENT:0xFF112E51u);
         const char *key=ui_nav_keyboard_key(&navigation,i);
         if(!key)continue;
@@ -857,6 +859,28 @@ static void search_screen(uint32_t *p) {
                 ascii(p,x+54,y+32,key,WHITE,4,1);
             }
         }
+    }
+    /* One read-only match preview fits below the four keyboard rows.
+     * Down from the last keyboard row focuses this preview; Left/Right
+     * cycles matches, Cross opens real game metadata in Details. */
+    panel(p,90,910,1655,83,navigation.search_result_focus ?
+          0xFF164881u:0xFF102D50u);
+    if(navigation.available && entries) {
+        const unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
+        if(idx<count) {
+            const ScannerUiEntry *g=&entries[idx];
+            cover(p,111,925,57,55,g->cusa);
+            game_title(p,193,917,930,g,WHITE,2);
+            ascii(p,194,957,g->cusa?g->cusa:"NO CUSA",CYAN,2,13);
+            char selection[48];
+            (void)snprintf(selection,sizeof selection,"%u / %u",
+                navigation.selected+1,navigation.available);
+            ascii(p,1450,945,selection,MUTED,3,12);
+            if(navigation.search_result_focus)
+                rect(p,90,918,5,66,CYAN);
+        }
+    } else {
+        arabic(p,144,933,UI_AR_NO_MATCHING_GAME,AMBER);
     }
     footer(p,UI_AR_FOOTER_SEARCH);
 }
@@ -892,7 +916,7 @@ static void draw(const ScannerUiEntry *entries,
         arabic(p,150,525,UI_AR_DOWNLOAD_BLOCKED,MUTED);
         footer(p,UI_AR_FOOTER_SCANNING);
     }else if(navigation.page==UI_PAGE_SEARCH) {
-        search_screen(p);
+        search_screen(p,entries,count);
     }else if(navigation.page==UI_PAGE_SETTINGS) {
         settings_screen(p);
     }else if(navigation.page==UI_PAGE_DETAILS) {
@@ -1165,7 +1189,9 @@ extern "C" void scanner_ui_results(
         int cover_updated=0;
         if(cover_tick && entries &&
            (navigation.page==UI_PAGE_HOME ||
-            navigation.page==UI_PAGE_DETAILS)) {
+            navigation.page==UI_PAGE_DETAILS ||
+            (navigation.page==UI_PAGE_SEARCH &&
+             navigation.search_result_focus))) {
             const unsigned selected=ui_nav_resolve(
                 &navigation,navigation.selected);
             if(selected<count && entries[selected].cusa)

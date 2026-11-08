@@ -11,7 +11,8 @@ typedef enum UiPage {
     UI_PAGE_HOME = 0,
     UI_PAGE_DETAILS = 1,
     UI_PAGE_DOWNLOADS = 2,
-    UI_PAGE_SEARCH = 3
+    UI_PAGE_SEARCH = 3,
+    UI_PAGE_SETTINGS = 4
 } UiPage;
 typedef enum UiAction {
     UI_ACT_UP = 0,
@@ -26,7 +27,8 @@ typedef enum UiAction {
     UI_ACT_SEARCH,
     UI_ACT_REMOVE,
     UI_ACT_TOGGLE_KEYBOARD,
-    UI_ACT_CLEAR_SEARCH
+    UI_ACT_CLEAR_SEARCH,
+    UI_ACT_SETTINGS
 } UiAction;
 typedef struct UiRecord {
     const char *cusa;

@@ -1,8 +1,8 @@
 
-# PS4 Auto Updater - FTP Diagnostic v0.3.3
+# PS4 Auto Updater - Installed Check v0.3.7
 
 TITLE       := PS4 Game Scanner Test
-VERSION     := 01.03
+VERSION     := 01.04
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -12,7 +12,7 @@ INTDIR      := build
 
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
-LIBS        := -lc -lkernel -lc++ -lSceNet
+LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil
 
 CFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include

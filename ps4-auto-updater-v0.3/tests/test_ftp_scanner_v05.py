@@ -1,0 +1,223 @@
+"""Read-only integration tests for the PS4 v0.5 FTP scanner.
+
+Simulates GoldHEN FTP on localhost. No console access, real FTP
+server or internet needed. All SFO metadata is synthetic.
+"""
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import socketserver
+import struct
+import subprocess
+import tempfile
+import threading
+import unittest
+
+SCANNER = Path(__file__).resolve().parents[1] / "ps4" / "src" / "ftp_scanner_v05.c"
+READ_ONLY_COMMANDS = {"USER", "PASS", "TYPE", "PASV", "LIST", "RETR", "QUIT"}
+
+
+def sfo(title_id, name="Test Game", version="01.04", category="gd"):
+    fields = [
+        ("TITLE_ID", title_id),
+        ("TITLE", name),
+        ("APP_VER", version),
+        ("CONTENT_ID", "IV0000-" + title_id + "_00-SCANNER00000000"),
+        ("CATEGORY", category),
+    ]
+    keys, values, entries = b"", b"", b""
+    for key, val in fields:
+        key_offset = len(keys)
+        value_offset = len(values)
+        keys += key.encode("ascii") + b"\0"
+        encoded = val.encode("utf8") + b"\0"
+        values += encoded
+        entries += struct.pack("<HHIII", key_offset, 0x0204,
+                               len(encoded), len(encoded), value_offset)
+    key_start = 20 + len(entries)
+    value_start = key_start + len(keys)
+    header = struct.pack("<IIIII", 0x46535000, 0x101,
+                         key_start, value_start, len(fields))
+    return header + entries + keys + values
+
+
+class MockHandler(socketserver.StreamRequestHandler):
+    def respond(self, text):
+        self.wfile.write((text + "\r\n").encode("ascii"))
+        self.wfile.flush()
+
+    def handle(self):
+        self.request.settimeout(5)
+        data_socket = None
+        self.respond("220 mock FTP ready")
+        try:
+            while True:
+                raw = self.rfile.readline()
+                if not raw:
+                    break
+                command, _, argument = raw.decode("ascii", "replace").strip().partition(" ")
+                command = command.upper()
+                self.server.commands.append(command)
+                if command == "USER":
+                    self.respond("331 password needed")
+                elif command == "PASS":
+                    self.respond("230 OK")
+                elif command == "TYPE":
+                    self.respond("200 binary")
+                elif command == "PASV":
+                    data_socket = socket.socket()
+                    data_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    data_socket.bind(("127.0.0.1", 0))
+                    data_socket.listen(1)
+                    data_socket.settimeout(5)
+                    port = data_socket.getsockname()[1]
+                    self.respond("227 Entering Passive Mode (127,0,0,1,%d,%d)" %
+                                 (port // 256, port % 256))
+                elif command in ("LIST", "RETR"):
+                    payload = None
+                    if command == "LIST":
+                        if argument == "/system_data/priv/appmeta":
+                            payload = self.server.listing
+                        elif argument == "/system_data/priv/appmeta/external":
+                            payload = b""
+                    else:
+                        prefix = "/system_data/priv/appmeta/"
+                        suffix = "/param.sfo"
+                        if argument.startswith(prefix) and argument.endswith(suffix):
+                            title_id = argument[len(prefix):-len(suffix)]
+                            payload = self.server.metadata.get(title_id)
+                    if payload is None:
+                        self.respond("550 missing")
+                    else:
+                        self.respond("150 transfer starting")
+                        conn, _ = data_socket.accept()
+                        with conn:
+                            try:
+                                conn.sendall(payload)
+                            except OSError:
+                                pass
+                        self.respond("226 transfer complete")
+                    if data_socket:
+                        data_socket.close()
+                        data_socket = None
+                elif command == "QUIT":
+                    self.respond("221 goodbye")
+                    break
+                else:
+                    self.respond("502 unsupported")
+        except (OSError, TimeoutError):
+            pass
+        finally:
+            if data_socket is not None:
+                data_socket.close()
+
+
+class MockFTP(socketserver.TCPServer):
+    allow_reuse_address = True
+    def __init__(self, listing, metadata):
+        super().__init__(("127.0.0.1", 0), MockHandler)
+        self.listing = listing
+        self.metadata = metadata
+        self.commands = []
+
+
+class ScannerFTPTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("cc"):
+            raise unittest.SkipTest("C compiler unavailable")
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.executable = str(Path(cls.temp.name) / "ftp-scanner")
+        subprocess.run(
+            ["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O2",
+             "-o", cls.executable, str(SCANNER)],
+            check=True, capture_output=True, text=True,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "temp"):
+            cls.temp.cleanup()
+
+    def run_client(self, port):
+        with tempfile.TemporaryDirectory() as directory:
+            inv = Path(directory) / "inventory.json"
+            diagnostic = Path(directory) / "diagnostic.txt"
+            env = dict(os.environ,
+                       PS4_FTP_TEST_PORT=str(port),
+                       PS4_FTP_TEST_OUT=str(inv),
+                       PS4_FTP_TEST_REPORT=str(diagnostic))
+            proc = subprocess.run(
+                [self.executable], env=env, text=True,
+                capture_output=True, timeout=20,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return json.loads(inv.read_text()), diagnostic.read_text()
+
+    def with_server(self, listing, metadata):
+        with MockFTP(listing, metadata) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                inventory, diagnostic = self.run_client(server.server_address[1])
+                return inventory, diagnostic, list(server.commands)
+            finally:
+                server.shutdown()
+                thread.join(timeout=4)
+
+    def test_two_games_ignore_dlc_and_duplicates(self):
+        listing = (
+            b"drwxr-xr-x 1 root root 0 Nov 08 12:00 CUSA02343\r\n"
+            b"drwxr-xr-x 1 root root 0 Nov 08 12:00 CUSA02343\r\n"
+            b"drwxr-xr-x 1 root root 0 Nov 08 12:00 CUSA00411\r\n"
+            b"drwxr-xr-x 1 root root 0 Nov 08 12:00 CUSA99999\r\n"
+            b"drwxr-xr-x 1 root root 0 Nov 08 12:00 WRONGID\r\n"
+        )
+        inventory, diagnostic, commands = self.with_server(
+            listing,
+            {"CUSA02343": sfo("CUSA02343", "Uncharted Test", "01.07"),
+             "CUSA00411": sfo("CUSA00411", "Other Game", "02.04"),
+             "CUSA99999": sfo("CUSA99999", "DLC", "01.00", "ac")},
+        )
+        self.assertEqual(inventory["schema"], 5)
+        self.assertEqual([g["cusa"] for g in inventory["games"]],
+                         ["CUSA02343", "CUSA00411"])
+        self.assertEqual(inventory["games"][0]["app_ver"], "01.07")
+        self.assertEqual(inventory["games"][0]["install_state"], "UNKNOWN")
+        self.assertFalse(inventory["download_enabled"])
+        self.assertFalse(inventory["install_enabled"])
+        self.assertIn("Metadata records: 2", diagnostic)
+        self.assertIn("FTP_LOGIN_OK: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+        self.assertEqual(commands.count("RETR"), 3)
+
+    def test_corrupt_sfo_is_not_counted(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": b"not an SFO"})
+        self.assertEqual(inventory["games"], [])
+        self.assertIn("SFO CUSA02343: -21", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_ftp_unavailable_is_reported_without_inventing_games(self):
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        inventory, diagnostic = self.run_client(port)
+        self.assertEqual(inventory["games"], [])
+        self.assertIn("CONTROL_CONNECT_FAILED", diagnostic)
+
+    def test_oversized_listing_cannot_create_partial_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n" * 3500
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343")})
+        self.assertEqual(inventory["games"], [])
+        self.assertIn("LIST internal:", diagnostic)
+        self.assertNotIn("Metadata records: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+
+if __name__ == "__main__":
+    unittest.main()

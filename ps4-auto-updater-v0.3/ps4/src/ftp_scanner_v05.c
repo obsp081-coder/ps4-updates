@@ -879,6 +879,9 @@ static int scan_root(
     static unsigned char sfo[MAX_SFO];
 
     for (int i = 0; i < count; ++i) {
+#ifdef __ORBIS__
+        scanner_ui_progress(ids[i], (unsigned)i + 1, (unsigned)count);
+#endif
         if (duplicate(ids[i]))
             continue;
 

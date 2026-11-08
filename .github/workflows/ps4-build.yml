@@ -106,7 +106,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.06\n"
+              "Build version: 01.07\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"

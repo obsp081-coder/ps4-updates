@@ -337,6 +337,19 @@ int main() {
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 
+    /* Regression: a partial scan may return valid SFO entries and still
+     * miss other games. Preserve all six cached base-game rows instead
+     * of replacing the library with a shorter, incomplete result. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
+    check_offline_cache=true;
+    scanner_ui_results(entries,3,2,1,0,0);
+    check_offline_cache=false;
+    assert(saw_offline_cache);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
     reset();
     fail_video = true;
     assert(scanner_ui_begin() == 0);

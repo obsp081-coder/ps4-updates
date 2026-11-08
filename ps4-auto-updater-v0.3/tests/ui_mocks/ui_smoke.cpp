@@ -135,6 +135,8 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             else if(details) capture_ppm(frame,"details",2u);
             else if(downloads) capture_ppm(frame,"downloads",4u);
             else if(settings) capture_ppm(frame,"settings",16u);
+            else if(pad_reads>=16 && pad_reads<18)
+                capture_ppm(frame,"search_ar",32u);
             else capture_ppm(frame,"search",8u);
         }
     }
@@ -167,10 +169,11 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
     if (pad_reads == 10) data->buttons = ORBIS_PAD_BUTTON_TRIANGLE;
     if (pad_reads == 12) data->buttons = ORBIS_PAD_BUTTON_CROSS;
     if (pad_reads == 14) data->buttons = ORBIS_PAD_BUTTON_SQUARE;
-    if (pad_reads == 16) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
-    if (pad_reads == 18) data->buttons = ORBIS_PAD_BUTTON_OPTIONS;
-    if (pad_reads == 20) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 16) data->buttons = ORBIS_PAD_BUTTON_TRIANGLE;
+    if (pad_reads == 18) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 20) data->buttons = ORBIS_PAD_BUTTON_OPTIONS;
     if (pad_reads == 22) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 24) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
     return 0;
 }
 size_t sceKernelGetDirectMemorySize(void) { return 512u * 1024u * 1024u; }
@@ -219,7 +222,7 @@ int main() {
     assert(saw_blurred_background);
     scanner_ui_shutdown(trace);
     assert(flip_count >= 8);
-    assert(pad_reads >= 22);
+    assert(pad_reads >= 24);
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);

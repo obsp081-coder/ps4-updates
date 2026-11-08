@@ -1,6 +1,6 @@
 
 TITLE       := PS4 Auto Updater - Read Only Preview
-VERSION     := 01.12
+VERSION     := 01.13
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 

@@ -255,6 +255,37 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
         self.assertEqual(commands.count("RETR"), 3)
 
+    def test_ascii_mode_sfo_newlines_are_restored_safely(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        original = sfo("CUSA02343", "Recovered Game", "01.07")
+        damaged = original.replace(b"\n", b"\r\n")
+        self.assertGreater(len(damaged), len(original))
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": damaged})
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertEqual(inventory["games"][0]["name"], "Recovered Game")
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("SFO ASCII_RECOVERED CUSA02343", diagnostic)
+        self.assertNotIn("TYPE", commands)
+
+    def test_ascii_recovery_cannot_accept_wrong_content_id(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        damaged = sfo("CUSA02343", content_id=(
+            "IV0000-CUSA99999_00-SCANNER000000000")).replace(b"\n", b"\r\n")
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": damaged})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertNotIn("SFO ASCII_RECOVERED", diagnostic)
+
+    def test_missing_category_is_not_a_confirmed_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", category="")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -37", diagnostic)
+
     def test_corrupt_sfo_is_not_counted(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, commands = self.with_server(

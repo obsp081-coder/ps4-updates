@@ -13,7 +13,8 @@
 | ps4/src/ui_snapshot.c/h | Cache محلي ثنائي للعبة الأساسية فقط، 256 سجلًا كحد أقصى؛ CRC وفحص حجم/إصدارات/هوية وعدم التكرار، مع استبدال الملف عبر Rename بعد التحقق؛ لا حالة تثبيت معتمدة | اختبار Host للتلف والتكرار والملفات الناقصة + بناء OpenOrbis |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
 | ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع الاحتفاظ باختيار CUSA والاستعلام ولوحة المفاتيح، وإغلاق Details إذا اختفت اللعبة | اختبارات Host |
-| ps4/tools/generate_ui_arabic.py | نصوص واجهة عربية RTL مشكّلة وخريطة مختصرة لحروف عناوين الألعاب؛ Font من Build Machine فقط | CI Generator + Host compile |
+| ps4/src/ui_title_layout.c/h | تقسيم اسم اللعبة إلى LTR/RTL runs بحسب أول حرف واضح، مع حدود 191 codepoint وبدون Heap؛ معالجة الحركات وعلامات الترقيم كعناصر محايدة للاتجاه؛ **ليس UAX #9 الكامل** | اختبارات Host مستقلة + اختبارات Framebuffer |
+| ps4/tools/generate_ui_arabic.py | نصوص عربية ثابتة بخط Noto وRAQM وقت Build؛ عرض Dynamic Arabic Presentation Forms مع `advance` مستقل عن الهوامش الشفافة حتى لا تتباعد الحروف؛ لا شحن ملفات Font إلى PS4 | Host Preview + Native Build |
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
 | ps4/src/ui_icon_cache.c/h | 8 صور LRU؛ استلام Thumbnail متحقق منه على UI Thread من Mailbox بعد اكتمال طلب الصورة؛ رفض حجم خاطئ مع عدم إفساد Cache | اختبارات Host |
 | ps4/src/ui_png_transport.c/h | فحص CRC لكل جزء PNG، ومحاولة استعادة النقل FTP ASCII فقط إذا تطابقت CRCs | اختبارات Host |
@@ -28,14 +29,14 @@
 - صفحة Downloads تعرض صفر مهمة عندما لا يزوّدها أي Downloader فعلي؛ يمكنها **رسم سجلات View-only** مع Progress بالأرقام التي تُمرَّر لها. هذا ليس Downloader، واختبار الحالة غير الصفرية استعمل Host fixtures فقط.
 - Cache يحمل بيانات ألعاب قديمة ويعرضها فورًا بعد تشغيل الواجهة **إذا وُلد ملف snapshot_v1.bin من فحص سابق ناجح**. لا يجلب صور الألعاب المحفوظة بعد؛ عند فقد البيانات الأحدث يُبقيها مع تحذير Cache.
 - الشاشة الرئيسية/شاشة التفاصيل/قائمة التنزيلات لا تعتمد على WebView أو خادم PC.
-- Arabic shaping ثابتة في عناصر UI، وعناوين اللعبة العربية الديناميكية عبر Presentation Forms (حل مؤقت يحتاج Bidi وتركيب لغوي أوسع).
+- Arabic shaping ثابتة في عناصر UI. العناوين المختلطة تستخدم LTR/RTL runs حسب أول حرف واضح؛ يظهر الفرق في `mixed_ltr.png` و`mixed_rtl.png` من Native Host Framebuffer. تم ضبط مسافات Dynamic Arabic glyphs بحيث تتصل حروف مثل «لعبة». **لا ندعي UAX #9 كاملًا أو دعم CJK.**
 - لوحة مفاتيح داخلية بدل استدعاء PS4 IME غير مثبت على FW14.
 
 ## نواقص الواجهة قبل اعتبارها كاملة
 
 1. **Background Worker للـScanner:** تم فصل FTP وSFO وصور الألعاب عن VideoOut/Pad عبر `scePthreadCreate` في الكود، مع `scePthreadJoin` وCancel متعاون وإعادة عرض Snapshot أثناء الفحص. اختبارات Host تغطي التنقل إلى التفاصيل والإعدادات والعودة أثناء انتظار Worker، واختبار الخروج قبل اكتمال Worker. **مع ذلك: لا توجد حتى الآن تجربة حقيقية تثبت توافق API/استقرار الواجهة على Firmware 14.00.** عند فشل إنشاء Worker لا يتم إجراء فحص متزامن يجمّد الواجهة، بل تعرض حالة Cache غير مؤكدة. أول تشغيل دون Snapshot يبدأ بقائمة فارغة مؤقتًا؛ نقل بيانات JSON القديمة غير منفذ.
 2. **صور الأغلفة:** أزيل Prefetch الثابت لأول ثماني ألعاب؛ يوجد الآن Lazy Loading عند اختيار اللعبة/التمرير عبر Worker منفصل وMailbox وتحقق CRC وPNG، مع Cache لثماني صور. اختبارات Host تثبت أن UI يطلب غلاف لعبة بعد الثامنة ويعيد الرسم بعد وصول صورة متأخرة. **لكن التعامل الفعلي مع GoldHEN FTP على FW14 غير مختبر بعد**؛ الصور غير محفوظة على القرص من Snapshot، ولا توجد Retry Policy مستقلة للأغلفة غير المتاحة، والبحث لا يحمّل أغلفة أثناء لوحة المفاتيح.
-3. **عناوين الألعاب بلغات مختلطة:** التشكيل العربي الحالي محدود، وليس Unicode Bidi كاملًا ولا يدعم Asian titles بصورة موثوقة. يلزم Renderer شامل واختبارات خط/رخص.
+3. **عناوين الألعاب بلغات مختلطة:** تحسن أول مقطع عربي/Latin مع اتجاه حسب أول حرف واضح، وتم اختبار لقطتين من Native Host Framebuffer؛ لكنه **ليس Unicode Bidi كاملًا** ولا يطبع الحركات العربية فوق الحروف ولا يدعم أسماء Asian/Indic/Emoji بشكل صحيح. ما زلنا نحتاج اختبارات نصوص فعلية متنوعة وعلاجًا ثابتًا أو Renderer أوسع بعد قياس أثره على RAM/CPU.
 4. **القياس الدقيق:** عرض حجم لعبة/منطقة/نوع Retail أو FPKG/النسخة ومتطلبات FW لا يُملأ إلا من مصادر مؤكدة، ولا يجوز استنتاجه من SFO وحده. حاليًا تظهر «غير متوفر» لهذه الخانات.
 5. **جودة مطابقة التصميم المعتمد:** الأيقونات والحدود وخط العناوين والتدرجات وتوقيت الحركة، وتناسق RTL في شاشة 1080p على جهاز فعلي؛ ما زالت بحاجة مراجعة بصرية ومقارنة بالـMockups.
 6. **التنقل/الأداء:** تم تغيير Polling للـPad من 100ms إلى ~33ms دون إعادة رسم كل Frame، لكن **30 FPS ليس مثبتًا**. ما زلنا نحتاج قياس التوقيت وRAM على PS4 الأساسي مع 0 و256 لعبة، واختبار 100 فتح/خروج، وانقطاع FTP، وPNG تالف/كبير والتراجع عند فشل إنشاء Cover Worker.
@@ -51,4 +52,4 @@
 
 **التحقق من هذه المرحلة (2026-11-08):** اختبارات Host تتضمن Rebind يحافظ على الهوية عند إعادة ترتيب الألعاب، واختبار Lazy Cover Mock يرسم الصورة عند وصولها واختبار طلب صورة بعد اللعبة الثامنة؛ راجع نتيجة CI على **آخر Commit** قبل اعتماد البناء. نجاح OpenOrbis لا يثبت اتصال Cover Worker على FW14 ولا FPS ولا استقرار التشغيل الحقيقي. لا يوجد اختبار Hardware لهذه التغييرات بعد.
 
-**ملفات اختبار Host:** test_native_ui.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py.
+**ملفات اختبار Host:** test_native_ui.py وtest_ui_title_layout.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py. لقطات `mixed_ltr` و`mixed_rtl` مسجلة من Host Framebuffer فقط وليست من PS4.

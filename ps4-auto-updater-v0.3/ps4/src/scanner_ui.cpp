@@ -346,8 +346,14 @@ static void prepare_blurred_background(const ScannerUiEntry *entries,
                     ++samples;
                 }
             }
+            /* Precompute darkened channel values once per selected icon.
+             * Avoid three color divisions per framebuffer pixel and
+             * per repaint, keeping 1080p CPU rendering responsive. */
+            const unsigned out_r=((r/samples)+6u*3u)/4u;
+            const unsigned out_g=((g/samples)+17u*3u)/4u;
+            const unsigned out_b=((b/samples)+38u*3u)/4u;
             blur_image[y*BLUR_WIDTH+x]=0xFF000000u|
-                ((r/samples)<<16)|((g/samples)<<8)|(b/samples);
+                (out_r<<16)|(out_g<<8)|out_b;
         }
     }
     memcpy(blurred_for,id,10);
@@ -361,11 +367,7 @@ static void background(uint32_t *p) {
             uint32_t *line=p+(size_t)y*WIDTH;
             int src_y=y*BLUR_HEIGHT/HEIGHT;
             for(int x=0;x<WIDTH;++x) {
-                uint32_t color=blur_image[src_y*BLUR_WIDTH+x*BLUR_WIDTH/WIDTH];
-                unsigned r=(((color>>16)&255u)+6u*3u)/4u;
-                unsigned g=(((color>>8)&255u)+17u*3u)/4u;
-                unsigned b=((color&255u)+38u*3u)/4u;
-                line[x]=0xFF000000u|(r<<16)|(g<<8)|b;
+                line[x]=blur_image[src_y*BLUR_WIDTH+x*BLUR_WIDTH/WIDTH];
             }
         }
     } else {

@@ -34,6 +34,10 @@ static bool test_lazy_cover = false;
 static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
 static bool test_cover_scroll = false;
+static int mixed_title_probe = 0;
+static bool saw_ltr_title_left = false;
+static bool saw_rtl_title_right = false;
+static bool saw_rtl_title_clear_left = false;
 static bool saw_cover_beyond_eight = false;
 static volatile uint32_t mock_scan_status = 0;
 static unsigned captured_pages = 0;
@@ -122,6 +126,9 @@ static void reset() {
     test_async_scan = test_async_exit = saw_scan_details =
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
         test_cover_scroll = saw_cover_beyond_eight = false;
+    mixed_title_probe = 0;
+    saw_ltr_title_left = saw_rtl_title_right =
+        saw_rtl_title_clear_left = false;
     lazy_cover_polls = 0;
     mock_scan_status = 0;
     fail_video = fail_memory = fail_pad = stall_flip = false;
@@ -173,6 +180,29 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(mixed_title_probe) {
+            /* Native framebuffer pixel checks: mixed LTR-leading titles
+             * start near the left edge, RTL-leading titles at the right.
+             * The sampled row excludes CUSA/category/footer labels. */
+            const uint32_t *frame=display_buffers[index];
+            unsigned left_ink=0,right_ink=0;
+            for(unsigned yy=340;yy<382;++yy) {
+                for(unsigned xx=197;xx<292;++xx) {
+                    const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
+                    if((c&0x00FFFFFFu)==0x00EAF4FFu)++left_ink;
+                }
+                for(unsigned xx=690;xx<815;++xx) {
+                    const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
+                    if((c&0x00FFFFFFu)==0x00EAF4FFu)++right_ink;
+                }
+            }
+            if(mixed_title_probe==1 && left_ink>8)
+                saw_ltr_title_left=true;
+            if(mixed_title_probe==2 && right_ink>8) {
+                saw_rtl_title_right=true;
+                if(left_ink==0)saw_rtl_title_clear_left=true;
+            }
+        }
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
@@ -477,6 +507,29 @@ int main() {
     test_async_exit=false;
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Direction-sensitive title rendering is tested on the genuine
+     * C++ framebuffer, not a browser approximation. Missing glyphs for
+     * other writing systems are NOT claimed to be supported. */
+    ScannerUiEntry mixed_title={
+        "CUSA22222","PS4 لعبة","01.00",1,-1,"gd"
+    };
+    reset();
+    mixed_title_probe=1;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(&mixed_title,1,1,0,1,1);
+    assert(saw_ltr_title_left);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1);
+
+    mixed_title.title="لعبة PS4";
+    reset();
+    mixed_title_probe=2;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(&mixed_title,1,1,0,1,1);
+    assert(saw_rtl_title_right && saw_rtl_title_clear_left);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1);
 
     reset();
     fail_video = true;

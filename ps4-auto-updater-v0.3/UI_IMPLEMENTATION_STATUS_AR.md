@@ -9,15 +9,15 @@
 
 | الملف/الوحدة | ما تنفذه الآن | مستوى الدليل |
 |---|---|---|
-| ps4/src/scanner_ui.cpp | صفحة رئيسية Royal Blue مع 6 صفوف وتفاصيل كاملة وبحث وإعدادات؛ عرض Snapshot سابق أثناء فحص FTP، والإبقاء عليه إذا فشل الفحص؛ عرض نماذج تحديثات وتنزيلات للقراءة فقط | Host framebuffer screenshots + Host mock tests |
+| ps4/src/scanner_ui.cpp | Royal Blue و6 صفوف وتفاصيل وبحث وإعدادات؛ تصفح Snapshot خلال فحص غير متزامن عبر `scanner_ui_wait_for_scan`؛ الاحتفاظ به إذا فشل الفحص الجزئي؛ عرض بيانات تحديثات وتنزيلات للقراءة فقط | Host framebuffer tests، **يحتاج PS4 hardware** |
 | ps4/src/ui_snapshot.c/h | Cache محلي ثنائي للعبة الأساسية فقط، 256 سجلًا كحد أقصى؛ CRC وفحص حجم/إصدارات/هوية وعدم التكرار، مع استبدال الملف عبر Rename بعد التحقق؛ لا حالة تثبيت معتمدة | اختبار Host للتلف والتكرار والملفات الناقصة + بناء OpenOrbis |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
 | ps4/src/ui_navigation.c/h | صفحات الرئيسية/التفاصيل/التنزيلات/البحث، اختيار وتمرير، لوحة مفاتيح عربية/English، بحث Title/CUSA، حدود 256 | اختبارات Host |
 | ps4/tools/generate_ui_arabic.py | نصوص واجهة عربية RTL مشكّلة وخريطة مختصرة لحروف عناوين الألعاب؛ Font من Build Machine فقط | CI Generator + Host compile |
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
-| ps4/src/ui_icon_cache.c/h | 8 صور مع LRU ورفض صورة تالفة دون فقدان النسخة القديمة | اختبارات Host |
+| ps4/src/ui_icon_cache.c/h | 8 صور LRU؛ إضافة Import لصورة Thumbnail محوّلة من Worker بعد Join، مع رفض الحجم الخطأ | اختبارات Host |
 | ps4/src/ui_png_transport.c/h | فحص CRC لكل جزء PNG، ومحاولة استعادة النقل FTP ASCII فقط إذا تطابقت CRCs | اختبارات Host |
-| ps4/src/ftp_scanner_v05.c | GoldHEN FTP loopback read-only، معلومات SFO وفئاتها، prefetch حتى 8 icon0.png؛ ثم UI | Host scanner test + FW14 قديم للفحص فقط |
+| ps4/src/ftp_scanner_v05.c | GoldHEN FTP read-only على `scePthread` مع Status atomics، Cancel signal وJoin؛ تحميل 8 صور أساسية وتجهير Thumbnail خارج UI ثم نقلها بعد Join | Host scanner + Build؛ **لا اختبار FW14 لهذا الـThread** |
 | ps4/src/ps4_shell_exit.c | إنهاء عبر SystemService بدل libc exit | تم التحقق من الخروج على FW14 في الإصدار السابق v0.6.5، **وليس** هذا الفرع |
 
 ## واجهة المستخدم حسب اختياراتك
@@ -33,8 +33,8 @@
 
 ## نواقص الواجهة قبل اعتبارها كاملة
 
-1. **Background Worker للـScanner:** أصبح عرض Snapshot سابق قبل نهاية FTP منفّذًا، مع تحذير واضح وحماية من تلف الملف. **لكن فحص FTP ما زال متزامنًا ويحجب مدخلات اليد حتى ينتهي**؛ ولم يُختبر على PS4. أول تشغيل بعد التحديث لا يملك Cache بعد، لأن نقل بيانات JSON القديمة لم يُنفّذ. يلزم Worker آمن على FW14 لإكمال المواصفة.
-2. **صور الأغلفة عند التمرير والبحث:** الـPrefetch الحالي يتناول أول ثمانية CUSA فقط عند بدء التشغيل، ويحتاج Lazy Loading/Cancel/Cache miss handling من مصدر داخلي مسموح.
+1. **Background Worker للـScanner:** تم فصل FTP وSFO وصور الألعاب عن VideoOut/Pad عبر `scePthreadCreate` في الكود، مع `scePthreadJoin` وCancel متعاون وإعادة عرض Snapshot أثناء الفحص. اختبارات Host تغطي التنقل إلى التفاصيل والإعدادات والعودة أثناء انتظار Worker، واختبار الخروج قبل اكتمال Worker. **مع ذلك: لا توجد حتى الآن تجربة حقيقية تثبت توافق API/استقرار الواجهة على Firmware 14.00.** عند فشل إنشاء Worker لا يتم إجراء فحص متزامن يجمّد الواجهة، بل تعرض حالة Cache غير مؤكدة. أول تشغيل دون Snapshot يبدأ بقائمة فارغة مؤقتًا؛ نقل بيانات JSON القديمة غير منفذ.
+2. **صور الأغلفة عند التمرير والبحث:** الـPrefetch أصبح لأول ثمانية Base Games مُتحققة فقط، ومعالجة PNG تتم داخل Worker وتُنقل نتيجتها للـUI بعد Join. ما زال Lazy Loading مع التمرير/البحث وإعادة تحميل أغلفة Cache ناقصًا.
 3. **عناوين الألعاب بلغات مختلطة:** التشكيل العربي الحالي محدود، وليس Unicode Bidi كاملًا ولا يدعم Asian titles بصورة موثوقة. يلزم Renderer شامل واختبارات خط/رخص.
 4. **القياس الدقيق:** عرض حجم لعبة/منطقة/نوع Retail أو FPKG/النسخة ومتطلبات FW لا يُملأ إلا من مصادر مؤكدة، ولا يجوز استنتاجه من SFO وحده. حاليًا تظهر «غير متوفر» لهذه الخانات.
 5. **جودة مطابقة التصميم المعتمد:** الأيقونات والحدود وخط العناوين والتدرجات وتوقيت الحركة، وتناسق RTL في شاشة 1080p على جهاز فعلي؛ ما زالت بحاجة مراجعة بصرية ومقارنة بالـMockups.
@@ -49,6 +49,6 @@
 - تجنب تغيير منطق GoldHEN read-only وSystemService exit الذي نجح سابقًا.
 - يجب إعادة الاختبار على PS4 FW14 لتشغيل UI الجديد؛ نجاح Host/CI لا يكفي.
 
-**اختبار مؤكد في CI (2026-11-08):** 170 اختبار Host ناجحة وبناء OpenOrbis ناجح على Commit `b139620afc59a124da248d35df190fafcc46fc6b`. لا توجد نتيجة Hardware لهذا التغيير. 
+**التحقق من هذه المرحلة (2026-11-08):** اختبارات Host والتجميع عبر GitHub Actions؛ شغّل CI على آخر Commit قبل إعلان النجاح. بناء OpenOrbis لا يثبت تنفيذ Thread على جهاز FW14 أو FPS أو سلامة التشغيل. لا يوجد حتى الآن اختبار Hardware لهذا التغيير.
 
 **ملفات اختبار Host:** test_native_ui.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py.

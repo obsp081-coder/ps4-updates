@@ -117,9 +117,14 @@ static void text(uint32_t *pixels, int x, int y, const char *s,
          * One-character keyboard buttons and the compact PS4 badge need
          * a glyph-sized cap or letters vanish entirely. Long game titles
          * retain their conservative column budget. */
+        /* max_chars limits text length, not the width of one glyph.
+         * Wide single Latin glyphs (e.g. 'm') must never disappear.
+         * Single-glyph callers reserve visual space, and ui_title_paint()
+         * separately clips to the title column before calling text(). */
         const int cell_width=max_chars<=4 ? 12*scale : 6*scale;
-        const int cap=x+max_chars*cell_width<WIDTH ?
-                      x+max_chars*cell_width:WIDTH;
+        const int cap=max_chars==1 ? WIDTH :
+            (x+max_chars*cell_width<WIDTH ?
+             x+max_chars*cell_width:WIDTH);
         int pen=x;
         for(int i=0; s[i] && i<max_chars; ++i) {
             unsigned c=(unsigned char)s[i];

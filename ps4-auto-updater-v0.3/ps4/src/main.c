@@ -1,10 +1,11 @@
 
-/*
- * PS4 Game Scanner Diagnostic v0.3.3
- * Read-only path diagnostic and inventory scanner.
- * Does not modify games, firmware or system databases.
- */
 #define _POSIX_C_SOURCE 200809L
+
+/*
+ * PS4 Auto Updater v0.4
+ * Unified read-only diagnostic scanner.
+ * No downloads, installs or system database changes.
+ */
 
 #include <ctype.h>
 #include <dirent.h>
@@ -15,419 +16,566 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define MAX_SFO (4U * 1024U * 1024U)
-#define MAX_PATH 2048
-#define MAX_GAMES 10000
+#ifdef __ORBIS__
+#include <orbis/libkernel.h>
+#endif
+
 #define OUT_DIR "/data/PS4AutoUpdater"
-#define META_ROOT "/system_data/priv/appmeta"
+#define MAX_GAMES 1024
+#define MAX_SFO 1048576
+#define MAX_PATH 1024
 
 typedef struct {
-    char id[16];
-    char name[256];
-    char app_ver[32];
-    char content_id[128];
-    char category[32];
-} game_t;
+    char cusa[10];
+    char name[192];
+    char ver[20];
+    char cid[80];
+    char category[12];
+    char source[16];
+    int installed;
+} Game;
 
-static unsigned g_count = 0;
-static char g_seen[MAX_GAMES][16];
-static unsigned g_errors = 0;
-static int g_root_stat_errno = -1;
-static int g_internal_opendir_errno = -1;
-static int g_external_opendir_errno = -1;
-static unsigned g_sfo_open_failures = 0;
-static unsigned g_sfo_parse_failures = 0;
+static Game games[MAX_GAMES];
+static unsigned game_count;
+static unsigned parse_failures;
+static unsigned open_failures;
 
-static uint16_t read16(const unsigned char *p) {
-    return (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
+static int root_errno = -1;
+static int external_errno = -1;
+static int user_errno = -1;
+static int user_app_errno = -1;
+static int install_api_status = -1;
+
+static uint16_t le16(const unsigned char *p) {
+    return (uint16_t)(
+        p[0] | ((uint16_t)p[1] << 8)
+    );
 }
 
-static uint32_t read32(const unsigned char *p) {
+static uint32_t le32(const unsigned char *p) {
     return (uint32_t)p[0] |
-           ((uint32_t)p[1] << 8) |
-           ((uint32_t)p[2] << 16) |
-           ((uint32_t)p[3] << 24);
+        ((uint32_t)p[1] << 8) |
+        ((uint32_t)p[2] << 16) |
+        ((uint32_t)p[3] << 24);
 }
 
-static int range_ok(size_t offset, size_t n, size_t total) {
-    return offset <= total && n <= total - offset;
+static int in_bounds(
+    size_t off, size_t len, size_t size
+) {
+    return off <= size && len <= size - off;
 }
 
-static int valid_cusa(const char *s) {
-    if (!s || strlen(s) != 9 || strncmp(s, "CUSA", 4))
-        return 0;
+static int is_cusa(const char *s) {
+    if (
+        !s || strlen(s) != 9 ||
+        strncmp(s, "CUSA", 4)
+    ) return 0;
 
-    for (unsigned i = 4; i < 9; ++i) {
+    for (int i = 4; i < 9; ++i)
         if (!isdigit((unsigned char)s[i]))
             return 0;
-    }
+
     return 1;
 }
 
-static int seen(const char *id) {
-    for (unsigned i = 0; i < g_count; ++i) {
-        if (!strcmp(id, g_seen[i]))
+static int already_seen(const char *id) {
+    for (unsigned i = 0; i < game_count; ++i)
+        if (!strcmp(games[i].cusa, id))
             return 1;
-    }
+
     return 0;
 }
 
-static void val_string(
-    char *out,
-    size_t outlen,
-    const unsigned char *p,
-    size_t plen
+static void copy_sfo(
+    char *dst,
+    size_t capacity,
+    const unsigned char *src,
+    size_t length
 ) {
-    size_t k = 0;
-    if (!outlen) return;
+    size_t i = 0;
+    if (!capacity) return;
 
-    while (k < plen && k + 1 < outlen && p[k] != 0) {
-        out[k] = (char)p[k];
-        ++k;
+    while (
+        i < length &&
+        i + 1 < capacity &&
+        src[i]
+    ) {
+        dst[i] = (char)src[i];
+        ++i;
     }
-    out[k] = 0;
+
+    dst[i] = 0;
 }
 
-static int parse_sfo(const char *path, game_t *game) {
-    FILE *f = fopen(path, "rb");
+static int parse_sfo(
+    const char *file,
+    Game *game
+) {
+    FILE *fp = fopen(file, "rb");
 
-    if (!f) {
-        ++g_sfo_open_failures;
+    if (!fp) {
+        ++open_failures;
         return 0;
     }
 
-    if (fseek(f, 0, SEEK_END)) {
-        fclose(f);
+    if (fseek(fp, 0, SEEK_END)) {
+        fclose(fp);
         return 0;
     }
 
-    long l = ftell(f);
-
-    if (l < 20 || l > (long)MAX_SFO) {
-        fclose(f);
-        return 0;
-    }
-
-    if (fseek(f, 0, SEEK_SET)) {
-        fclose(f);
-        return 0;
-    }
-
-    size_t size = (size_t)l;
-    unsigned char *b = malloc(size);
-
-    if (!b) {
-        fclose(f);
-        return 0;
-    }
-
-    int read_ok = fread(b, 1, size, f) == size;
-    fclose(f);
-
-    if (!read_ok || read32(b) != 0x46535000u) {
-        free(b);
-        return 0;
-    }
-
-    size_t keys = read32(b + 8);
-    size_t vals = read32(b + 12);
-    size_t cnt = read32(b + 16);
+    long length = ftell(fp);
 
     if (
-        cnt > 2048 ||
-        !range_ok(20, cnt * 16, size) ||
-        keys >= size ||
-        vals >= size
+        length < 20 ||
+        length > MAX_SFO ||
+        fseek(fp, 0, SEEK_SET)
     ) {
-        free(b);
+        fclose(fp);
+        return 0;
+    }
+
+    size_t size = (size_t)length;
+    unsigned char *bytes = malloc(size);
+
+    if (!bytes) {
+        fclose(fp);
+        return 0;
+    }
+
+    int ok = fread(bytes, 1, size, fp) == size;
+    fclose(fp);
+
+    if (
+        !ok ||
+        le32(bytes) != 0x46535000u
+    ) {
+        free(bytes);
+        return 0;
+    }
+
+    size_t keys = le32(bytes + 8);
+    size_t values = le32(bytes + 12);
+    size_t count = le32(bytes + 16);
+
+    if (
+        count > 1024 ||
+        !in_bounds(20, count * 16, size) ||
+        keys >= size ||
+        values >= size
+    ) {
+        free(bytes);
         return 0;
     }
 
     memset(game, 0, sizeof(*game));
+    game->installed = -1;
 
-    for (size_t i = 0; i < cnt; ++i) {
-        const unsigned char *e = b + 20 + i * 16;
+    for (size_t j = 0; j < count; ++j) {
+        const unsigned char *entry =
+            bytes + 20 + 16 * j;
 
-        size_t key_at = keys + read16(e);
-        size_t val_at = vals + read32(e + 12);
-        size_t value_len = read32(e + 4);
+        size_t key_at =
+            keys + le16(entry);
+
+        size_t val_at =
+            values + le32(entry + 12);
+
+        size_t val_len =
+            le32(entry + 4);
 
         if (
-            !range_ok(key_at, 1, size) ||
-            !range_ok(val_at, value_len, size)
-        ) {
-            continue;
-        }
+            !in_bounds(key_at, 1, size) ||
+            !in_bounds(val_at, val_len, size) ||
+            !memchr(
+                bytes + key_at,
+                0,
+                size - key_at
+            )
+        ) continue;
 
-        const char *key = (const char *)(b + key_at);
+        const char *key =
+            (const char *)(bytes + key_at);
 
-        if (!memchr(key, 0, size - key_at))
-            continue;
+        if (!strcmp(key, "TITLE_ID"))
+            copy_sfo(
+                game->cusa,
+                sizeof(game->cusa),
+                bytes + val_at,
+                val_len
+            );
 
-        if (!strcmp(key, "TITLE_ID")) {
-            val_string(game->id, sizeof(game->id),
-                       b + val_at, value_len);
-        } else if (!strcmp(key, "TITLE")) {
-            val_string(game->name, sizeof(game->name),
-                       b + val_at, value_len);
-        } else if (!strcmp(key, "APP_VER")) {
-            val_string(game->app_ver, sizeof(game->app_ver),
-                       b + val_at, value_len);
-        } else if (!strcmp(key, "CONTENT_ID")) {
-            val_string(game->content_id, sizeof(game->content_id),
-                       b + val_at, value_len);
-        } else if (!strcmp(key, "CATEGORY")) {
-            val_string(game->category, sizeof(game->category),
-                       b + val_at, value_len);
-        }
+        else if (!strcmp(key, "TITLE"))
+            copy_sfo(
+                game->name,
+                sizeof(game->name),
+                bytes + val_at,
+                val_len
+            );
+
+        else if (!strcmp(key, "APP_VER"))
+            copy_sfo(
+                game->ver,
+                sizeof(game->ver),
+                bytes + val_at,
+                val_len
+            );
+
+        else if (!strcmp(key, "CONTENT_ID"))
+            copy_sfo(
+                game->cid,
+                sizeof(game->cid),
+                bytes + val_at,
+                val_len
+            );
+
+        else if (!strcmp(key, "CATEGORY"))
+            copy_sfo(
+                game->category,
+                sizeof(game->category),
+                bytes + val_at,
+                val_len
+            );
     }
 
-    free(b);
+    free(bytes);
     return 1;
 }
 
-static void write_json_string(FILE *f, const char *s) {
-    fputc('"', f);
-
-    for (const unsigned char *p = (const unsigned char *)s; *p; ++p) {
-        if (*p == '"' || *p == '\\') {
-            fputc('\\', f);
-            fputc(*p, f);
-        } else if (*p < 0x20) {
-            fprintf(f, "\\u%04x", *p);
-        } else {
-            fputc(*p, f);
-        }
-    }
-
-    fputc('"', f);
-}
-
-static unsigned scan_directory(
-    FILE *out,
-    const char *root,
-    const char *location
+static void scan_dir(
+    const char *dirpath,
+    const char *source,
+    int *err
 ) {
     errno = 0;
-    DIR *dir = opendir(root);
+    DIR *dir = opendir(dirpath);
 
     if (!dir) {
-        int code = errno;
-
-        if (!strcmp(location, "internal")) {
-            ++g_errors;
-            g_internal_opendir_errno = code;
-        } else {
-            g_external_opendir_errno = code;
-        }
-        return 0;
+        *err = errno;
+        return;
     }
 
-    if (!strcmp(location, "internal"))
-        g_internal_opendir_errno = 0;
-    else
-        g_external_opendir_errno = 0;
-
-    unsigned found = 0;
+    *err = 0;
     struct dirent *entry;
 
-    while ((entry = readdir(dir)) != NULL) {
-        const char *id = entry->d_name;
+    while ((entry = readdir(dir))) {
+        if (game_count >= MAX_GAMES)
+            break;
 
-        if (!valid_cusa(id) || seen(id) || g_count >= MAX_GAMES)
-            continue;
+        const char *cusa = entry->d_name;
+
+        if (
+            !is_cusa(cusa) ||
+            already_seen(cusa)
+        ) continue;
 
         char path[MAX_PATH];
 
         int n = snprintf(
             path, sizeof(path),
-            "%s/%s/param.sfo", root, id
+            "%s/%s/param.sfo",
+            dirpath, cusa
         );
 
-        if (n <= 0 || (size_t)n >= sizeof(path))
-            continue;
+        if (
+            n <= 0 ||
+            (size_t)n >= sizeof(path)
+        ) continue;
 
-        game_t g;
+        Game candidate;
 
-        if (!parse_sfo(path, &g)) {
-            ++g_sfo_parse_failures;
-            continue;
+        if (!parse_sfo(path, &candidate)) {
+            n = snprintf(
+                path, sizeof(path),
+                "%s/%s/sce_sys/param.sfo",
+                dirpath, cusa
+            );
+
+            if (
+                n <= 0 ||
+                (size_t)n >= sizeof(path) ||
+                !parse_sfo(path, &candidate)
+            ) {
+                ++parse_failures;
+                continue;
+            }
         }
 
-        if (!valid_cusa(g.id) || strcmp(g.id, id))
+        if (strcmp(candidate.cusa, cusa))
             continue;
 
         if (
-            g.category[0] &&
-            strcmp(g.category, "gd") &&
-            strcmp(g.category, "gde")
-        ) {
-            continue;
-        }
+            candidate.category[0] &&
+            strcmp(candidate.category, "gd") &&
+            strcmp(candidate.category, "gde") &&
+            strcmp(candidate.category, "gda") &&
+            strcmp(candidate.category, "gdo")
+        ) continue;
 
-        if (g_count)
-            fputs(",\n", out);
-
-        fputs("    {\"cusa\":", out);
-        write_json_string(out, g.id);
-
-        fputs(",\"name\":", out);
-        write_json_string(out, g.name);
-
-        fputs(",\"app_ver\":", out);
-        write_json_string(out, g.app_ver);
-
-        fputs(",\"content_id\":", out);
-        write_json_string(out, g.content_id);
-
-        fputs(",\"category\":", out);
-        write_json_string(out, g.category);
-
-        fputs(",\"metadata_location\":", out);
-        write_json_string(out, location);
-
-        fputs(
-            ",\"metadata_available\":true,"
-            "\"installed_confirmed\":false}",
-            out
+        snprintf(
+            candidate.source,
+            sizeof(candidate.source),
+            "%s", source
         );
 
-        memcpy(g_seen[g_count], id, 10);
-        ++g_count;
-        ++found;
+        games[game_count++] = candidate;
     }
 
     closedir(dir);
-    return found;
 }
 
-/* PS4-only path diagnostics */
-#ifdef __ORBIS__
-
-static void probe_path(
-    FILE *report,
-    const char *path,
-    int is_file
+static void json_string(
+    FILE *fp,
+    const char *s
 ) {
-    struct stat info;
+    fputc('"', fp);
+
+    for (
+        const unsigned char *p =
+            (const unsigned char *)s;
+        *p;
+        ++p
+    ) {
+        if (*p == '"' || *p == '\\') {
+            fputc('\\', fp);
+            fputc(*p, fp);
+        } else if (*p < 0x20) {
+            fprintf(fp, "\\u%04x", *p);
+        } else {
+            fputc(*p, fp);
+        }
+    }
+
+    fputc('"', fp);
+}
+
+static void probe(
+    FILE *fp,
+    const char *path,
+    int directory
+) {
+    struct stat st;
 
     errno = 0;
-    int sr = stat(path, &info);
-    int se = sr == 0 ? 0 : errno;
-    int oe = -1;
+    int sr = stat(path, &st);
+    int stat_err = sr == 0 ? 0 : errno;
 
-    if (is_file) {
-        errno = 0;
-        FILE *input = fopen(path, "rb");
+    errno = 0;
+    int access_err;
 
-        oe = input ? 0 : errno;
+    if (directory) {
+        DIR *d = opendir(path);
+        access_err = d ? 0 : errno;
 
-        if (input)
-            fclose(input);
+        if (d) closedir(d);
     } else {
-        errno = 0;
-        DIR *dir = opendir(path);
+        FILE *f = fopen(path, "rb");
+        access_err = f ? 0 : errno;
 
-        oe = dir ? 0 : errno;
+        if (f) fclose(f);
+    }
 
-        if (dir)
-            closedir(dir);
+    fprintf(
+        fp,
+        "%s | stat=%d | %s=%d\n",
+        path,
+        stat_err,
+        directory ? "opendir" : "fopen",
+        access_err
+    );
+}
+
+#ifdef __ORBIS__
+
+typedef int32_t (*InitFn)(void);
+typedef int32_t (*TermFn)(void);
+typedef int32_t (*ExistsFn)(
+    const char *, int32_t *
+);
+
+static void check_installed(FILE *report) {
+    int32_t handle =
+        (int32_t)sceKernelLoadStartModule(
+            "/system/common/lib/libSceAppInstUtil.sprx",
+            0, NULL, 0, NULL, NULL
+        );
+
+    fprintf(
+        report,
+        "AppInstUtil module handle: 0x%08x\n",
+        (uint32_t)handle
+    );
+
+    if (handle < 0) {
+        install_api_status = 1;
+        return;
+    }
+
+    void *sym_init = NULL;
+    void *sym_term = NULL;
+    void *sym_exists = NULL;
+
+    if (
+        sceKernelDlsym(
+            handle,
+            "sceAppInstUtilInitialize",
+            &sym_init
+        ) != 0 ||
+
+        sceKernelDlsym(
+            handle,
+            "sceAppInstUtilTerminate",
+            &sym_term
+        ) != 0 ||
+
+        sceKernelDlsym(
+            handle,
+            "sceAppInstUtilAppExists",
+            &sym_exists
+        ) != 0 ||
+
+        !sym_init ||
+        !sym_term ||
+        !sym_exists
+    ) {
+        install_api_status = 2;
+
+        fputs(
+            "AppInstUtil symbol lookup failed\n",
+            report
+        );
+        return;
+    }
+
+    InitFn init = (InitFn)sym_init;
+    TermFn term = (TermFn)sym_term;
+    ExistsFn exists = (ExistsFn)sym_exists;
+
+    int32_t result = init();
+
+    fprintf(
+        report,
+        "AppInstUtil initialize: 0x%08x\n",
+        (uint32_t)result
+    );
+
+    if (result) {
+        install_api_status = 3;
+        return;
+    }
+
+    install_api_status = 0;
+
+    /* Known diagnostic anchor */
+    int32_t flag = -1;
+
+    result = exists("CUSA02343", &flag);
+
+    fprintf(
+        report,
+        "Anchor CUSA02343: result=0x%08x, exists=%d\n",
+        (uint32_t)result,
+        flag
+    );
+
+    for (unsigned i = 0; i < game_count; ++i) {
+        flag = -1;
+
+        result = exists(
+            games[i].cusa,
+            &flag
+        );
+
+        if (result == 0)
+            games[i].installed =
+                flag ? 1 : 0;
     }
 
     fprintf(
         report,
-        "%s | stat_errno=%d | %s_errno=%d | mode=%s\n",
-        path,
-        se,
-        is_file ? "fopen" : "opendir",
-        oe,
-        sr == 0 ?
-            (S_ISDIR(info.st_mode) ? "directory" : "file") :
-            "unknown"
+        "AppInstUtil terminate: 0x%08x\n",
+        (uint32_t)term()
     );
 }
-
-static void write_path_probe(void) {
-    FILE *report = fopen(
-        OUT_DIR "/path_probe.txt", "wb"
-    );
-
-    if (!report)
-        return;
-
-    fputs(
-        "PS4 Game Scanner Path Probe v0.3.3\n"
-        "Read-only diagnostic from application sandbox.\n"
-        "0=OK; 2=not found; 13=permission denied\n\n",
-        report
-    );
-
-    probe_path(report, "/data", 0);
-    probe_path(report, "/user", 0);
-    probe_path(report, "/system_data", 0);
-    probe_path(report, "/system_data/priv", 0);
-
-    probe_path(
-        report,
-        "/system_data/priv/appmeta",
-        0
-    );
-
-    probe_path(
-        report,
-        "/system_data/priv/appmeta/CUSA02343",
-        0
-    );
-
-    probe_path(
-        report,
-        "/system_data/priv/appmeta/CUSA02343/param.sfo",
-        1
-    );
-
-    probe_path(
-        report,
-        "/system_data/priv/mms/app.db",
-        1
-    );
-
-    probe_path(report, "/user/appmeta", 0);
-    probe_path(report, "/user/appmeta/CUSA02343", 0);
-
-    probe_path(
-        report,
-        "/user/appmeta/CUSA02343/param.sfo",
-        1
-    );
-
-    probe_path(report, "/user/app", 0);
-    probe_path(report, "/user/app/CUSA02343", 0);
-    probe_path(report, "/mnt/sandbox", 0);
-
-    fclose(report);
-}
-
 #endif
 
-static void status_file(const char *msg) {
-    char path[MAX_PATH];
+static int write_inventory(
+    const char *path
+) {
+    FILE *out = fopen(path, "wb");
 
-    snprintf(
-        path, sizeof(path),
-        "%s/status.txt", OUT_DIR
+    if (!out) return 0;
+
+    fputs(
+        "{\n"
+        "  \"schema\":3,\n"
+        "  \"source\":\"ps4-native-diagnostic-v0.4\",\n"
+        "  \"metadata_only\":true,\n"
+        "  \"download_enabled\":false,\n"
+        "  \"install_enabled\":false,\n"
+        "  \"games\":[\n",
+        out
     );
 
-    FILE *f = fopen(path, "wb");
+    for (unsigned i = 0; i < game_count; ++i) {
+        const Game *g = &games[i];
 
-    if (f) {
-        fputs(msg, f);
-        fclose(f);
+        if (i) fputs(",\n", out);
+
+        fputs("    {\"cusa\":", out);
+        json_string(out, g->cusa);
+
+        fputs(",\"name\":", out);
+        json_string(out, g->name);
+
+        fputs(",\"app_ver\":", out);
+        json_string(out, g->ver);
+
+        fputs(",\"content_id\":", out);
+        json_string(out, g->cid);
+
+        fputs(",\"category\":", out);
+        json_string(out, g->category);
+
+        fputs(",\"metadata_location\":", out);
+        json_string(out, g->source);
+
+        fputs(",\"installed_confirmed\":", out);
+
+        fputs(
+            g->installed == 1 ? "true" : "false",
+            out
+        );
+
+        fputs(",\"install_state\":", out);
+
+        fputs(
+            g->installed == 1
+                ? "\"INSTALLED\""
+                : g->installed == 0
+                    ? "\"NOT_INSTALLED\""
+                    : "\"UNKNOWN\"",
+            out
+        );
+
+        fputc('}', out);
     }
+
+    fputs("\n  ]\n}\n", out);
+
+    int error = ferror(out);
+
+    if (fclose(out))
+        error = 1;
+
+    return !error;
 }
 
 int main(int argc, char **argv) {
-    const char *root = META_ROOT;
-    const char *outname = OUT_DIR "/inventory.json";
+    const char *root =
+        "/system_data/priv/appmeta";
+
+    const char *output =
+        OUT_DIR "/inventory_v04.json";
 
 #ifndef __ORBIS__
     for (int i = 1; i < argc; ++i) {
@@ -440,11 +588,12 @@ int main(int argc, char **argv) {
             !strcmp(argv[i], "--out") &&
             i + 1 < argc
         ) {
-            outname = argv[++i];
+            output = argv[++i];
         } else {
             fprintf(
                 stderr,
-                "Usage: %s [--appmeta DIR] [--out FILE]\n",
+                "Usage: %s [--appmeta DIR] "
+                "[--out FILE]\n",
                 argv[0]
             );
             return 2;
@@ -457,98 +606,131 @@ int main(int argc, char **argv) {
     if (
         mkdir(OUT_DIR, 0777) != 0 &&
         errno != EEXIST
-    ) {
-        printf(
-            "Unable to create %s\n", OUT_DIR
-        );
-        return 1;
-    }
-
-    write_path_probe();
+    ) return 2;
 #endif
 
-    struct stat root_info;
-
-    errno = 0;
-
-    if (stat(root, &root_info) == 0)
-        g_root_stat_errno = 0;
-    else
-        g_root_stat_errno = errno;
-
-    FILE *f = fopen(outname, "wb");
-
-    if (!f) {
-        fprintf(
-            stderr,
-            "Cannot create output %s (errno=%d)\n",
-            outname, errno
-        );
-        return 1;
-    }
-
-    fputs(
-        "{\n"
-        "  \"schema\": 3,\n"
-        "  \"source\": \"ps4-appmeta-native-smoke-test\",\n"
-        "  \"metadata_only\": true,\n"
-        "  \"games\": [\n",
-        f
-    );
-
-    scan_directory(f, root, "internal");
-
-    char ext[MAX_PATH];
+    char external[MAX_PATH];
 
     int n = snprintf(
-        ext, sizeof(ext),
-        "%s/external", root
+        external,
+        sizeof(external),
+        "%s/external",
+        root
     );
 
-    if (n > 0 && (size_t)n < sizeof(ext))
-        scan_directory(f, ext, "external");
+    FILE *report = NULL;
 
-    fputs("\n  ]\n}\n", f);
+#ifdef __ORBIS__
+    report = fopen(
+        OUT_DIR "/diagnostic_v04.txt",
+        "wb"
+    );
+#endif
 
-    int fail = ferror(f);
-
-    if (fclose(f) != 0)
-        fail = 1;
-
-    if (fail) {
-        status_file(
-            "ERROR: could not finish inventory.json\n"
+    if (report) {
+        fputs(
+            "PS4 Auto Updater v0.4 | READ ONLY\n"
+            "0=OK; 2=not found; "
+            "13=permission denied\n",
+            report
         );
-        return 1;
+
+        probe(report, "/data", 1);
+        probe(report, "/user", 1);
+        probe(report, "/system_data", 1);
+        probe(report, "/system_data/priv", 1);
+        probe(
+            report,
+            "/system_data/priv/appmeta",
+            1
+        );
+        probe(
+            report,
+            "/system_data/priv/appmeta/"
+            "CUSA02343/param.sfo",
+            0
+        );
+        probe(
+            report,
+            "/system_data/priv/mms/app.db",
+            0
+        );
+        probe(report, "/user/appmeta", 1);
+        probe(report, "/user/app", 1);
+        probe(report, "/mnt/sandbox", 1);
+
+        fflush(report);
     }
 
-    char msg[768];
-
-    snprintf(
-        msg, sizeof(msg),
-        "PS4 Game Scanner Diagnostic v0.3.3\n"
-        "Metadata records: %u\n"
-        "Scan errors: %u\n"
-        "Root stat errno: %d\n"
-        "Internal opendir errno: %d\n"
-        "External opendir errno: %d\n"
-        "SFO open failures: %u\n"
-        "SFO parse failures: %u\n"
-        "Metadata only: YES\n"
-        "Installed games confirmed: NO\n"
-        "Errno 13=permission denied, "
-        "2=not found, 0=OK, -1=not checked.\n",
-        g_count,
-        g_errors,
-        g_root_stat_errno,
-        g_internal_opendir_errno,
-        g_external_opendir_errno,
-        g_sfo_open_failures,
-        g_sfo_parse_failures
+    scan_dir(
+        root,
+        "internal",
+        &root_errno
     );
 
-    status_file(msg);
-    printf("%s", msg);
+    if (
+        n > 0 &&
+        (size_t)n < sizeof(external)
+    ) {
+        scan_dir(
+            external,
+            "external",
+            &external_errno
+        );
+    }
 
-    return 0;
+#ifdef __ORBIS__
+    scan_dir(
+        "/user/appmeta",
+        "user",
+        &user_errno
+    );
+
+    scan_dir(
+        "/user/app",
+        "userapp",
+        &user_app_errno
+    );
+
+    if (report)
+        check_installed(report);
+#endif
+
+    int saved = write_inventory(output);
+
+    if (report) {
+        fprintf(
+            report,
+            "Metadata records: %u\n"
+            "Root opendir errno: %d\n"
+            "External opendir errno: %d\n"
+            "User appmeta errno: %d\n"
+            "User app errno: %d\n"
+            "SFO open failures: %u\n"
+            "SFO parse failures: %u\n"
+            "Installation API status: %d\n"
+            "Inventory write success: %s\n"
+            "Installed count (confirmed): ",
+            game_count,
+            root_errno,
+            external_errno,
+            user_errno,
+            user_app_errno,
+            open_failures,
+            parse_failures,
+            install_api_status,
+            saved ? "YES" : "NO"
+        );
+
+        unsigned confirmed = 0;
+
+        for (unsigned i = 0; i < game_count; ++i)
+            if (games[i].installed == 1)
+                ++confirmed;
+
+        fprintf(report, "%u\n", confirmed);
+        fclose(report);
+    }
+
+    return saved ? 0 : 1;
 }

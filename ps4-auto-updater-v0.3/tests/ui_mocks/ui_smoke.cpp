@@ -127,12 +127,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             const uint32_t *frame=display_buffers[index];
             const size_t row=50u*SCREEN_WIDTH;
             const uint32_t active=0xFF116BCEu;
-            const int home=frame[row+1122u]==active;
-            const int details=frame[row+1382u]==active;
-            const int downloads=frame[row+1622u]==active;
+            const int home=frame[row+932u]==active;
+            const int details=frame[row+1112u]==active;
+            const int downloads=frame[row+1347u]==active;
+            const int settings=frame[row+1592u]==active;
             if(home) capture_ppm(frame,"home",1u);
             else if(details) capture_ppm(frame,"details",2u);
             else if(downloads) capture_ppm(frame,"downloads",4u);
+            else if(settings) capture_ppm(frame,"settings",16u);
             else capture_ppm(frame,"search",8u);
         }
     }
@@ -155,7 +157,8 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
     /* Exercise actual controller flow: home -> details -> home ->
-     * downloads -> home -> Arabic/English search -> home -> exit.
+     * downloads -> home -> Arabic/English search -> home ->
+     * settings -> home -> exit.
      * These are host input mocks, not simulated success of networking. */
     if (pad_reads == 2) data->buttons = ORBIS_PAD_BUTTON_CROSS;
     if (pad_reads == 4) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
@@ -165,7 +168,9 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
     if (pad_reads == 12) data->buttons = ORBIS_PAD_BUTTON_CROSS;
     if (pad_reads == 14) data->buttons = ORBIS_PAD_BUTTON_SQUARE;
     if (pad_reads == 16) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
-    if (pad_reads == 18) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 18) data->buttons = ORBIS_PAD_BUTTON_OPTIONS;
+    if (pad_reads == 20) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
+    if (pad_reads == 22) data->buttons = ORBIS_PAD_BUTTON_CIRCLE;
     return 0;
 }
 size_t sceKernelGetDirectMemorySize(void) { return 512u * 1024u * 1024u; }
@@ -214,7 +219,7 @@ int main() {
     assert(saw_blurred_background);
     scanner_ui_shutdown(trace);
     assert(flip_count >= 8);
-    assert(pad_reads >= 18);
+    assert(pad_reads >= 22);
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);

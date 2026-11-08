@@ -222,6 +222,14 @@ class ScannerFTPTests(unittest.TestCase):
              "CUSA99999": sfo("CUSA99999", "DLC", "01.00", "ac")},
         )
         self.assertEqual(inventory["schema"], 5)
+        self.assertEqual(
+            [c["cusa"] for c in inventory["directory_candidates"]],
+            ["CUSA02343", "CUSA00411", "CUSA99999"]
+        )
+        self.assertTrue(all(
+            c["metadata_verified"] is False
+            for c in inventory["directory_candidates"]
+        ))
         self.assertTrue(inventory["scan_complete"])
         self.assertEqual([g["cusa"] for g in inventory["games"]],
                          ["CUSA02343", "CUSA00411"])
@@ -447,6 +455,10 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("Directory candidates: 1", diagnostic)
         self.assertIn("SFO FILE CUSA02343 bytes=0", diagnostic)
         self.assertIn("SFO CUSA02343: -30", diagnostic)
+        self.assertEqual(
+            inventory["directory_candidates"][0]["cusa"], "CUSA02343")
+        self.assertFalse(
+            inventory["directory_candidates"][0]["metadata_verified"])
 
     def test_patch_metadata_is_not_a_base_game(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

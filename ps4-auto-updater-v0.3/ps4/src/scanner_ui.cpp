@@ -364,11 +364,18 @@ static void background(uint32_t *p) {
     rect(p,0,0,WIDTH,HEIGHT,BG);
     if(blur_available) {
         /* Opaque, darkened tint keeps Arabic captions legible. */
+        static_assert(WIDTH % BLUR_WIDTH == 0 &&
+                      HEIGHT % BLUR_HEIGHT == 0,
+                      "Backdrop must fit integer pixel blocks");
+        const int block_w=WIDTH/BLUR_WIDTH;
+        const int block_h=HEIGHT/BLUR_HEIGHT;
         for(int y=116;y<1000;++y) {
             uint32_t *line=p+(size_t)y*WIDTH;
-            int src_y=y*BLUR_HEIGHT/HEIGHT;
-            for(int x=0;x<WIDTH;++x) {
-                line[x]=blur_image[src_y*BLUR_WIDTH+x*BLUR_WIDTH/WIDTH];
+            const uint32_t *src=blur_image+(y/block_h)*BLUR_WIDTH;
+            for(int tile=0;tile<BLUR_WIDTH;++tile) {
+                const uint32_t pixel=src[tile];
+                uint32_t *dst=line+tile*block_w;
+                for(int dx=0;dx<block_w;++dx) dst[dx]=pixel;
             }
         }
     } else {

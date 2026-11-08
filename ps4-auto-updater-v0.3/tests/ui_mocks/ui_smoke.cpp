@@ -133,6 +133,9 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
         if(capture_cached_preview) {
+            /* This is a real host CPU-framebuffer capture of the cached
+             * native UI, not a screenshot from PS4 hardware. */
+            capture_ppm(display_buffers[index],"cached",64u);
             /* Sixth row is y=827..915. The stale warning must not cover it. */
             if(display_buffers[index][903u*SCREEN_WIDTH+600u]==
                0xFF0C244Au)

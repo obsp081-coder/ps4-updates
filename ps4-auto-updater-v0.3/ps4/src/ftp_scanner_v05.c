@@ -21,6 +21,7 @@
 #include <orbis/AppInstUtil.h>
 #include <orbis/libkernel.h>
 #include "scanner_ui.h"
+#include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)
 #define NET_RECV sceNetRecv
@@ -1050,7 +1051,7 @@ static int save_inventory(const char *path) {
     fputs(
         "{\n"
         "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v064\",\n"
+        "  \"source\":\"ftp_loopback_readonly_v065\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
         fp
@@ -1144,14 +1145,14 @@ int main(void) {
     if (
         mkdir(ROOT, 0777) != 0 &&
         errno != EEXIST
-    ) return 2;
+    ) ps4_shell_exit(2, NULL);
 
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v064.json";
+        ROOT "/inventory_v065.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v064.txt";
+        ROOT "/diagnostic_v065.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1187,7 +1188,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.4 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.5 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -1338,6 +1339,12 @@ int main(void) {
     logmsg("UI_SHUTDOWN_RETURNED", 1);
 #endif
 
+#ifdef __ORBIS__
+    /* The PS4 libc _exit trampoline is not a verified process exit.
+     * Keep the diagnostic stream open and flushed until shell exit. */
+    logmsg("APP_MAIN_RETURN_PREVENTED", 1);
+    ps4_shell_exit(saved == 0 ? 0 : 1, logmsg);
+#else
     logmsg("APP_MAIN_RETURNING", saved == 0 ? 0 : 1);
     if (report) {
         fflush(report);
@@ -1345,4 +1352,5 @@ int main(void) {
         report = NULL;
     }
     return saved == 0 ? 0 : 1;
+#endif
 }

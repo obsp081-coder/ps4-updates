@@ -916,7 +916,11 @@ extern "C" int scanner_ui_offer_thumbnail(
 ) {
     /* Render thread only: worker never modifies the UI's LRU cache. */
     const int result=ui_icon_cache_offer_pixels(cusa,pixels,pixel_count);
-    if(result==0)blurred_for[0]=0; /* Refresh backdrop only after a new icon. */
+    /* Only invalidate when the changed cover is actually the selected
+     * backdrop; unrelated list covers must not recompute the blur. */
+    if(result==0 && cusa && blurred_for[0] &&
+       strcmp(blurred_for,cusa)==0)
+        blurred_for[0]=0;
     return result;
 }
 

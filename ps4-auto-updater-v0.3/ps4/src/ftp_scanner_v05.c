@@ -1000,18 +1000,18 @@ static int scan_root(
 /* Optional local icon prefetch: fail closed on PNG corruption. FTP
  * TYPE I may be unsupported; only accept ASCII newline repair after
  * all PNG chunks pass CRC32 validation. Never install or write game files.
- * First eight icons only. A later async/lazy loading mechanism is needed. */
+ * Prefetch up to eight validated base-game icons only. Lazy loading is still pending. */
 static void prefetch_local_icons(sock_t control) {
-    if (candidate_count == 0) return;
+    if (found == 0) return;
     char reply_line[512];
     const int type = command(control, reply_line, sizeof reply_line, "TYPE I");
     logmsg("ICON_FTP_TYPE_I_RC", type);
     if (type != 200)
         logmsg("ICON_FTP_BINARY_UNSUPPORTED_CRC_FALLBACK", 1);
     static unsigned char icon_png[2 * 1024 * 1024];
-    unsigned attempted = candidate_count < 8 ? candidate_count : 8;
+    unsigned attempted = found < 8 ? found : 8;
     for (unsigned i=0; i<attempted; ++i) {
-        const DirectoryCandidate *candidate = &candidate_list[i];
+        const Game *candidate = &games[i];
         if (!valid_id(candidate->cusa)) continue;
         const char *root = strcmp(candidate->source,"external") == 0
             ? "/system_data/priv/appmeta/external"
@@ -1452,35 +1452,21 @@ int main(void) {
     logmsg("SCAN_STAGE_RESULTS_NEXT", 1);
 
 #ifdef __ORBIS__
-    /* Display candidates separately from metadata-verified games. */
+    /* UI library lists validated BASE games only. Directory candidates,
+     * Patch and DLC remain separate in the read-only diagnostic inventory.
+     * Metadata verification is NOT installation confirmation. */
     static ScannerUiEntry ui_items[MAX_GAMES];
-    for (unsigned i = 0; i < candidate_count; ++i) {
-        ui_items[i].cusa = candidate_list[i].cusa;
-        ui_items[i].title = NULL;
-        ui_items[i].version = NULL;
-        ui_items[i].metadata_verified = 0;
-        ui_items[i].install_state = -1;
-        ui_items[i].category = NULL;
-        for (unsigned j = 0; j < metadata_found; ++j) {
-            if (strcmp(candidate_list[i].cusa, metadata_records[j].cusa) != 0)
-                continue;
-            const Game *g = &metadata_records[j];
-            ui_items[i].title = g->name;
-            ui_items[i].version = g->version;
-            ui_items[i].category = g->category;
-            ui_items[i].metadata_verified = 1;
-            ui_items[i].install_state = -1;
-            for (unsigned k = 0; k < found; ++k) {
-                if (!strcmp(games[k].cusa, g->cusa)) {
-                    ui_items[i].install_state = games[k].installed;
-                    break;
-                }
-            }
-            break;
-        }
+    for (unsigned i = 0; i < found; ++i) {
+        const Game *g = &games[i];
+        ui_items[i].cusa = g->cusa;
+        ui_items[i].title = g->name;
+        ui_items[i].version = g->version;
+        ui_items[i].metadata_verified = 1;
+        ui_items[i].install_state = g->installed;
+        ui_items[i].category = g->category;
     }
     scanner_ui_results(
-        ui_items, candidate_count, found, (unsigned)errors,
+        ui_items, found, found, (unsigned)errors,
         ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0,
         saved == 0
     );

@@ -90,6 +90,16 @@ class UpdateMatcherTests(unittest.TestCase):
             "INSTALL_UNCONFIRMED"
         )
 
+    def test_duplicate_install_records_never_confirm_presence(self):
+        self.check["games"].append({
+            "cusa": "CUSA02343", "installed": False
+        })
+        self.assertEqual(self.status(), "INSTALL_UNCONFIRMED")
+
+    def test_invalid_install_type_is_ignored(self):
+        self.check["games"][0]["installed"] = "yes"
+        self.assertEqual(self.status(), "INSTALL_UNCONFIRMED")
+
     def test_missing_install_record_is_unconfirmed(self):
         self.check["games"] = []
 

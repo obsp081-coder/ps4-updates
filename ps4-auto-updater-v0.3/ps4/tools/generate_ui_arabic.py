@@ -74,8 +74,13 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         raise RuntimeError("Pillow must have libraqm for proper Arabic shaping")
     if not font_path.is_file():
         raise FileNotFoundError("Arabic font missing (install fonts-noto-core)")
+    # Ubuntu 22.04's packaged Pillow predates ImageFont.Layout enum.
+    # Both API generations expose the same libraqm shaping engine.
+    layout = getattr(getattr(ImageFont, "Layout", None), "RAQM", None)
+    if layout is None:
+        layout = ImageFont.LAYOUT_RAQM
     font = ImageFont.truetype(str(font_path), font_size,
-                              layout_engine=ImageFont.Layout.RAQM)
+                              layout_engine=layout)
     header = [
         "/* GENERATED at build time: Arabic shaped RTL label masks, 2 bits/px.",
         " * Source NotoSansArabic-Regular (SIL Open Font License 1.1).",

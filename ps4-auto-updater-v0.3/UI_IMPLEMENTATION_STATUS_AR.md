@@ -9,15 +9,15 @@
 
 | الملف/الوحدة | ما تنفذه الآن | مستوى الدليل |
 |---|---|---|
-| ps4/src/scanner_ui.cpp | Royal Blue و6 صفوف وتفاصيل وبحث وإعدادات؛ تصفح Snapshot خلال فحص غير متزامن عبر `scanner_ui_wait_for_scan`؛ الاحتفاظ به إذا فشل الفحص الجزئي؛ عرض بيانات تحديثات وتنزيلات للقراءة فقط | Host framebuffer tests، **يحتاج PS4 hardware** |
+| ps4/src/scanner_ui.cpp | Royal Blue و6 صفوف وتفاصيل وبحث وإعدادات؛ تصفح Snapshot خلال الفحص؛ إعادة اختيار CUSA بعد الفحص؛ طلب صور مختارة/ظاهرة من Lazy Worker عبر Callback غير حاجب؛ Pad Polling نحو 33ms | Host framebuffer tests + OpenOrbis Build؛ **يحتاج PS4 hardware** |
 | ps4/src/ui_snapshot.c/h | Cache محلي ثنائي للعبة الأساسية فقط، 256 سجلًا كحد أقصى؛ CRC وفحص حجم/إصدارات/هوية وعدم التكرار، مع استبدال الملف عبر Rename بعد التحقق؛ لا حالة تثبيت معتمدة | اختبار Host للتلف والتكرار والملفات الناقصة + بناء OpenOrbis |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
-| ps4/src/ui_navigation.c/h | صفحات الرئيسية/التفاصيل/التنزيلات/البحث، اختيار وتمرير، لوحة مفاتيح عربية/English، بحث Title/CUSA، حدود 256 | اختبارات Host |
+| ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع الاحتفاظ باختيار CUSA والاستعلام ولوحة المفاتيح، وإغلاق Details إذا اختفت اللعبة | اختبارات Host |
 | ps4/tools/generate_ui_arabic.py | نصوص واجهة عربية RTL مشكّلة وخريطة مختصرة لحروف عناوين الألعاب؛ Font من Build Machine فقط | CI Generator + Host compile |
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
-| ps4/src/ui_icon_cache.c/h | 8 صور LRU؛ إضافة Import لصورة Thumbnail محوّلة من Worker بعد Join، مع رفض الحجم الخطأ | اختبارات Host |
+| ps4/src/ui_icon_cache.c/h | 8 صور LRU؛ استلام Thumbnail متحقق منه على UI Thread من Mailbox بعد اكتمال طلب الصورة؛ رفض حجم خاطئ مع عدم إفساد Cache | اختبارات Host |
 | ps4/src/ui_png_transport.c/h | فحص CRC لكل جزء PNG، ومحاولة استعادة النقل FTP ASCII فقط إذا تطابقت CRCs | اختبارات Host |
-| ps4/src/ftp_scanner_v05.c | GoldHEN FTP read-only على `scePthread` مع Status atomics، Cancel signal وJoin؛ تحميل 8 صور أساسية وتجهير Thumbnail خارج UI ثم نقلها بعد Join | Host scanner + Build؛ **لا اختبار FW14 لهذا الـThread** |
+| ps4/src/ftp_scanner_v05.c | GoldHEN FTP read-only على Scan Thread منفصل؛ بعد Join يُنشأ Cover Worker اختياري لصور الألعاب المطلوبة فقط عبر Single-slot Atomic Mailbox؛ CRC/PNG Decode خارج UI، Cancel/Join عند الخروج | Host scanner + Native Build؛ **لم يثبت Cover Worker على FW14 الحقيقي** |
 | ps4/src/ps4_shell_exit.c | إنهاء عبر SystemService بدل libc exit | تم التحقق من الخروج على FW14 في الإصدار السابق v0.6.5، **وليس** هذا الفرع |
 
 ## واجهة المستخدم حسب اختياراتك
@@ -34,11 +34,11 @@
 ## نواقص الواجهة قبل اعتبارها كاملة
 
 1. **Background Worker للـScanner:** تم فصل FTP وSFO وصور الألعاب عن VideoOut/Pad عبر `scePthreadCreate` في الكود، مع `scePthreadJoin` وCancel متعاون وإعادة عرض Snapshot أثناء الفحص. اختبارات Host تغطي التنقل إلى التفاصيل والإعدادات والعودة أثناء انتظار Worker، واختبار الخروج قبل اكتمال Worker. **مع ذلك: لا توجد حتى الآن تجربة حقيقية تثبت توافق API/استقرار الواجهة على Firmware 14.00.** عند فشل إنشاء Worker لا يتم إجراء فحص متزامن يجمّد الواجهة، بل تعرض حالة Cache غير مؤكدة. أول تشغيل دون Snapshot يبدأ بقائمة فارغة مؤقتًا؛ نقل بيانات JSON القديمة غير منفذ.
-2. **صور الأغلفة عند التمرير والبحث:** الـPrefetch أصبح لأول ثمانية Base Games مُتحققة فقط، ومعالجة PNG تتم داخل Worker وتُنقل نتيجتها للـUI بعد Join. ما زال Lazy Loading مع التمرير/البحث وإعادة تحميل أغلفة Cache ناقصًا.
+2. **صور الأغلفة:** أزيل Prefetch الثابت لأول ثماني ألعاب؛ يوجد الآن Lazy Loading عند اختيار اللعبة/التمرير عبر Worker منفصل وMailbox وتحقق CRC وPNG، مع Cache لثماني صور. اختبارات Host تثبت أن UI يطلب غلاف لعبة بعد الثامنة ويعيد الرسم بعد وصول صورة متأخرة. **لكن التعامل الفعلي مع GoldHEN FTP على FW14 غير مختبر بعد**؛ الصور غير محفوظة على القرص من Snapshot، ولا توجد Retry Policy مستقلة للأغلفة غير المتاحة، والبحث لا يحمّل أغلفة أثناء لوحة المفاتيح.
 3. **عناوين الألعاب بلغات مختلطة:** التشكيل العربي الحالي محدود، وليس Unicode Bidi كاملًا ولا يدعم Asian titles بصورة موثوقة. يلزم Renderer شامل واختبارات خط/رخص.
 4. **القياس الدقيق:** عرض حجم لعبة/منطقة/نوع Retail أو FPKG/النسخة ومتطلبات FW لا يُملأ إلا من مصادر مؤكدة، ولا يجوز استنتاجه من SFO وحده. حاليًا تظهر «غير متوفر» لهذه الخانات.
 5. **جودة مطابقة التصميم المعتمد:** الأيقونات والحدود وخط العناوين والتدرجات وتوقيت الحركة، وتناسق RTL في شاشة 1080p على جهاز فعلي؛ ما زالت بحاجة مراجعة بصرية ومقارنة بالـMockups.
-6. **التنقل/الأداء:** قياس التوقيت وRAM على جهاز PS4 أساسي مع 0 و256 لعبة، واختبار 100 عملية فتح/خروج، وانقطاع FTP، وPNG تالف وكبير.
+6. **التنقل/الأداء:** تم تغيير Polling للـPad من 100ms إلى ~33ms دون إعادة رسم كل Frame، لكن **30 FPS ليس مثبتًا**. ما زلنا نحتاج قياس التوقيت وRAM على PS4 الأساسي مع 0 و256 لعبة، واختبار 100 فتح/خروج، وانقطاع FTP، وPNG تالف/كبير والتراجع عند فشل إنشاء Cover Worker.
 7. **الإشعارات والصوت:** لا تُفعَّل حتى الحصول على واجهات PS4 Native مثبتة؛ طلب المستخدم أصواتًا فقط عند اكتمال التنزيل أو حدوث خطأ.
 8. **بيانات تنزيلات حقيقية/تحذير الخروج:** صفحة Downloads الأساسية جاهزة بصريًا لكنها لا تتعامل مع Jobs حقيقية؛ ربط Queue لاحقًا لن يُعرض كمكتمل قبل إثبات تنزيل/Resume/Install على FW14.
 
@@ -49,6 +49,6 @@
 - تجنب تغيير منطق GoldHEN read-only وSystemService exit الذي نجح سابقًا.
 - يجب إعادة الاختبار على PS4 FW14 لتشغيل UI الجديد؛ نجاح Host/CI لا يكفي.
 
-**التحقق من هذه المرحلة (2026-11-08):** اختبارات Host والتجميع عبر GitHub Actions؛ شغّل CI على آخر Commit قبل إعلان النجاح. بناء OpenOrbis لا يثبت تنفيذ Thread على جهاز FW14 أو FPS أو سلامة التشغيل. لا يوجد حتى الآن اختبار Hardware لهذا التغيير.
+**التحقق من هذه المرحلة (2026-11-08):** اختبارات Host تتضمن Rebind يحافظ على الهوية عند إعادة ترتيب الألعاب، واختبار Lazy Cover Mock يرسم الصورة عند وصولها واختبار طلب صورة بعد اللعبة الثامنة؛ راجع نتيجة CI على **آخر Commit** قبل اعتماد البناء. نجاح OpenOrbis لا يثبت اتصال Cover Worker على FW14 ولا FPS ولا استقرار التشغيل الحقيقي. لا يوجد اختبار Hardware لهذه التغييرات بعد.
 
 **ملفات اختبار Host:** test_native_ui.py وtest_ui_navigation.py وtest_ui_image.py وtest_ui_icon_cache.py وtest_ui_png_transport.py وtest_ui_models.py وtest_ui_snapshot.py.

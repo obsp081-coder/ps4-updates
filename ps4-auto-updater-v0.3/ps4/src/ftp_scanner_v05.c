@@ -1030,7 +1030,7 @@ static void prefetch_local_icons(sock_t control) {
         const int decoded=scanner_ui_offer_icon(candidate->cusa,icon_png,(unsigned)got);
         logmsg("ICON_THUMBNAIL_RC",decoded);
         if(report) {
-            fprintf(report,"ICON_RESULT %s transfer_bytes=%lu decode_rc=%d\\n",
+            fprintf(report,"ICON_RESULT %s transfer_bytes=%lu decode_rc=%d\n",
                     candidate->cusa,(unsigned long)got,decoded);
             fflush(report);
         }

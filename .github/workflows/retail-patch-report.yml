@@ -1,0 +1,156 @@
+
+name: PS4 Retail Patch Metadata Report
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/retail-patch-report.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  retail-report:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 6
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Test retail metadata parser offline
+        run: |
+          python3 -m unittest discover \
+            -s ps4-auto-updater-v0.3/tests \
+            -p 'test_official_patch_lookup.py' \
+            -v
+
+      - name: Query Sony retail patch metadata
+        env:
+          PYTHONPATH: ps4-auto-updater-v0.3
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+          from official_patch_lookup import discover
+
+          # Historical scanner snapshot, not live install data.
+          snapshot = [
+              ("CUSA00001", "THE PLAYROOM", "01.07"),
+              ("CUSA06122", "Roblox", "02.62"),
+              ("CUSA57220", "EA SPORTS FC 27", "01.07"),
+              ("CUSA03506", "GTA San Andreas", "01.00"),
+              ("CUSA01116", "YouTube", "02.39"),
+              ("CUSA08032", "Dead by Daylight", "03.83"),
+              ("CUSA00411", "Grand Theft Auto V", "01.57"),
+              ("CUSA03551", "Canis Canem Edit", "01.00"),
+              ("CUSA02343", "Uncharted Nathan Drake Collection", "01.00"),
+          ]
+
+          report = discover([item[0] for item in snapshot])
+
+          metadata = {
+              row["cusa"]: row for row in report["titles"]
+          }
+
+          def version(value):
+              return tuple(int(part) for part in value.split("."))
+
+          rows = []
+
+          for cusa, name, scanned_version in snapshot:
+              row = metadata[cusa]
+              official = row.get("latest_retail_version")
+              comparison = "NOT_COMPARABLE"
+
+              if row["status"] == "RETAIL_PATCH_LISTED" and official:
+                  a = version(official)
+                  b = version(scanned_version)
+
+                  comparison = (
+                      "RETAIL_NEWER_THAN_SNAPSHOT" if a > b
+                      else "RETAIL_SAME_AS_SNAPSHOT" if a == b
+                      else "RETAIL_OLDER_THAN_SNAPSHOT"
+                  )
+
+              row["name_at_last_scan"] = name
+              row["version_at_last_scan"] = scanned_version
+              row["comparison"] = comparison
+              rows.append(row)
+
+          report["title_count"] = len(rows)
+          report["scan_versions_are_historical"] = True
+          report["is_fpkg_update_catalog"] = False
+          report["fpkg_compatibility_confirmed"] = False
+          report["downloads_enabled"] = False
+          report["install_enabled"] = False
+
+          Path("retail_patch_report.json").write_text(
+              json.dumps(
+                  report,
+                  indent=2,
+                  ensure_ascii=False
+              ) + "\n",
+              encoding="utf-8"
+          )
+
+          counts = Counter(row["status"] for row in rows)
+
+          lines = [
+              "## PS4 Retail Update Metadata",
+              "",
+              "Official retail metadata, NOT FPKG compatibility.",
+              "Console versions are from a previous scan.",
+              "No game PKGs were downloaded or installed.",
+              "",
+              "| Title | CUSA | Last scan | Retail version | Result |",
+              "|---|---|---:|---:|---|",
+          ]
+
+          for row in rows:
+              lines.append(
+                  f'| {row["name_at_last_scan"]} '
+                  f'| {row["cusa"]} '
+                  f'| {row["version_at_last_scan"]} '
+                  f'| {row.get("latest_retail_version", "—")} '
+                  f'| {row["status"]} |'
+              )
+
+          lines.extend([
+              "",
+              f'Listed: {counts["RETAIL_PATCH_LISTED"]}/{len(rows)}',
+              f'Not listed (404): {counts["NOT_LISTED"]}',
+              f'Lookup failed: {counts["LOOKUP_FAILED"]}',
+              "",
+              "See the JSON artifact for full details.",
+          ])
+
+          summary = "\n".join(lines) + "\n"
+
+          print(summary)
+
+          with open(
+              os.environ["GITHUB_STEP_SUMMARY"],
+              "a",
+              encoding="utf-8"
+          ) as file:
+              file.write(summary)
+
+          if counts["LOOKUP_FAILED"] == len(rows):
+              raise SystemExit(
+                  "All lookups failed. Check network/server access. "
+                  "This does not mean no updates exist."
+              )
+          PY
+
+      - name: Upload report even if lookups fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps4-retail-patch-report
+          path: retail_patch_report.json
+          if-no-files-found: warn
+          retention-days: 14

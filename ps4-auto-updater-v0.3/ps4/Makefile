@@ -28,7 +28,7 @@ CC          := clang
 CXX         := clang++
 CXXFLAGS    := -D__ORBIS__ -std=c++17 -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
-               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include \\
+               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include \
                -I$(INTDIR)
 LD          := ld.lld
 

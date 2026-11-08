@@ -1050,7 +1050,7 @@ static int save_inventory(const char *path) {
     fputs(
         "{\n"
         "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v063\",\n"
+        "  \"source\":\"ftp_loopback_readonly_v064\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
         fp
@@ -1148,10 +1148,10 @@ int main(void) {
 
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v063.json";
+        ROOT "/inventory_v064.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v063.txt";
+        ROOT "/diagnostic_v064.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1187,7 +1187,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.3 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.4 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -1308,9 +1308,6 @@ int main(void) {
     logmsg("Inventory saved (0=OK)", saved);
 
     logmsg("SCAN_STAGE_RESULTS_NEXT", 1);
-    if (report)
-        fclose(report);
-    report = NULL;
 
 #ifdef __ORBIS__
     /* Display candidates separately from metadata-verified games. */
@@ -1336,8 +1333,16 @@ int main(void) {
         ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0,
         saved == 0
     );
-    scanner_ui_shutdown();
+    logmsg("UI_RESULTS_RETURNED", 1);
+    scanner_ui_shutdown(logmsg);
+    logmsg("UI_SHUTDOWN_RETURNED", 1);
 #endif
 
+    logmsg("APP_MAIN_RETURNING", saved == 0 ? 0 : 1);
+    if (report) {
+        fflush(report);
+        fclose(report);
+        report = NULL;
+    }
     return saved == 0 ? 0 : 1;
 }

@@ -60,6 +60,9 @@ typedef struct {
 
 static Game games[MAX_GAMES];
 static unsigned found;
+/* All validated metadata, including gp/gpe/ac. Not install proof. */
+static Game metadata_records[MAX_GAMES];
+static unsigned metadata_found;
 static FILE *report;
 static int errors;
 static int api_stage = -1;
@@ -81,6 +84,24 @@ static void logmsg(const char *name, int value) {
         fprintf(report, "%s: %d\n", name, value);
         fflush(report);
     }
+}
+
+static int metadata_index(const char *cusa) {
+    for (unsigned i = 0; i < metadata_found; ++i)
+        if (strcmp(metadata_records[i].cusa, cusa) == 0)
+            return (int)i;
+    return -1;
+}
+
+static const char *metadata_kind(const char *category) {
+    if (!strcmp(category, "gd") || !strcmp(category, "gda") ||
+        !strcmp(category, "gdo") || !strcmp(category, "gde"))
+        return "base_game";
+    if (!strcmp(category, "gp") || !strcmp(category, "gdp"))
+        return "patch_metadata";
+    if (!strcmp(category, "ac"))
+        return "dlc_metadata";
+    return "other_metadata";
 }
 
 static int valid_id(const char *s) {
@@ -212,7 +233,8 @@ static void value(
  * 1=game, 2=valid non-game/patch, 3=duplicate.
  * Negative: -30 empty, -31 bad magic, -32 bad header offsets,
  * -33 missing/invalid ID, -34 title-id mismatch, -35 content mismatch,
- * -36 inventory capacity, -37 missing CATEGORY.
+ * -36 inventory capacity, -37 missing CATEGORY,
+ * -38 duplicate/conflicting metadata from different roots.
  * Presence of an SFO does NOT confirm that an app is installed.
  */
 static int parse_sfo(
@@ -293,23 +315,20 @@ static int parse_sfo(
     if (strcmp(g.cusa, id)) return -34;
     if (g.cid[0] && !content_id_matches(g.cid, id)) return -35;
 
-    /* Keep playable base-game categories aligned with the project's
-       PKG inspector: gd, gda and gdo. gde is a demo, also playable.
-       gp/gdp are patches; ac is an add-on, not a base game. */
+    /* Validate category for every record. Do not falsely describe
+     * patch/add-on metadata as missing or invalid simply because it
+     * is not a playable base-game category. */
     if (!g.category[0]) return -37;
-    if (
-        strcmp(g.category, "gd") &&
-        strcmp(g.category, "gda") &&
-        strcmp(g.category, "gdo") &&
-        strcmp(g.category, "gde")
-    ) return 2;
-
-    if (found >= MAX_GAMES) return -36;
-    if (duplicate(id)) return 3;
-
+    if (metadata_index(id) >= 0) return -38;
+    if (metadata_found >= MAX_GAMES) return -36;
     snprintf(g.source, sizeof g.source, "%s", source);
-    games[found++] = g;
-    return 1;
+    if (!strcmp(metadata_kind(g.category), "base_game")) {
+        if (found >= MAX_GAMES) return -36;
+        if (duplicate(id)) return -38;
+        games[found++] = g;
+    }
+    metadata_records[metadata_found++] = g;
+    return !strcmp(metadata_kind(g.category), "base_game") ? 1 : 2;
 }
 
 /* Recover CRLF-expanded SFO only after raw validation fails.
@@ -1050,7 +1069,7 @@ static int save_inventory(const char *path) {
 
     fputs(
         "{\n"
-        "  \"schema\":5,\n"
+        "  \"schema\":6,\n"
         "  \"source\":\"ftp_loopback_readonly_v065\",\n"
         "  \"metadata_only\":true,\n"
         "  \"scan_complete\":",
@@ -1076,11 +1095,28 @@ static int save_inventory(const char *path) {
         json_str(fp, candidate_list[i].cusa);
         fputs(",\"source\":", fp);
         json_str(fp, candidate_list[i].source);
-        fputs(duplicate(candidate_list[i].cusa)
+        fputs(metadata_index(candidate_list[i].cusa) >= 0
                   ? ",\"metadata_verified\":true}"
                   : ",\"metadata_verified\":false}", fp);
     }
 
+    fputs("\n  ],\n  \"metadata_records\":[\n", fp);
+    for (unsigned i = 0; i < metadata_found; ++i) {
+        const Game *g = &metadata_records[i];
+        if (i) fputs(",\n", fp);
+        fputs("    {\"cusa\":", fp); json_str(fp, g->cusa);
+        fputs(",\"name\":", fp); json_str(fp, g->name);
+        fputs(",\"app_ver\":", fp); json_str(fp, g->version);
+        fputs(",\"content_id\":", fp); json_str(fp, g->cid);
+        fputs(",\"content_id_verified\":", fp);
+        fputs(g->cid[0] && content_id_matches(g->cid, g->cusa)
+                  ? "true" : "false", fp);
+        fputs(",\"category\":", fp); json_str(fp, g->category);
+        fputs(",\"metadata_kind\":", fp);
+        json_str(fp, metadata_kind(g->category));
+        fputs(",\"source\":", fp); json_str(fp, g->source);
+        fputs(",\"installed_confirmed\":false}", fp);
+    }
     fputs("\n  ],\n  \"games\":[\n", fp);
 
     for (unsigned i = 0; i < found; ++i) {
@@ -1293,6 +1329,8 @@ int main(void) {
     logmsg("Directory candidates", (int)candidate_count);
     logmsg("Directory listings observed", (int)directory_candidates);
     logmsg("SFO invalid", (int)sfo_invalid);
+    logmsg("Base-game records", (int)found);
+    logmsg("SFO metadata verified", (int)metadata_found);
     logmsg("Metadata records", (int)found);
     logmsg("Installed confirmed", (int)confirmed);
     logmsg("Installation unknown", (int)unknown);
@@ -1319,13 +1357,22 @@ int main(void) {
         ui_items[i].version = NULL;
         ui_items[i].metadata_verified = 0;
         ui_items[i].install_state = -1;
-        for (unsigned j = 0; j < found; ++j) {
-            if (strcmp(candidate_list[i].cusa, games[j].cusa) != 0)
+        ui_items[i].category = NULL;
+        for (unsigned j = 0; j < metadata_found; ++j) {
+            if (strcmp(candidate_list[i].cusa, metadata_records[j].cusa) != 0)
                 continue;
-            ui_items[i].title = games[j].name;
-            ui_items[i].version = games[j].version;
+            const Game *g = &metadata_records[j];
+            ui_items[i].title = g->name;
+            ui_items[i].version = g->version;
+            ui_items[i].category = g->category;
             ui_items[i].metadata_verified = 1;
-            ui_items[i].install_state = games[j].installed;
+            ui_items[i].install_state = -1;
+            for (unsigned k = 0; k < found; ++k) {
+                if (!strcmp(games[k].cusa, g->cusa)) {
+                    ui_items[i].install_state = games[k].installed;
+                    break;
+                }
+            }
             break;
         }
     }

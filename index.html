@@ -1,224 +1,864 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PS4 Auto Updater | لوحة المراجعة</title>
+<title>PS4 Auto Updater v0.6</title>
+
 <style>
-:root { color-scheme: dark; --bg:#0a1020; --card:#141e33; --card2:#1a2941; --line:#304057; --text:#ecf3ff; --muted:#a9bbd4; --sky:#64b5ff; --green:#69ddb6; --amber:#f3c76e; --red:#fa969c; }
-* { box-sizing:border-box; }
-body { margin:0; background:radial-gradient(1000px 470px at 100% 0%,#1a345a 0%,#0a1020 68%);color:var(--text);font-family:Tahoma,"Segoe UI",Arial,sans-serif;line-height:1.65; }
-.container { max-width:1130px;margin:auto;padding:25px 20px 60px; }
-header { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:20px;padding:24px 0 20px;border-bottom:1px solid var(--line); }
-.logo { display:flex;align-items:center;gap:12px; }
-.logo-box { display:grid;place-items:center;width:56px;height:56px;border-radius:17px;background:#294c82;color:#fff;font-size:27px;font-weight:bold; }
-h1 { margin:0;font-size:27px;letter-spacing:-.4px; }
-.subtitle { color:var(--muted);font-size:14px;margin:2px 0 0; }
-.safe { font-size:13px;padding:9px 13px;background:#163a35;color:#92ead0;border:1px solid #2b685b;border-radius:99px; }
-.hero { padding:26px 0 8px; }
-h2 { font-size:20px;margin:0 0 8px; }
-p { margin:6px 0 12px;color:var(--muted); }
-.stats { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:17px 0 25px; }
-.stat { padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--card); }
-.stat b { display:block;font-size:30px;line-height:1.1;color:var(--sky); }
-.stat span { display:block;margin-top:8px;font-size:13px;color:var(--muted); }
-.panel { background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;margin:17px 0; }
-.tag { display:inline-block;font-size:12px;color:var(--amber);border:1px solid #685638;border-radius:7px;padding:2px 9px;background:#322a1d; }
-.inputs { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px; }
-.file-box { position:relative;padding:18px 15px;background:var(--card2);border:1px solid var(--line);border-radius:13px;min-width:0; }
-.file-box strong { display:block;font-size:15px; }
-.file-box small { display:block;min-height:39px;color:var(--muted);margin-top:4px;font-size:12px; }
-button, .upload { appearance:none;background:#295b94;color:white;border:1px solid #4d83bd;border-radius:9px;padding:10px 15px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;display:inline-block;text-align:center; }
-button:focus-visible,.upload:focus-within,textarea:focus,select:focus { outline:3px solid #7abaff;outline-offset:2px; }
-button.secondary { background:#243550;border-color:#506783; }
-button:hover,.upload:hover { filter:brightness(1.13); }
-.file-box input { width:100%;margin-top:9px;font-size:12px;color:var(--muted); }
-.row { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
-textarea { margin:10px 0 9px;width:100%;height:110px;border:1px solid var(--line);background:#0d182b;border-radius:10px;color:var(--text);resize:vertical;padding:12px;font:13px/1.5 monospace;direction:ltr;text-align:left; }
-select { border:1px solid var(--line);background:#243550;color:var(--text);border-radius:9px;padding:9px;font-family:inherit; }
-#notice { margin:12px 0 0;color:var(--muted);min-height:24px;font-size:13px; }
-#notice.error { color:var(--red); }
-.legend { color:var(--muted);font-size:13px; }
-.table-wrap { overflow-x:auto;border:1px solid var(--line);border-radius:13px;margin-top:13px; }
-table { border-collapse:collapse;width:100%;min-width:740px;text-align:right; }
-th { background:#22324c;color:#cce1fb;font-size:13px;font-weight:600;padding:12px;white-space:nowrap; }
-td { border-top:1px solid #2d3a51;padding:13px 12px;font-size:13px;vertical-align:middle; }
-tr:nth-child(even) td { background:#17243a; }
-tr:hover td { background:#263951; }
-.muted { color:var(--muted); }
-.code { direction:ltr;unicode-bidi:embed;display:inline-block;font-family:Consolas,monospace;font-size:12px; }
-.pill { padding:5px 9px;border-radius:9px;display:inline-block;font-size:12px;font-weight:600;white-space:nowrap; }
-.good { background:#164238;color:var(--green); }
-.warn { background:#4a381a;color:var(--amber); }
-.bad { background:#4b252e;color:var(--red); }
-.neutral { background:#263a55;color:#bed5ed; }
-#details { padding:15px;background:var(--card2);border:1px solid var(--line);border-radius:12px;margin-top:13px;white-space:pre-wrap;word-break:break-word;font-size:13px;color:var(--muted); }
-footer { margin-top:28px;font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:18px; }
-@media(max-width:760px) { .container{padding:15px 12px 40px}h1{font-size:22px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.inputs{grid-template-columns:1fr}.panel{padding:14px} }
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0a1020;
+  color: #edf4ff;
+  font-family: Tahoma, Arial, sans-serif;
+  line-height: 1.7;
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+  padding: 22px;
+}
+
+header {
+  padding: 25px 0;
+  border-bottom: 1px solid #304057;
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #64b5ff;
+}
+
+h2 {
+  font-size: 20px;
+  margin-top: 0;
+}
+
+p {
+  color: #afc0d9;
+}
+
+.subtitle {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.safe {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 7px 13px;
+  background: #153a35;
+  border: 1px solid #2b685b;
+  border-radius: 20px;
+  color: #91efd0;
+  font-size: 13px;
+}
+
+.panel {
+  margin-top: 20px;
+  padding: 22px;
+  background: #141e33;
+  border: 1px solid #304057;
+  border-radius: 15px;
+}
+
+.status {
+  padding: 12px;
+  border-radius: 9px;
+  margin-top: 12px;
+  background: #20334e;
+  color: #bcd9ff;
+}
+
+.success {
+  background: #164238;
+  color: #89eed0;
+}
+
+.error {
+  background: #482630;
+  color: #ffb2b7;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 20px -6px;
+}
+
+.stat-wrap {
+  width: 25%;
+  padding: 6px;
+}
+
+.stat {
+  padding: 20px 12px;
+  background: #18263f;
+  border: 1px solid #304057;
+  border-radius: 13px;
+  text-align: center;
+  min-height: 130px;
+}
+
+.stat strong {
+  display: block;
+  color: #64b5ff;
+  font-size: 34px;
+}
+
+.stat span {
+  color: #adbed8;
+  font-size: 13px;
+}
+
+button {
+  background: #2965a5;
+  color: white;
+  border: 1px solid #548ed0;
+  padding: 11px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #397fc5;
+}
+
+button:disabled {
+  opacity: 0.55;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid #304057;
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  min-width: 750px;
+  border-collapse: collapse;
+  text-align: right;
+}
+
+th {
+  background: #243550;
+  color: #cde4ff;
+  padding: 13px;
+  font-size: 13px;
+}
+
+td {
+  border-top: 1px solid #304057;
+  padding: 12px;
+  font-size: 13px;
+}
+
+tr:nth-child(even) td {
+  background: #192840;
+}
+
+.tag {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 4px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.new {
+  background: #164238;
+  color: #8ef0c7;
+}
+
+.same {
+  background: #273b55;
+  color: #c1d8ee;
+}
+
+.warning {
+  background: #49391e;
+  color: #f7d082;
+}
+
+.failed {
+  background: #4a2630;
+  color: #ffb4bd;
+}
+
+.code {
+  font-family: monospace;
+  direction: ltr;
+  display: inline-block;
+}
+
+.small {
+  font-size: 12px;
+  color: #9eb2cc;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  height: 130px;
+  padding: 12px;
+  background: #0c172b;
+  color: white;
+  border: 1px solid #405674;
+  border-radius: 8px;
+  direction: ltr;
+  text-align: left;
+  margin: 12px 0;
+}
+
+select {
+  padding: 10px;
+  background: #233752;
+  color: white;
+  border: 1px solid #506784;
+  border-radius: 8px;
+}
+
+details {
+  margin-top: 15px;
+}
+
+summary {
+  cursor: pointer;
+  color: #8cc5ff;
+}
+
+footer {
+  padding: 25px 0;
+  margin-top: 25px;
+  border-top: 1px solid #304057;
+  color: #a9bbd4;
+  font-size: 12px;
+}
+
+@media (max-width: 700px) {
+  .container {
+    padding: 13px;
+  }
+
+  h1 {
+    font-size: 23px;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .stat-wrap {
+    width: 50%;
+  }
+}
 </style>
 </head>
+
 <body>
 <div class="container">
+
 <header>
-  <div class="logo"><div class="logo-box">PS4</div><div><h1>PS4 Auto Updater</h1><p class="subtitle">لوحة مراجعة التحديثات | النسخة التجريبية v0.5</p></div></div>
-  <div class="safe">قراءة ومقارنة فقط — لا تثبيت ولا تنزيل</div>
+  <h1>🎮 PS4 Auto Updater</h1>
+  <p class="subtitle">
+    لوحة التحديثات التلقائية — v0.6
+  </p>
+  <span class="safe">
+    قراءة ومقارنة فقط — بدون تنزيل أو تثبيت
+  </span>
 </header>
-<section class="hero">
-  <h2>نتائج ألعابك في مكان واحد</h2>
-  <p>اعرض جرد الجهاز مع بيانات تحديثات PlayStation الرسمية وفحص حزم PKG المحلية. جميع البيانات تُقرأ داخل متصفحك، ولا ترسلها هذه الصفحة إلى أي خادم.</p>
-</section>
-<div class="stats" aria-live="polite">
-  <div class="stat"><b id="gameCount">0</b><span>لعبة في الجرد</span></div>
-  <div class="stat"><b id="newRetail">0</b><span>تحديثات رسمية أحدث</span></div>
-  <div class="stat"><b id="pkgCandidates">0</b><span>ألعاب لها مرشح PKG بالبيانات</span></div>
-  <div class="stat"><b id="confirmed">0</b><span>توافقات FPKG مؤكدة</span></div>
-</div>
-<section class="panel" aria-labelledby="data-title">
-  <div class="row"><h2 id="data-title">1. إدخال التقارير</h2><span class="tag" id="modeTag">بانتظار البيانات</span></div>
-  <p>اختر الملفات المحفوظة عندك. على المتصفحات التي لا تدعم اختيار الملفات، استخدم مربع لصق JSON أدناه.</p>
-  <div class="inputs">
-    <div class="file-box"><strong>جرد الجهاز</strong><small>inventory.json من GoldHEN FTP</small><input type="file" id="inventoryFile" accept=".json,application/json" aria-label="ملف inventory.json"></div>
-    <div class="file-box"><strong>التحديثات الرسمية</strong><small>retail_patch_report.json من GitHub</small><input type="file" id="retailFile" accept=".json,application/json" aria-label="ملف تحديثات PlayStation"></div>
-    <div class="file-box"><strong>فحص PKG الجماعي</strong><small>pkg_batch_report.json من محركنا</small><input type="file" id="batchFile" accept=".json,application/json" aria-label="ملف تقرير PKG"></div>
+
+<section class="panel">
+  <h2>حالة الاتصال</h2>
+  <p>
+    يتم جلب بيانات الألعاب والتحديثات الرسمية
+    تلقائيًا من مستودع GitHub الخاص بالمشروع.
+  </p>
+
+  <div id="connection" class="status">
+    جاري الاتصال بمصدر البيانات...
   </div>
-  <div style="margin-top:18px"><strong>أو الصق محتوى JSON هنا:</strong></div>
-  <textarea id="jsonInput" placeholder='{"games":[...]}' spellcheck="false" aria-label="نص التقرير بصيغة JSON"></textarea>
-  <div class="row">
-    <select id="jsonKind" aria-label="نوع التقرير"><option value="inventory">جرد الجهاز</option><option value="retail">تحديثات PlayStation الرسمية</option><option value="batch">فحص PKG الجماعي</option></select>
-    <button type="button" id="importPaste">قراءة البيانات الملصقة</button>
-    <button type="button" class="secondary" id="demo">عرض بيانات تجريبية</button>
-    <button type="button" class="secondary" id="reset">مسح البيانات</button>
+
+  <p class="small" id="updated">
+    تاريخ تحديث التقرير: غير متوفر
+  </p>
+
+  <button id="refresh" type="button">
+    تحديث البيانات الآن
+  </button>
+</section>
+
+<div class="stats">
+
+  <div class="stat-wrap">
+    <div class="stat">
+      <strong id="gamesCount">0</strong>
+      <span>ألعاب في الجرد السابق</span>
+    </div>
   </div>
-  <div id="notice" role="status" aria-live="polite">لم يتم تحميل أي ملف بعد.</div>
-</section>
-<section class="panel" aria-labelledby="results-title">
-  <h2 id="results-title">2. جدول التحديثات</h2>
-  <p class="legend">الإصدار الرسمي أحدث ≠ تحديث FPKG متوافق. مطابقة CUSA وContent ID وحدها لا تثبت قابلية التثبيت. الإصدارات المعروضة من جرد تاريخي، وليست فحصًا مباشرًا للجهاز.</p>
-  <div class="table-wrap"><table><thead><tr><th>اللعبة</th><th>CUSA</th><th>آخر إصدار بالجرد</th><th>آخر إصدار رسمي</th><th>الحالة الرسمية</th><th>فحص PKG</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="muted">أضف ملف inventory.json لعرض الألعاب.</td></tr></tbody></table></div>
-  <div id="details">اختر صفًا في الجدول لعرض تفاصيل المطابقة.</div>
-</section>
-<footer>لوحة محلية للعرض فقط. لا تصل بخدمة FTP، ولا تتعرف تلقائيًا على الألعاب المثبتة، ولا تتحقق من التواقيع أو توافق حزمة مع لعبة FPKG. لا ترفع ملف جردك إلى مستودع عام إذا ما تبي بيانات ألعابك تكون علنية.</footer>
+
+  <div class="stat-wrap">
+    <div class="stat">
+      <strong id="updatesCount">0</strong>
+      <span>إصدارات رسمية أحدث</span>
+    </div>
+  </div>
+
+  <div class="stat-wrap">
+    <div class="stat">
+      <strong id="sameCount">0</strong>
+      <span>إصدارات غير أحدث</span>
+    </div>
+  </div>
+
+  <div class="stat-wrap">
+    <div class="stat">
+      <strong id="fpkgCount">0</strong>
+      <span>توافقات FPKG مؤكدة</span>
+    </div>
+  </div>
+
 </div>
+
+<section class="panel">
+  <h2>جدول تحديثات ألعابك</h2>
+
+  <p>
+    تتم المقارنة مع آخر جرد محفوظ لجهازك،
+    وليس فحصًا مباشرًا للألعاب المثبتة حاليًا.
+    هذه تحديثات PlayStation الرسمية فقط.
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>اللعبة</th>
+          <th>CUSA</th>
+          <th>إصدار الجرد</th>
+          <th>الإصدار الرسمي</th>
+          <th>النتيجة</th>
+          <th>توافق FPKG</th>
+        </tr>
+      </thead>
+
+      <tbody id="gamesTable">
+        <tr>
+          <td colspan="6">
+            جاري تحميل بيانات الألعاب...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>معلومات مهمة</h2>
+
+  <p>
+    مطابقة رقم CUSA أو وجود إصدار رسمي أحدث
+    لا تعني أن تحديث FPKG متوافق مع اللعبة.
+  </p>
+
+  <p>
+    ملفات الجرد المنشورة في GitHub تحتوي
+    أسماء الألعاب وأرقامها وإصداراتها السابقة
+    فقط. لا تحتوي بيانات التثبيت الحالية
+    أو Content ID الخاص بجهازك.
+  </p>
+
+  <p>
+    إذا تعذر التحميل التلقائي على متصفح PS4،
+    يمكنك إدخال تقرير JSON يدويًا.
+  </p>
+
+  <details>
+    <summary>إدخال بيانات JSON يدويًا (اختياري)</summary>
+
+    <select id="dataType">
+      <option value="inventory">
+        جرد الألعاب
+      </option>
+      <option value="retail">
+        التحديثات الرسمية
+      </option>
+    </select>
+
+    <textarea
+      id="jsonInput"
+      placeholder="الصق محتوى JSON هنا"
+    ></textarea>
+
+    <button id="manualLoad" type="button">
+      قراءة البيانات
+    </button>
+  </details>
+</section>
+
+<footer>
+  PS4 Auto Updater v0.6 — نسخة تجريبية.
+  لا يتصل الموقع بخدمة GoldHEN FTP،
+  ولا ينزّل أو يثبت تحديثات PKG.
+  البيانات المحلية التي تلصقها لا تُرفع
+  بواسطة هذه الصفحة.
+</footer>
+
+</div>
+
 <script>
 (function () {
   "use strict";
-  var state = {inventory:null, retail:null, batch:null, demo:false};
-  var $ = function (id) { return document.getElementById(id); };
-  var MAX_JSON = 2 * 1024 * 1024;
 
-  function show(msg, error) {
-    var el = $("notice");
-    el.textContent = msg;
-    el.className = error ? "error" : "";
+  var RAW =
+    "https://raw.githubusercontent.com/" +
+    "obsp081-coder/ps4-updates/main/data/";
+
+  var inventory = null;
+  var retail = null;
+  var sourceStatus = {
+    inventory: false,
+    retail: false
+  };
+
+  function el(id) {
+    return document.getElementById(id);
   }
-  function numver(s) {
-    if (typeof s !== "string" || !/^\d{1,4}\.\d{1,4}$/.test(s)) return null;
-    var p = s.split("."); return [Number(p[0]), Number(p[1])];
+
+  function setStatus(message, type) {
+    var box = el("connection");
+    box.textContent = message;
+    box.className = "status";
+
+    if (type) {
+      box.className += " " + type;
+    }
   }
-  function isNewer(a,b) {
-    var x = numver(a), y = numver(b);
-    return x && y && (x[0]>y[0] || (x[0]===y[0] && x[1]>y[1]));
-  }
-  function validate(kind, obj) {
-    if (!obj || typeof obj !== "object") throw new Error("التقرير ليس كائن JSON صالحًا");
-    var key = kind === "retail" ? "titles" : "games";
-    if (!Array.isArray(obj[key]) || obj[key].length > 2000) throw new Error("الملف لا يحتوي القائمة المتوقعة: " + key);
-    if (kind === "retail" && obj.source_kind !== "official_retail_metadata") throw new Error("هذا ليس تقرير PlayStation الرسمي");
-    if (kind === "batch" && obj.mode !== "offline_local_pkg_batch_review") throw new Error("هذا ليس تقرير فحص PKG الجماعي");
-    return obj;
-  }
-  function take(kind, value) {
-    if (typeof value !== "string" || value.length > MAX_JSON) throw new Error("حجم التقرير يتجاوز 2 ميغابايت");
-    state[kind] = validate(kind, JSON.parse(value));
-    state.demo = false;
-    render();
-    show("تمت قراءة " + (kind === "inventory" ? "جرد الجهاز" : kind === "retail" ? "التحديثات الرسمية" : "فحص PKG") + " محليًا بنجاح.", false);
-  }
-  function loadFile(kind, elem) {
-    if (!elem.files || !elem.files.length) return;
-    var file=elem.files[0];
-    if (file.size > MAX_JSON) { show("الملف كبير جدًا (الحد 2 ميغابايت)", true); return; }
-    var reader=new FileReader();
-    reader.onload=function () { try { take(kind, String(reader.result)); } catch(e) { show("لم نستطع قراءة التقرير: " + e.message,true); } };
-    reader.onerror=function () { show("تعذر فتح الملف في هذا المتصفح",true); };
-    reader.readAsText(file, "utf-8");
-  }
-  function pill(text, type) {
-    var node=document.createElement("span");node.className="pill "+type;node.textContent=text;return node;
-  }
-  function makeCell(tr,value) {
-    var td=document.createElement("td");
-    if (value && value.nodeType) td.appendChild(value);
-    else td.textContent=value===undefined || value===null ? "—" : String(value);
-    tr.appendChild(td);return td;
-  }
-  function showDetails(game, retail, batch) {
-    var items=[
-      "اللعبة: "+(game.name||"غير معروفة"),
-      "CUSA: "+(game.cusa||"—"),
-      "Content ID من الجرد: "+(game.content_id||"—"),
-      "التثبيت الحالي: غير مؤكد من الجرد التاريخي",
-      "تحديث PlayStation: "+(retail ? retail.status : "لم يتم استيراد التقرير"),
-      "Content ID الرسمي: "+(retail && retail.content_id ? retail.content_id : "—"),
-      "تطابق Content ID: "+(retail && retail.content_id ? (retail.content_id===game.content_id ? "نعم" : "لا") : "غير متحقق"),
-      "نتيجة ملفات PKG المحلية: "+(batch ? batch.status : "لم يتم استيراد التقرير"),
-      "توافق تحديث FPKG: لم يتم تأكيده",
-      "التنزيل والتثبيت: معطلان"
+
+  function numberVersion(value) {
+    if (
+      typeof value !== "string" ||
+      !/^[0-9]{1,4}\.[0-9]{1,4}$/.test(value)
+    ) {
+      return null;
+    }
+
+    var parts = value.split(".");
+
+    return [
+      parseInt(parts[0], 10),
+      parseInt(parts[1], 10)
     ];
-    $("details").textContent=items.join("\n");
   }
+
+  function compareVersions(a, b) {
+    var x = numberVersion(a);
+    var y = numberVersion(b);
+
+    if (!x || !y) {
+      return null;
+    }
+
+    if (x[0] > y[0]) return 1;
+    if (x[0] < y[0]) return -1;
+    if (x[1] > y[1]) return 1;
+    if (x[1] < y[1]) return -1;
+
+    return 0;
+  }
+
+  function validInventory(doc) {
+    return (
+      doc &&
+      typeof doc === "object" &&
+      Object.prototype.toString.call(doc.games) ===
+        "[object Array]" &&
+      doc.games.length <= 2000
+    );
+  }
+
+  function validRetail(doc) {
+    return (
+      doc &&
+      doc.source_kind === "official_retail_metadata" &&
+      Object.prototype.toString.call(doc.titles) ===
+        "[object Array]" &&
+      doc.titles.length <= 2000
+    );
+  }
+
+  function createCell(row, value) {
+    var td = document.createElement("td");
+
+    td.textContent =
+      value === undefined || value === null
+        ? "—"
+        : String(value);
+
+    row.appendChild(td);
+
+    return td;
+  }
+
+  function createTag(text, cssClass) {
+    var tag = document.createElement("span");
+
+    tag.className = "tag " + cssClass;
+    tag.textContent = text;
+
+    return tag;
+  }
+
+  function addTagCell(row, text, cssClass) {
+    var td = document.createElement("td");
+
+    td.appendChild(createTag(text, cssClass));
+    row.appendChild(td);
+  }
+
   function render() {
-    var games=state.inventory ? state.inventory.games : [];
-    var retailer={}, packages={}, retailNew=0, possible=0, tbody=$("rows");
-    var i, row;
-    if (state.retail) for(i=0;i<state.retail.titles.length;i++) {
-      row=state.retail.titles[i]; if(row && typeof row.cusa==="string") retailer[row.cusa]=row;
+    var tbody = el("gamesTable");
+
+    while (tbody.firstChild) {
+      tbody.removeChild(tbody.firstChild);
     }
-    if (state.batch) for(i=0;i<state.batch.games.length;i++) {
-      row=state.batch.games[i]; if(row && typeof row.cusa==="string") packages[row.cusa]=row;
+
+    var games = inventory ? inventory.games : [];
+    var retailMap = {};
+    var newerCount = 0;
+    var sameCount = 0;
+    var i;
+
+    if (retail) {
+      for (i = 0; i < retail.titles.length; i++) {
+        var item = retail.titles[i];
+
+        if (item && typeof item.cusa === "string") {
+          retailMap[item.cusa] = item;
+        }
+      }
     }
-    while(tbody.firstChild)tbody.removeChild(tbody.firstChild);
+
     if (!games.length) {
-      var empty=document.createElement("tr");var cell=makeCell(empty,"أضف inventory.json لعرض الألعاب.");cell.colSpan=6;cell.className="muted";tbody.appendChild(empty);
+      var emptyRow = document.createElement("tr");
+
+      var cell = createCell(
+        emptyRow,
+        "لا توجد بيانات ألعاب متاحة."
+      );
+
+      cell.colSpan = 6;
+      tbody.appendChild(emptyRow);
     }
-    for(i=0;i<games.length;i++) {
-      var game=games[i];if(!game || typeof game!=="object") continue;
-      var retail=retailer[game.cusa], batch=packages[game.cusa];
-      var newer=retail && retail.status==="RETAIL_PATCH_LISTED" && isNewer(retail.latest_retail_version,game.app_ver);
-      if(newer) retailNew++;
-      if(batch && batch.status==="METADATA_CANDIDATE_PRESENT") possible++;
-      var tr=document.createElement("tr");
-      makeCell(tr,game.name||"غير معروف");
-      var idcell=makeCell(tr,game.cusa||"—"); idcell.className="code";
-      makeCell(tr,game.app_ver||"—");
-      makeCell(tr,retail && retail.latest_retail_version ? retail.latest_retail_version : "—");
-      makeCell(tr,retail ? (newer ? pill("رسمي أحدث","good") : retail.status==="RETAIL_PATCH_LISTED" ? pill("ليس أحدث","neutral") : retail.status==="NOT_LISTED" ? pill("غير مدرج","neutral") : pill("فشل الاستعلام","bad")) : pill("لم يُحمّل","neutral"));
-      makeCell(tr,batch ? (batch.status==="METADATA_CANDIDATE_PRESENT" ? pill("مرشح بيانات فقط","warn") : pill("لا يوجد مرشح مؤكد","neutral")) : pill("لم يُفحص","neutral"));
-      tr.onclick=(function(g,r,b){return function(){showDetails(g,r,b);};})(game,retail,batch);
+
+    for (i = 0; i < games.length; i++) {
+      var game = games[i];
+
+      if (
+        !game ||
+        typeof game !== "object" ||
+        typeof game.cusa !== "string"
+      ) {
+        continue;
+      }
+
+      var patch = retailMap[game.cusa];
+      var latest = patch
+        ? patch.latest_retail_version
+        : null;
+
+      var statusText = "لا تتوفر بيانات";
+      var statusClass = "warning";
+
+      if (patch && patch.status === "RETAIL_PATCH_LISTED") {
+        var result = compareVersions(
+          latest,
+          game.app_ver
+        );
+
+        if (result === 1) {
+          newerCount++;
+          statusText = "إصدار رسمي أحدث";
+          statusClass = "new";
+        } else if (result === 0) {
+          sameCount++;
+          statusText = "نفس الإصدار";
+          statusClass = "same";
+        } else if (result === -1) {
+          sameCount++;
+          statusText = "الرسمي أقدم";
+          statusClass = "warning";
+        } else {
+          statusText = "مقارنة غير متاحة";
+        }
+      } else if (patch && patch.status === "NOT_LISTED") {
+        statusText = "غير مدرج";
+        statusClass = "warning";
+      } else if (patch && patch.status === "LOOKUP_FAILED") {
+        statusText = "فشل الاستعلام";
+        statusClass = "failed";
+      }
+
+      var tr = document.createElement("tr");
+
+      createCell(tr, game.name || "غير معروف");
+      createCell(tr, game.cusa);
+      createCell(tr, game.app_ver);
+      createCell(tr, latest || "—");
+
+      addTagCell(
+        tr,
+        statusText,
+        statusClass
+      );
+
+      addTagCell(
+        tr,
+        "غير مؤكد",
+        "warning"
+      );
+
       tbody.appendChild(tr);
     }
-    $("gameCount").textContent=String(games.length);
-    $("newRetail").textContent=String(retailNew);
-    $("pkgCandidates").textContent=String(possible);
-    $("confirmed").textContent="0";
-    $("modeTag").textContent=state.demo ? "عرض تجريبي فقط" : (state.inventory ? "جرد مستورد" : "بانتظار البيانات");
+
+    el("gamesCount").textContent = games.length;
+    el("updatesCount").textContent = newerCount;
+    el("sameCount").textContent = sameCount;
+
+    // Never infer FPKG compatibility from retail metadata.
+    el("fpkgCount").textContent = "0";
+
+    if (retail && retail.generated_at_utc) {
+      el("updated").textContent =
+        "آخر تحديث للتقرير: " +
+        retail.generated_at_utc;
+    } else {
+      el("updated").textContent =
+        "تاريخ تحديث التقرير: غير متوفر";
+    }
   }
-  $("inventoryFile").onchange=function(){loadFile("inventory",this);};
-  $("retailFile").onchange=function(){loadFile("retail",this);};
-  $("batchFile").onchange=function(){loadFile("batch",this);};
-  $("importPaste").onclick=function(){try{take($("jsonKind").value,$("jsonInput").value);}catch(e){show("JSON غير صالح أو نوع التقرير غير صحيح: "+e.message,true);}};
-  $("reset").onclick=function(){state={inventory:null,retail:null,batch:null,demo:false};$("jsonInput").value="";$("details").textContent="اختر صفًا في الجدول لعرض تفاصيل المطابقة.";render();show("تم مسح بيانات العرض من هذه الصفحة.",false);};
-  $("demo").onclick=function(){
-    state.inventory={games:[
-      {cusa:"CUSA99999",name:"لعبة اختبارية A (ليست لعبة حقيقية)",app_ver:"01.00",content_id:"DEMO-ONLY-A"},
-      {cusa:"CUSA99998",name:"لعبة اختبارية B (ليست لعبة حقيقية)",app_ver:"02.00",content_id:"DEMO-ONLY-B"}
-    ]};
-    state.retail={source_kind:"official_retail_metadata",titles:[{cusa:"CUSA99999",status:"RETAIL_PATCH_LISTED",latest_retail_version:"01.02",content_id:"DEMO-ONLY-A"}]};
-    state.batch={mode:"offline_local_pkg_batch_review",games:[{cusa:"CUSA99999",status:"METADATA_CANDIDATE_PRESENT"}]};
-    state.demo=true;render();show("هذه بيانات تجريبية غير حقيقية لتجربة الواجهة فقط.",false);
-  };
-  render();
+
+  function requestJSON(fileName, validator, callback) {
+    // Primary: GitHub Raw, which can be refreshed
+    // even if GitHub Pages is not rebuilt by the bot.
+    // Fallback: files served by GitHub Pages.
+    var urls = [
+      RAW + fileName,
+      "data/" + fileName
+    ];
+
+    var index = 0;
+
+    function next() {
+      if (index >= urls.length) {
+        callback(false, null);
+        return;
+      }
+
+      var address =
+        urls[index++] +
+        "?refresh=" +
+        new Date().getTime();
+
+      var xhr = new XMLHttpRequest();
+      var finished = false;
+
+      function complete(success, data) {
+        if (finished) return;
+        finished = true;
+
+        if (success) {
+          callback(true, data);
+        } else {
+          next();
+        }
+      }
+
+      try {
+        xhr.open("GET", address, true);
+        xhr.timeout = 12000;
+
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+
+          if (xhr.status !== 200) {
+            complete(false, null);
+            return;
+          }
+
+          try {
+            if (xhr.responseText.length > 2097152) {
+              throw new Error("File too large");
+            }
+
+            var data = JSON.parse(xhr.responseText);
+
+            if (!validator(data)) {
+              throw new Error("Invalid report");
+            }
+
+            complete(true, data);
+          } catch (err) {
+            complete(false, null);
+          }
+        };
+
+        xhr.onerror = function () {
+          complete(false, null);
+        };
+
+        xhr.ontimeout = function () {
+          complete(false, null);
+        };
+
+        xhr.send(null);
+      } catch (error) {
+        complete(false, null);
+      }
+    }
+
+    next();
+  }
+
+  function refreshData() {
+    inventory = null;
+    retail = null;
+
+    sourceStatus.inventory = false;
+    sourceStatus.retail = false;
+
+    el("refresh").disabled = true;
+
+    setStatus(
+      "جاري جلب بيانات الألعاب والتحديثات من GitHub...",
+      ""
+    );
+
+    var completed = 0;
+
+    function finish() {
+      completed++;
+
+      render();
+
+      if (completed < 2) return;
+
+      el("refresh").disabled = false;
+
+      if (
+        sourceStatus.inventory &&
+        sourceStatus.retail
+      ) {
+        setStatus(
+          "تم الاتصال بنجاح وتحميل بيانات الألعاب والتحديثات الرسمية.",
+          "success"
+        );
+      } else if (
+        sourceStatus.inventory ||
+        sourceStatus.retail
+      ) {
+        setStatus(
+          "تم تحميل جزء من البيانات. تعذر الوصول إلى التقرير الآخر.",
+          "error"
+        );
+      } else {
+        setStatus(
+          "تعذر تحميل ملفات GitHub. تحقق من الإنترنت أو أدخل JSON يدويًا.",
+          "error"
+        );
+      }
+    }
+
+    requestJSON(
+      "public_inventory.json",
+      validInventory,
+      function (ok, data) {
+        sourceStatus.inventory = ok;
+
+        if (ok) {
+          inventory = data;
+        }
+
+        finish();
+      }
+    );
+
+    requestJSON(
+      "retail_patch_report.json",
+      validRetail,
+      function (ok, data) {
+        sourceStatus.retail = ok;
+
+        if (ok) {
+          retail = data;
+        }
+
+        finish();
+      }
+    );
+  }
+
+  function manualLoad() {
+    var kind = el("dataType").value;
+    var value = el("jsonInput").value;
+
+    if (!value || value.length > 2097152) {
+      setStatus(
+        "أدخل JSON صالحًا بحجم أقل من 2 ميغابايت.",
+        "error"
+      );
+      return;
+    }
+
+    try {
+      var data = JSON.parse(value);
+
+      if (kind === "inventory") {
+        if (!validInventory(data)) {
+          throw new Error("Invalid inventory");
+        }
+
+        inventory = data;
+      } else {
+        if (!validRetail(data)) {
+          throw new Error("Invalid retail report");
+        }
+
+        retail = data;
+      }
+
+      render();
+
+      setStatus(
+        "تمت قراءة البيانات الملصقة محليًا بنجاح.",
+        "success"
+      );
+    } catch (error) {
+      setStatus(
+        "البيانات غير صالحة أو نوع التقرير غير صحيح.",
+        "error"
+      );
+    }
+  }
+
+  el("refresh").onclick = refreshData;
+  el("manualLoad").onclick = manualLoad;
+
+  // Automatically load public reports when page opens.
+  refreshData();
+
 }());
 </script>
+
 </body>
 </html>

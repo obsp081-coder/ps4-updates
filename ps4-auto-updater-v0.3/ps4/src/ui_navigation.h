@@ -10,7 +10,8 @@ extern "C" {
 typedef enum UiPage {
     UI_PAGE_HOME = 0,
     UI_PAGE_DETAILS = 1,
-    UI_PAGE_DOWNLOADS = 2
+    UI_PAGE_DOWNLOADS = 2,
+    UI_PAGE_SEARCH = 3
 } UiPage;
 typedef enum UiAction {
     UI_ACT_UP = 0,
@@ -19,7 +20,13 @@ typedef enum UiAction {
     UI_ACT_BACK,
     UI_ACT_NEXT_TAB,
     UI_ACT_PREVIOUS_TAB,
-    UI_ACT_DOWNLOADS
+    UI_ACT_DOWNLOADS,
+    UI_ACT_LEFT,
+    UI_ACT_RIGHT,
+    UI_ACT_SEARCH,
+    UI_ACT_REMOVE,
+    UI_ACT_TOGGLE_KEYBOARD,
+    UI_ACT_CLEAR_SEARCH
 } UiAction;
 typedef struct UiRecord {
     const char *cusa;
@@ -33,6 +40,10 @@ typedef struct UiNavigation {
     unsigned matched[UI_MAX_TITLES];
     char query[UI_SEARCH_CAPACITY];
     int exit_requested;
+    unsigned keyboard_index;
+    unsigned keyboard_arabic;
+    const UiRecord *items; /* caller-owned; valid for visible UI lifetime */
+    unsigned item_count;
 } UiNavigation;
 /* Rebuilding the filter never invents content and never changes files. */
 void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count);
@@ -41,6 +52,9 @@ void ui_nav_filter(UiNavigation *state, const UiRecord *items,
 unsigned ui_nav_resolve(const UiNavigation *state, unsigned filtered_index);
 /* Returns 1 if UI needs repaint; 0 for an ignored action. */
 int ui_nav_action(UiNavigation *state, UiAction action);
+/* 10-column lightweight native onscreen keyboard (Latin/Arabic). */
+unsigned ui_nav_keyboard_count(const UiNavigation *state);
+const char *ui_nav_keyboard_key(const UiNavigation *state, unsigned index);
 #ifdef __cplusplus
 }
 #endif

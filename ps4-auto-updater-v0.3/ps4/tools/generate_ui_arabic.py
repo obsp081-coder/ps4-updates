@@ -9,6 +9,7 @@ from pathlib import Path
 
 LABELS = (
     ("HOME", "الرئيسية"),
+    ("GAME_NAME_UNAVAILABLE", "اسم اللعبة غير متوفر"),
     ("APP_NAME", "مدير تحديثات ألعاب بلايستيشن"),
     ("LOCAL_READ_ONLY", "المكتبة المحلية للعرض فقط"),
     ("JOB_DOWNLOADING", "جار التنزيل"),
@@ -74,7 +75,7 @@ LABELS = (
     ("DLC_METADATA", "بيانات إضافة"),
     ("OTHER_METADATA", "بيانات أخرى"),
     ("UNVERIFIED_METADATA", "بيانات غير مؤكدة"),
-    ("BASE_UNKNOWN", "لعبة — التثبيت غير مؤكد"),
+    ("BASE_UNKNOWN", "لعبة: التثبيت غير مؤكد"),
     ("GAME_INSTALLED", "اللعبة مثبتة"),
     ("GAME_NOT_INSTALLED", "اللعبة غير مثبتة"),
     ("NO_SELECTED_GAME", "لم تحدد لعبة"),

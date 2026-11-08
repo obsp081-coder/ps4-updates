@@ -51,6 +51,7 @@ class MockHandler(socketserver.StreamRequestHandler):
     def handle(self):
         self.request.settimeout(5)
         data_socket = None
+        logged_in = not self.server.require_login
         self.respond("220 mock FTP ready")
         try:
             while True:
@@ -63,12 +64,19 @@ class MockHandler(socketserver.StreamRequestHandler):
                 if command == "USER":
                     if self.server.deny_login:
                         self.respond("530 rejected")
-                    else:
+                    elif self.server.challenge_password:
                         self.respond("331 password needed")
+                    else:
+                        logged_in = True
+                        self.respond("230 logged in")
                 elif command == "PASS":
-                    self.respond("230 OK")
+                    if self.server.deny_login:
+                        self.respond("530 rejected")
+                    else:
+                        logged_in = True
+                        self.respond("230 OK")
                 elif command == "TYPE":
-                    self.respond("200 binary")
+                    self.respond("200 binary" if logged_in else "530 Not logged in")
                 elif command == "PASV":
                     data_socket = socket.socket()
                     data_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -126,6 +134,8 @@ class MockFTP(socketserver.TCPServer):
         self.commands = []
         self.pasv_advertisement = "127,0,0,1"
         self.deny_login = False
+        self.require_login = False
+        self.challenge_password = False
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -198,6 +208,11 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertFalse(inventory["install_enabled"])
         self.assertIn("Metadata records: 2", diagnostic)
         self.assertIn("FTP_LOGIN_OK: 1", diagnostic)
+        self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
+        self.assertIn("FTP_INITIAL_TYPE_CODE: 200", diagnostic)
+        self.assertIn("FTP_AUTH_MODE (0=no login,1=anonymous): 0", diagnostic)
+        self.assertNotIn("USER", commands)
+        self.assertNotIn("PASS", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
         self.assertEqual(commands.count("RETR"), 3)
 
@@ -256,13 +271,44 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("SFO CUSA02343: -21", diagnostic)
 
     def test_ftp_login_rejection_is_explicitly_incomplete(self):
+        def configure(server):
+            server.require_login = True
+            server.deny_login = True
+
         inventory, diagnostic, commands = self.with_server(
-            b"", {},
-            passthrough=lambda server: setattr(server, "deny_login", True))
+            b"", {}, passthrough=configure)
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
+        self.assertIn("FTP_INITIAL_TYPE_CODE: 530", diagnostic)
+        self.assertIn("FTP_USER_CODE: 530", diagnostic)
         self.assertIn("FTP_LOGIN_OK: 0", diagnostic)
+        self.assertIn("USER", commands)
+        self.assertNotIn("PASS", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_legacy_server_can_request_anonymous_login(self):
+        inventory, diagnostic, commands = self.with_server(
+            b"", {},
+            passthrough=lambda server: setattr(server, "require_login", True))
+        self.assertEqual(inventory["games"], [])
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("FTP_INITIAL_TYPE_CODE: 530", diagnostic)
+        self.assertIn("FTP_USER_CODE: 230", diagnostic)
+        self.assertIn("FTP_AUTH_MODE (0=no login,1=anonymous): 1", diagnostic)
+        self.assertEqual(commands[:3], ["TYPE", "USER", "TYPE"])
+        self.assertNotIn("PASS", commands)
+
+    def test_legacy_server_password_challenge_is_supported(self):
+        def configure(server):
+            server.require_login = True
+            server.challenge_password = True
+
+        inventory, diagnostic, commands = self.with_server(
+            b"", {}, passthrough=configure)
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("FTP_USER_CODE: 331", diagnostic)
+        self.assertIn("FTP_PASS_CODE: 230", diagnostic)
+        self.assertEqual(commands[:4], ["TYPE", "USER", "PASS", "TYPE"])
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

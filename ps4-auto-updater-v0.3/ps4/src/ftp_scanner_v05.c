@@ -340,9 +340,17 @@ static int readline(
 
     for (;;) {
         char c;
+        int received = NET_RECV(fd, &c, 1, 0);
 
-        if (NET_RECV(fd, &c, 1, 0) != 1)
+        if (received != 1) {
+            /* 0 = peer closed, negative = socket error / timeout. */
+            if (report) {
+                fprintf(report, "FTP_CONTROL_RECV_RESULT: %d (hex=0x%08x)\n",
+                        received, (unsigned)received);
+                fflush(report);
+            }
             return -1;
+        }
 
         if (c == '\n')
             break;
@@ -404,11 +412,28 @@ static int command(
     const char *cmd
 ) {
     size_t n = strlen(cmd);
+    char wire[384];
 
-    if (
-        !send_all(fd, cmd, n) ||
-        !send_all(fd, "\r\n", 2)
-    ) return -1;
+    /*
+     * Important: Some PS4 FTP implementations process one recv() as
+     * one complete command and do NOT accumulate until CRLF.
+     * The old two-send implementation sent "TYPE I" and CRLF in
+     * separate TCP writes: a standalone CRLF became FTP 500, and
+     * the next PASV read found the connection dead/out of sync.
+     * Frame the command and CRLF in ONE send. Under normal sockets
+     * the entire short write is transmitted together.
+     */
+    if (n > sizeof(wire) - 3)
+        return -1;
+
+    memcpy(wire, cmd, n);
+    wire[n] = '\r';
+    wire[n + 1] = '\n';
+
+    if (!send_all(fd, wire, n + 2)) {
+        logmsg("FTP_CONTROL_SEND_FAILED", 1);
+        return -1;
+    }
 
     return reply(fd, replybuf, cap);
 }
@@ -423,14 +448,11 @@ static int command(
 static int ftp_auth_attempted = 0;
 
 /*
- * In some GoldHEN builds TYPE I returns 500 (unknown command) even
- * though LIST/RETR work. Metadata is only read; never attempt a write.
+ * For this PS4 GoldHEN version avoid TYPE, FEAT, SYST, PWD and other
+ * optional commands. The FTPS4/GoldHEN-style server already streams
+ * raw file bytes. We start with PASV, and authenticate only if PASV
+ * explicitly returns 530. There is no need to negotiate TYPE I.
  */
-static int ftp_type_usable(int code) {
-    return code == 200 || code == 500 || code == 502 || code == 504;
-}
-
-/* Only send USER if the server actually requests authentication (530). */
 static int anonymous_auth(sock_t fd) {
     char line[512];
     if (ftp_auth_attempted)
@@ -444,46 +466,33 @@ static int anonymous_auth(sock_t fd) {
         code = command(fd, line, sizeof line, "PASS guest@");
         logmsg("FTP_PASS_CODE", code);
     }
-
     if (code != 230 && code != 202)
-        return 0;
-
-    code = command(fd, line, sizeof line, "TYPE I");
-    logmsg("FTP_AUTH_TYPE_CODE", code);
-    if (!ftp_type_usable(code))
         return 0;
 
     logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 1);
     return 1;
 }
 
+/*
+ * The FTP greeting is not authentication. A PASS/USER is only used
+ * when PASV responds with 530. The initial control request is PASV.
+ */
 static int login(sock_t fd) {
     char line[512];
     int code = reply(fd, line, sizeof line);
-
     if (code == 120) {
         logmsg("FTP_GREETING_WAIT_CODE", code);
         code = reply(fd, line, sizeof line);
     }
-
     logmsg("FTP_GREETING_CODE", code);
+    if (report && code == 220) {
+        fprintf(report, "FTP_GREETING_TEXT: %.180s\n", line);
+        fflush(report);
+    }
     if (code != 220)
         return 0;
-
-    code = command(fd, line, sizeof line, "TYPE I");
-    logmsg("FTP_INITIAL_TYPE_CODE", code);
-
-    if (ftp_type_usable(code)) {
-        if (code != 200)
-            logmsg("FTP_TYPE_UNSUPPORTED_CONTINUING", code);
-        logmsg("FTP_AUTH_MODE (0=no login,1=anonymous)", 0);
-        return 1;
-    }
-
-    if (code == 530)
-        return anonymous_auth(fd);
-
-    return 0;
+    logmsg("FTP_COMMAND_MODE (0=PASV-first, no TYPE)", 0);
+    return 1;
 }
 
 static int pasv_port(const char *line) {
@@ -975,7 +984,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.5.3 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.0 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,

@@ -260,15 +260,19 @@ class ScannerFTPTests(unittest.TestCase):
              "CUSA00411": sfo("CUSA00411", "Other Game", "02.04"),
              "CUSA99999": sfo("CUSA99999", "DLC", "01.00", "ac")},
         )
-        self.assertEqual(inventory["schema"], 5)
+        self.assertEqual(inventory["schema"], 6)
         self.assertEqual(
             [c["cusa"] for c in inventory["directory_candidates"]],
             ["CUSA02343", "CUSA00411", "CUSA99999"]
         )
         self.assertEqual(
             [c["metadata_verified"] for c in inventory["directory_candidates"]],
-            [True, True, False]
+            [True, True, True]
         )
+        self.assertEqual([item["metadata_kind"]
+                          for item in inventory["metadata_records"]],
+                         ["base_game", "base_game", "dlc_metadata"])
+        self.assertEqual(len(inventory["metadata_records"]), 3)
         self.assertTrue(inventory["scan_complete"])
         self.assertEqual([g["cusa"] for g in inventory["games"]],
                          ["CUSA02343", "CUSA00411"])
@@ -560,8 +564,36 @@ class ScannerFTPTests(unittest.TestCase):
             listing, {"CUSA02343": sfo("CUSA02343", category="gp")})
         self.assertEqual(inventory["games"], [])
         self.assertTrue(inventory["scan_complete"])
+        self.assertEqual(len(inventory["metadata_records"]), 1)
+        self.assertTrue(inventory["directory_candidates"][0]["metadata_verified"])
+        patch = inventory["metadata_records"][0]
+        self.assertEqual(patch["metadata_kind"], "patch_metadata")
+        self.assertEqual(patch["app_ver"], "01.04")
+        self.assertFalse(patch["installed_confirmed"])
         self.assertIn("SFO FIELDS CUSA02343", diagnostic)
         self.assertIn("SFO invalid: 0", diagnostic)
+
+    def test_non_base_metadata_keeps_separate_cusa_and_category(self):
+        ids = ["CUSA02343", "CUSA00411", "CUSA08032"]
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 " + cusa + "\r\n").encode()
+            for cusa in ids
+        )
+        inventory, diagnostic, _ = self.with_server(listing, {
+            "CUSA02343": sfo("CUSA02343", "Sample Base", "01.07", "gd"),
+            "CUSA00411": sfo("CUSA00411", "Sample Patch", "02.01", "gpe"),
+            "CUSA08032": sfo("CUSA08032", "Sample Add-on", "01.01", "ac"),
+        })
+        self.assertEqual([x["cusa"] for x in inventory["games"]],
+                         ["CUSA02343"])
+        self.assertEqual([x["metadata_kind"] for x in inventory["metadata_records"]],
+                         ["base_game", "other_metadata", "dlc_metadata"])
+        self.assertEqual([x["metadata_verified"]
+                          for x in inventory["directory_candidates"]],
+                         [True, True, True])
+        self.assertEqual(inventory["metadata_records"][1]["app_ver"], "02.01")
+        self.assertIn("SFO metadata verified: 3", diagnostic)
+        self.assertIn("Base-game records: 1", diagnostic)
 
     def test_malformed_sfo_offsets_are_diagnosed_without_guessing(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

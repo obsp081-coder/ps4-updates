@@ -19,14 +19,17 @@ SCANNER = Path(__file__).resolve().parents[1] / "ps4" / "src" / "ftp_scanner_v05
 READ_ONLY_COMMANDS = {"USER", "PASS", "TYPE", "PASV", "LIST", "RETR", "QUIT"}
 
 
-def sfo(title_id, name="Test Game", version="01.04", category="gd"):
+def sfo(title_id, name="Test Game", version="01.04", category="gd",
+        include_title_id=True, content_id=None):
     fields = [
-        ("TITLE_ID", title_id),
         ("TITLE", name),
         ("APP_VER", version),
-        ("CONTENT_ID", "IV0000-" + title_id + "_00-SCANNER00000000"),
+        ("CONTENT_ID", content_id if content_id is not None else
+         "IV0000-" + title_id + "_00-SCANNER00000000"),
         ("CATEGORY", category),
     ]
+    if include_title_id:
+        fields.insert(0, ("TITLE_ID", title_id))
     keys, values, entries = b"", b"", b""
     for key, val in fields:
         key_offset = len(keys)
@@ -243,7 +246,8 @@ class ScannerFTPTests(unittest.TestCase):
             listing, {"CUSA02343": b"not an SFO"})
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
-        self.assertIn("SFO CUSA02343: -21", diagnostic)
+        self.assertIn("SFO FILE CUSA02343 bytes=10", diagnostic)
+        self.assertIn("SFO CUSA02343: -31", diagnostic)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
     def test_ftp_unavailable_is_reported_without_inventing_games(self):
@@ -289,7 +293,7 @@ class ScannerFTPTests(unittest.TestCase):
             listing, {"CUSA02343": sfo("CUSA00001")})
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
-        self.assertIn("SFO CUSA02343: -21", diagnostic)
+        self.assertIn("SFO CUSA02343: -34", diagnostic)
 
     def test_ftp_login_rejection_is_explicitly_incomplete(self):
         def configure(server):
@@ -413,6 +417,55 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertNotIn("FRAGMENT", commands)
         self.assertNotIn("TYPE", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+
+    def test_missing_title_id_can_be_verified_from_content_id(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", include_title_id=False)})
+        self.assertEqual([g["cusa"] for g in inventory["games"]],
+                         ["CUSA02343"])
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("SFO ID from CONTENT_ID: CUSA02343", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_content_id_conflict_cannot_establish_a_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343",
+                                       content_id="IV0000-CUSA99999_00-SCANNER00000000")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -35", diagnostic)
+
+    def test_unverifiable_directory_is_candidate_not_installed_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": b""})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("Directory candidates: 1", diagnostic)
+        self.assertIn("SFO FILE CUSA02343 bytes=0", diagnostic)
+        self.assertIn("SFO CUSA02343: -30", diagnostic)
+
+    def test_patch_metadata_is_not_a_base_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", category="gp")})
+        self.assertEqual(inventory["games"], [])
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("SFO FIELDS CUSA02343", diagnostic)
+        self.assertIn("SFO invalid: 0", diagnostic)
+
+    def test_malformed_sfo_offsets_are_diagnosed_without_guessing(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        corrupt = bytearray(sfo("CUSA02343"))
+        struct.pack_into("<I", corrupt, 8, 0xFFFF0000)
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": bytes(corrupt)})
+        self.assertEqual(inventory["games"], [])
+        self.assertIn("SFO CUSA02343: -32", diagnostic)
+        self.assertFalse(inventory["scan_complete"])
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

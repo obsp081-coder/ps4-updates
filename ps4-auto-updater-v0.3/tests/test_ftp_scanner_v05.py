@@ -612,6 +612,19 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertEqual(diagnostic.count("magic=0x21444142"), 9)
         self.assertEqual(commands.count("RETR"), 9)
 
+    def test_utf8_title_truncation_preserves_valid_json(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        # SFO title length can exceed our inventory's fixed-size field.
+        title = "A" * 190 + "\u20ac" * 20
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", title)})
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertTrue(inventory["games"][0]["name"].startswith("A" * 190))
+        self.assertLessEqual(
+            len(inventory["games"][0]["name"].encode("utf8")), 191)
+        self.assertTrue(inventory["scan_complete"])
+        self.assertNotIn("SFO CUSA02343:", diagnostic)
+
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, _, commands = self.with_server(

@@ -142,7 +142,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.13\n"
+              "Build version: 01.14\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"
@@ -176,8 +176,8 @@ jobs:
             exit 0
           fi
 
-          TAG="scanner-v0.6.4"
-          ASSET="PS4-Auto-Updater-v0.6.4.pkg"
+          TAG="scanner-v0.6.5"
+          ASSET="PS4-Auto-Updater-v0.6.5.pkg"
           ROOT="ps4-auto-updater-v0.3/ps4"
           PKG="$ROOT/IV0000-BREW00197_00-PS4SCANNERTEST00.pkg"
           MANIFEST="$ROOT/BUILD_MANIFEST.txt"
@@ -192,7 +192,7 @@ jobs:
           gh release create "$TAG" "$ASSET" "$MANIFEST" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "PS4 Auto Updater v0.6.4 — VideoOut exit crash diagnosis (experimental)" \
-            --notes "READ-ONLY experimental build (PKG 01.13). v0.6.3 showed 4 verified base-game metadata records on PS4 but Circle triggered CE-34878-0. v0.6.4 changes VideoOut framebuffer teardown to drain/unregister before releasing, and logs exit phases in /data/PS4AutoUpdater/diagnostic_v064.txt. Hardware exit retest pending. No downloads or game installations."
+            --title "PS4 Auto Updater v0.6.5 — SystemService shell exit fix (experimental)" \
+            --notes "READ-ONLY experimental build (PKG 01.14). v0.6.4 real PS4 diagnostic reached APP_MAIN_RETURNING 0 before CE-34878-0. v0.6.5 requests shell termination using SystemService to avoid musl _exit; logs at /data/PS4AutoUpdater/diagnostic_v065.txt. Firmware 14.00 hardware exit retest pending. No updates downloaded or installed."
 
           echo "Direct PKG: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

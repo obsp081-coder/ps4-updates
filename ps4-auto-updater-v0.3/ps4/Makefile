@@ -44,14 +44,17 @@ $(INTDIR)/main.o: src/ftp_scanner_v05.c | $(INTDIR)
 $(INTDIR)/ui_navigation.o: src/ui_navigation.c src/ui_navigation.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
+$(INTDIR)/ui_image.o: src/ui_image.c src/ui_image.h vendor/stb_image.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
 $(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h | $(INTDIR)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 $(INTDIR)/ps4_shell_exit.o: src/ps4_shell_exit.c src/ps4_shell_exit.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_navigation.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
-	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_navigation.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
+eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_image.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
+	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_image.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
 	$(TOOLBIN)/create-fself -in=$(INTDIR)/scanner.elf -out=$(INTDIR)/scanner.oelf --eboot eboot.bin --paid 0x3800000000000011
 
 sce_sys/param.sfo: Makefile

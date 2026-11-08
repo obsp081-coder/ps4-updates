@@ -650,6 +650,11 @@ static int anonymous_auth(sock_t fd) {
  * when PASV responds with 530. The initial control request is PASV.
  */
 static int login(sock_t fd) {
+    /* Authentication is per FTP control connection. A successful metadata
+     * scan and the later lazy-cover worker use different sockets: an
+     * anonymous USER attempt on the first must not suppress a needed USER
+     * on the second. The scan worker is joined before covers start. */
+    ftp_auth_attempted=0;
     char line[512];
     int code = reply(fd, line, sizeof line);
     if (code == 120) {

@@ -334,11 +334,11 @@ static void prepare_blurred_background(const ScannerUiEntry *entries,
             for(int oy=-4;oy<=4;oy+=2) {
                 int py=sy+oy;
                 if(py<0)py=0;
-                if(py>=UI_ICON_SIDE)py=UI_ICON_SIDE-1;
+                if(py>=(int)UI_ICON_SIDE)py=(int)UI_ICON_SIDE-1;
                 for(int ox=-4;ox<=4;ox+=2) {
                     int px=sx+ox;
                     if(px<0)px=0;
-                    if(px>=UI_ICON_SIDE)px=UI_ICON_SIDE-1;
+                    if(px>=(int)UI_ICON_SIDE)px=(int)UI_ICON_SIDE-1;
                     uint32_t pixel=src[py*UI_ICON_SIDE+px];
                     r+=(pixel>>16)&255u;
                     g+=(pixel>>8)&255u;

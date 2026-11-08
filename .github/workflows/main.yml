@@ -26,6 +26,10 @@ jobs:
         working-directory: ps4-auto-updater-v0.2/native
         run: make -f Makefile.host
 
-      - name: Run tests
+      - name: Run legacy v0.2 tests
         working-directory: ps4-auto-updater-v0.2
         run: python3 -m unittest discover -s tests -v
+
+      - name: Run active v0.3/native scanner tests
+        working-directory: ps4-auto-updater-v0.3
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v

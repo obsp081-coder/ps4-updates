@@ -84,8 +84,8 @@ static int candidate_overflow = 0;
 
 #ifdef __ORBIS__
 /* Single producer (FTP worker) / single consumer (VideoOut main thread).
- * Only scan_status/scan_abort are shared while the worker is running.
- * Scan data and decoded thumbnails are consumed AFTER scePthreadJoin. */
+ * Only scan_status/scan_abort are shared while scanning.
+ * Completed game records are consumed AFTER scePthreadJoin. */
 static volatile uint32_t scan_status;
 static volatile int scan_abort;
 static int scan_native_ui;
@@ -93,11 +93,17 @@ static int scan_run_rc;
 static int scan_inventory_saved;
 static int scan_inventory_complete;
 static ScannerUiEntry ui_items[MAX_GAMES];
-static struct {
-    char cusa[10];
-    uint32_t pixels[UI_ICON_PIXELS];
-    int valid;
-} worker_thumbnails[8];
+
+/* One-slot SPSC mailbox: UI owns requests and LRU; cover worker owns
+ * FTP, CRC and decode. State is published with release/acquire atomics.
+ * 0 idle, 1 requested, 2 worker decoding, 3 result ready. No heap. */
+static volatile uint32_t cover_state;
+static volatile uint32_t cover_stop;
+static volatile uint32_t cover_online; /* 0 starting, 1 ready, 2 stopped */
+static unsigned cover_index;
+static int cover_result;
+static uint32_t cover_pixels[UI_ICON_PIXELS];
+static unsigned char cover_failed[MAX_GAMES]; /* UI thread only */
 
 static int scan_should_abort(void) {
     return __atomic_load_n(&scan_abort,__ATOMIC_ACQUIRE)!=0;
@@ -1039,58 +1045,100 @@ static int scan_root(
     return count;
 }
 
+
 #ifdef __ORBIS__
-/* Optional local icon prefetch: fail closed on PNG corruption. FTP
- * TYPE I may be unsupported; only accept ASCII newline repair after
- * all PNG chunks pass CRC32 validation. Never install or write game files.
- * Prefetch up to eight validated base-game icons only. Lazy loading is still pending. */
-static void prefetch_local_icons(sock_t control) {
-    if (found == 0) return;
-    char reply_line[512];
-    const int type = command(control, reply_line, sizeof reply_line, "TYPE I");
-    logmsg("ICON_FTP_TYPE_I_RC", type);
-    if (type != 200)
-        logmsg("ICON_FTP_BINARY_UNSUPPORTED_CRC_FALLBACK", 1);
-    static unsigned char icon_png[2 * 1024 * 1024];
-    unsigned attempted = found < 8 ? found : 8;
-    for (unsigned i=0; i<attempted; ++i) {
-        if(scan_should_abort())break;
-        const Game *candidate = &games[i];
-        if (!valid_id(candidate->cusa)) continue;
-        const char *root = strcmp(candidate->source,"external") == 0
-            ? "/system_data/priv/appmeta/external"
-            : "/system_data/priv/appmeta";
-        char cmd[320];
-        const int n = snprintf(cmd,sizeof cmd,"RETR %s/%s/icon0.png",
-                               root,candidate->cusa);
-        if (n < 0 || n >= (int)sizeof cmd) continue;
-        size_t got=0;
-        const int rc=transfer(control,cmd,icon_png,sizeof icon_png,&got);
-        if(rc!=0) {
-            logmsg("ICON_FTP_READ_RC",rc);
-            continue;
-        }
-        /* Do not pass mangled, opaque binary data to the PNG decoder. */
-        const int recovered=ui_png_ftp_validate(icon_png,&got);
-        if(recovered<0) {
-            logmsg("ICON_PNG_CRC_FAILED",recovered);
-            continue;
-        }
-        if(recovered==1)logmsg("ICON_FTP_ASCII_CRC_RECOVERED",1);
-        /* Decode off the render thread, then stage an immutable thumbnail
-         * until the worker has joined. Do not mutate the UI LRU cache. */
-        const int decoded=ui_image_thumbnail(
-            icon_png,got,worker_thumbnails[i].pixels,UI_ICON_PIXELS);
-        worker_thumbnails[i].valid=(decoded==0);
-        if(decoded==0)
-            memcpy(worker_thumbnails[i].cusa,candidate->cusa,10);
-        logmsg("ICON_THUMBNAIL_RC",decoded);
-        if(report) {
-            fprintf(report,"ICON_RESULT %s transfer_bytes=%lu decode_rc=%d\n",
-                    candidate->cusa,(unsigned long)got,decoded);
-            fflush(report);
+/* Read-only GoldHEN FTP icon retrieval. A single PNG is decoded in the
+ * background thread, and its 128x128 pixels remain private until READY.
+ * An unsupported TYPE I command is handled by chunk-CRC-checked
+ * FTP ASCII repair; an invalid PNG can never enter the UI cache. */
+static int fetch_local_icon(sock_t control,unsigned index,uint32_t *out) {
+    if(index>=found || !out || scan_should_abort())return -1;
+    const Game *g=&games[index];
+    if(!valid_id(g->cusa))return -2;
+    const char *root=strcmp(g->source,"external")==0
+        ? "/system_data/priv/appmeta/external"
+        : "/system_data/priv/appmeta";
+    char cmd[320];
+    const int len=snprintf(cmd,sizeof cmd,"RETR %s/%s/icon0.png",
+                           root,g->cusa);
+    if(len<0 || len>=(int)sizeof cmd)return -3;
+    static unsigned char png[UI_ICON_MAX_PNG];
+    size_t bytes=0;
+    const int read_rc=transfer(control,cmd,png,sizeof png,&bytes);
+    if(read_rc!=0)return read_rc;
+    const int valid=ui_png_ftp_validate(png,&bytes);
+    if(valid<0)return valid;
+    if(valid==1)logmsg("ICON_FTP_ASCII_CRC_RECOVERED",1);
+    return ui_image_thumbnail(png,bytes,out,UI_ICON_PIXELS);
+}
+
+static void *cover_worker_entry(void *unused) {
+    (void)unused;
+    sock_t control=connect_local(FTP_PORT);
+    if(control==NET_BAD) {
+        logmsg("ICON_CONTROL_CONNECT_FAILED",1);
+        __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+        return NULL;
+    }
+    if(!login(control)) {
+        logmsg("ICON_FTP_GREETING_FAILED",1);
+        NET_CLOSE(control);
+        __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+        return NULL;
+    }
+    char reply[512];
+    const int type=command(control,reply,sizeof reply,"TYPE I");
+    logmsg("ICON_FTP_TYPE_I_RC",type);
+    __atomic_store_n(&cover_online,1u,__ATOMIC_RELEASE);
+    while(!scan_should_abort() &&
+          !__atomic_load_n(&cover_stop,__ATOMIC_ACQUIRE)) {
+        if(__atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)==1u) {
+            const unsigned index=cover_index; /* request published */
+            __atomic_store_n(&cover_state,2u,__ATOMIC_RELEASE);
+            cover_result=fetch_local_icon(control,index,cover_pixels);
+            logmsg("ICON_LAZY_FETCH_RC",cover_result);
+            __atomic_store_n(&cover_state,3u,__ATOMIC_RELEASE);
+        } else {
+            (void)sceKernelUsleep(30000);
         }
     }
+    /* An interrupted FTP transfer may have an unread final response:
+     * close instead of sending QUIT on the stale command stream. */
+    NET_CLOSE(control);
+    __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+    return NULL;
+}
+
+/* This callback is invoked by scanner_ui_results on the Pad owner thread.
+ * Never block here; the single-slot mailbox accepts only one request.
+ * Previously failed icons remain explicit placeholders for this session. */
+static int cover_ui_tick(const char *cusa) {
+    int changed=0;
+    if(__atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)==3u) {
+        const unsigned index=cover_index;
+        if(index<found) {
+            if(cover_result==0 &&
+               scanner_ui_offer_thumbnail(games[index].cusa,cover_pixels,
+                                          UI_ICON_PIXELS)==0) {
+                changed=1;
+            } else {
+                cover_failed[index]=1;
+            }
+        }
+        __atomic_store_n(&cover_state,0u,__ATOMIC_RELEASE);
+    }
+    if(!cusa || scan_should_abort() ||
+       __atomic_load_n(&cover_online,__ATOMIC_ACQUIRE)!=1u ||
+       __atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)!=0u ||
+       ui_icon_cache_find(cusa)!=NULL)return changed;
+    for(unsigned i=0;i<found;++i) {
+        if(!cover_failed[i] && strcmp(games[i].cusa,cusa)==0) {
+            cover_index=i;
+            __atomic_store_n(&cover_state,1u,__ATOMIC_RELEASE);
+            break;
+        }
+    }
+    return changed;
 }
 #endif
 
@@ -1394,10 +1442,8 @@ static int scan_readonly(void) {
                     "external",
                     1
                 );
-#ifdef __ORBIS__
-                if(scan_native_ui && !scan_should_abort())
-                    prefetch_local_icons(control);
-#endif
+/* Covers are now requested lazily by the UI after the scan.
+                 * The initial metadata pass does not wait for artwork. */
             } else {
                 ++errors;
             }
@@ -1597,13 +1643,42 @@ int main(void) {
     }
 
     if(!user_exit) {
-        for(unsigned i=0;i<8u;++i)
-            if(worker_thumbnails[i].valid)
-                (void)scanner_ui_offer_thumbnail(
-                    worker_thumbnails[i].cusa,
-                    worker_thumbnails[i].pixels,UI_ICON_PIXELS);
+        /* A failed optional artwork thread must not block navigation.
+         * No FTP work or PNG decoding is ever performed by VideoOut. */
+        OrbisPthread cover_worker;
+        OrbisPthreadAttr cover_attr;
+        int attr_rc=scePthreadAttrInit(&cover_attr);
+        const int attr_valid=(attr_rc==0);
+        if(attr_rc==0)
+            attr_rc=scePthreadAttrSetstacksize(&cover_attr,256u*1024u);
+        int cover_started=0;
+        if(attr_rc==0) {
+            memset(cover_failed,0,sizeof cover_failed);
+            __atomic_store_n(&cover_state,0u,__ATOMIC_RELEASE);
+            __atomic_store_n(&cover_stop,0u,__ATOMIC_RELEASE);
+            __atomic_store_n(&cover_online,0u,__ATOMIC_RELEASE);
+            const int create_rc=scePthreadCreate(
+                &cover_worker,&cover_attr,cover_worker_entry,NULL,
+                "ps4auto_covers");
+            if(create_rc==0) {
+                cover_started=1;
+                scanner_ui_set_cover_tick(cover_ui_tick);
+            } else logmsg("ICON_WORKER_CREATE_FAILED",create_rc);
+        } else logmsg("ICON_WORKER_ATTR_FAILED",attr_rc);
+        if(attr_valid)(void)scePthreadAttrDestroy(&cover_attr);
+
         scanner_ui_results(ui_items,found,found,(unsigned)errors,
                             scan_inventory_complete,scan_inventory_saved);
+        scanner_ui_set_cover_tick(NULL);
+        if(cover_started) {
+            __atomic_store_n(&cover_stop,1u,__ATOMIC_RELEASE);
+            __atomic_store_n(&scan_abort,1,__ATOMIC_RELEASE);
+            if(scePthreadJoin(cover_worker,NULL)!=0) {
+                /* Never release shared worker memory while it may run. */
+                scanner_ui_shutdown(NULL);
+                ps4_shell_exit(5,NULL);
+            }
+        }
     }
     logmsg("UI_RESULTS_RETURNED",1);
     scanner_ui_shutdown(logmsg);

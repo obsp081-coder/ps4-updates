@@ -20,6 +20,7 @@ static bool capture_live_ui = false;
 static bool verify_jobs = false;
 static bool saw_job_progress = false;
 static bool saw_job_scroll = false;
+static bool saw_update_row = false;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
  * is submitted to the host VideoOut mock; this is not a browser mock. */
@@ -78,7 +79,7 @@ static void reset() {
     saw_blurred_background = false;
     captured_pages = 0;
     capture_live_ui = false;
-    verify_jobs = saw_job_progress = saw_job_scroll = false;
+    verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -135,6 +136,9 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             if(pad_reads>=14 && pad_reads<=19 &&
                frame[810u*SCREEN_WIDTH+150u]==0xFF164881u)
                 saw_job_scroll=true;
+            if(pad_reads==22 &&
+               frame[742u*SCREEN_WIDTH+220u]==0xFF102D50u)
+                saw_update_row=true;
         }
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];
@@ -179,8 +183,9 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
            pad_reads==10 || pad_reads==12 || pad_reads==14 ||
            pad_reads==16 || pad_reads==18)
             data->buttons=ORBIS_PAD_BUTTON_DOWN;
-        if(pad_reads==20 || pad_reads==22)
+        if(pad_reads==20 || pad_reads==24 || pad_reads==26)
             data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        if(pad_reads==22)data->buttons=ORBIS_PAD_BUTTON_CROSS;
         return 0;
     }
     /* Exercise actual controller flow: home -> details -> home ->
@@ -275,6 +280,7 @@ int main() {
     scanner_ui_results(entries,3,2,0,1,1);
     assert(saw_job_progress);
     assert(saw_job_scroll);
+    assert(saw_update_row);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

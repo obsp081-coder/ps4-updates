@@ -112,7 +112,7 @@ class MockHandler(socketserver.StreamRequestHandler):
                         if argument == "/system_data/priv/appmeta":
                             payload = self.server.listing
                         elif argument == "/system_data/priv/appmeta/external":
-                            payload = b""
+                            payload = self.server.external_listing
                     else:
                         prefix = "/system_data/priv/appmeta/"
                         suffix = "/param.sfo"
@@ -151,6 +151,7 @@ class MockFTP(socketserver.TCPServer):
         super().__init__(("127.0.0.1", 0), MockHandler)
         self.listing = listing
         self.metadata = metadata
+        self.external_listing = b""
         self.commands = []
         self.pasv_advertisement = "127,0,0,1"
         self.deny_login = False
@@ -315,6 +316,15 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertNotIn("Metadata records: 1", diagnostic)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
+
+    def test_external_listing_unavailable_is_explicitly_incomplete(self):
+        inventory, diagnostic, _ = self.with_server(
+            b"", {}, passthrough=lambda server: setattr(
+                server, "external_listing", None))
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("LIST external: -13", diagnostic)
+        self.assertIn("External listing available: 0", diagnostic)
+        self.assertIn("Primary listing available: 1", diagnostic)
 
     def test_empty_listing_is_valid_and_complete(self):
         inventory, diagnostic, commands = self.with_server(b"", {})

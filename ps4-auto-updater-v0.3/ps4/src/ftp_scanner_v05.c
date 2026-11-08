@@ -515,23 +515,32 @@ static int transfer(
     int code = command(
         control, line, sizeof line, "PASV"
     );
+    logmsg("FTP_PASV_CODE", code);
 
     if (code != 227)
         return -10;
 
     int port = pasv_port(line);
+    logmsg("FTP_PASV_PORT", port);
 
     if (port < 0)
         return -11;
 
     sock_t data = connect_local((unsigned)port);
 
-    if (data == NET_BAD)
+    if (data == NET_BAD) {
+        logmsg("FTP_DATA_CONNECT_FAILED", port);
         return -12;
+    }
 
     code = command(
         control, line, sizeof line, cmd
     );
+    if (report) {
+        fprintf(report, "FTP_READ_COMMAND: %s\n", cmd);
+        fprintf(report, "FTP_READ_START_CODE: %d\n", code);
+        fflush(report);
+    }
 
     if (code != 125 && code != 150) {
         NET_CLOSE(data);
@@ -580,6 +589,10 @@ static int transfer(
     NET_CLOSE(data);
 
     code = reply(control, line, sizeof line);
+    if (report) {
+        fprintf(report, "FTP_READ_END_CODE: %d\n", code);
+        fflush(report);
+    }
 
     /* Preserve the most informative diagnostic on oversized files. */
     if (overflow)

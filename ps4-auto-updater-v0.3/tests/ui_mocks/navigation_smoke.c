@@ -56,6 +56,37 @@ int main(void) {
     assert(!ui_nav_action(&nav,UI_ACT_OPEN));
     assert(ui_nav_resolve(&nav,0)==UI_MAX_TITLES);
 
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    assert(nav.page==UI_PAGE_SEARCH);
+    nav.keyboard_index=20; /* U */
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    nav.keyboard_index=13; /* N */
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(strcmp(nav.query,"UN")==0);
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==3);
+    assert(ui_nav_action(&nav,UI_ACT_TOGGLE_KEYBOARD));
+    assert(nav.keyboard_arabic==1);
+    assert(strcmp(ui_nav_keyboard_key(&nav,9),"ر")==0);
+    nav.keyboard_index=9;
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.available==0);
+    assert(ui_nav_action(&nav,UI_ACT_REMOVE));
+    assert(strcmp(nav.query,"UN")==0 && nav.available==1);
+    assert(ui_nav_action(&nav,UI_ACT_CLEAR_SEARCH));
+    unsigned ar_indices[]={9,26,1,22,21,11};
+    for(unsigned i=0;i<sizeof(ar_indices)/sizeof(ar_indices[0]);++i) {
+        nav.keyboard_index=ar_indices[i];
+        assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    }
+    assert(strcmp(nav.query,"روبلكس")==0 && nav.available==1);
+    assert(ui_nav_resolve(&nav,0)==1);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && !nav.exit_requested);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    assert(nav.page==UI_PAGE_SEARCH);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+
     fill(256);
     assert(nav.available==256);
     for(unsigned i=0;i<300;i++) (void)ui_nav_action(&nav,UI_ACT_DOWN);

@@ -88,6 +88,13 @@ static int update_query(UiNavigation *state,const char *value) {
 }
 int ui_nav_action(UiNavigation *state, UiAction action) {
     if (!state || state->exit_requested) return 0;
+    /* OPTIONS always opens the informational settings page. It must not
+     * silently change download/install flags or save any preferences. */
+    if (action == UI_ACT_SETTINGS) {
+        if (state->page == UI_PAGE_SETTINGS) return 0;
+        state->page = UI_PAGE_SETTINGS;
+        return 1;
+    }
     if (state->page == UI_PAGE_SEARCH) {
         unsigned keys=ui_nav_keyboard_count(state);
         if (action == UI_ACT_BACK) {

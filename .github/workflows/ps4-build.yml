@@ -25,6 +25,11 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
+      - name: Install Arabic bitmap build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil fonts-noto-core
+
       - name: Run all automatic tests
         run: |
           python3 -m unittest discover \
@@ -59,6 +64,8 @@ jobs:
             curl \
             ca-certificates \
             python3 \
+            python3-pil \
+            fonts-noto-core \
             libicu-dev
 
       - name: Restore verified OpenOrbis archive from CI cache

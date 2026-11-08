@@ -304,10 +304,74 @@ static void header(uint32_t *p, UiPage page) {
         arabic(p,positions[i]+18,40,labels[i],highlighted?WHITE:MUTED);
     }
 }
+/* A blurred 96x54 background is computed ONLY when the selected local
+ * icon changes. It uses the cached 128x128 thumbnail and 3x3 box sampling,
+ * never the raw full-resolution PNG or a GPU shader. */
+#define BLUR_WIDTH 96
+#define BLUR_HEIGHT 54
+static uint32_t blur_image[BLUR_WIDTH*BLUR_HEIGHT];
+static char blurred_for[10];
+static int blur_available=0;
+static void prepare_blurred_background(const ScannerUiEntry *entries,
+                                       unsigned count) {
+    unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
+    if(!entries || idx>=count || !entries[idx].cusa) {
+        blurred_for[0]=0;blur_available=0;return;
+    }
+    const char *id=entries[idx].cusa;
+    if(blurred_for[0] && strcmp(blurred_for,id)==0)return;
+    const uint32_t *src=ui_icon_cache_find(id);
+    if(!src) {
+        blurred_for[0]=0;
+        blur_available=0;
+        return;
+    }
+    for(int y=0;y<BLUR_HEIGHT;++y) {
+        for(int x=0;x<BLUR_WIDTH;++x) {
+            int sx=x*(int)UI_ICON_SIDE/BLUR_WIDTH;
+            int sy=y*(int)UI_ICON_SIDE/BLUR_HEIGHT;
+            unsigned r=0,g=0,b=0,samples=0;
+            for(int oy=-4;oy<=4;oy+=2) {
+                int py=sy+oy;
+                if(py<0)py=0;
+                if(py>=UI_ICON_SIDE)py=UI_ICON_SIDE-1;
+                for(int ox=-4;ox<=4;ox+=2) {
+                    int px=sx+ox;
+                    if(px<0)px=0;
+                    if(px>=UI_ICON_SIDE)px=UI_ICON_SIDE-1;
+                    uint32_t pixel=src[py*UI_ICON_SIDE+px];
+                    r+=(pixel>>16)&255u;
+                    g+=(pixel>>8)&255u;
+                    b+=pixel&255u;
+                    ++samples;
+                }
+            }
+            blur_image[y*BLUR_WIDTH+x]=0xFF000000u|
+                ((r/samples)<<16)|((g/samples)<<8)|(b/samples);
+        }
+    }
+    memcpy(blurred_for,id,10);
+    blur_available=1;
+}
 static void background(uint32_t *p) {
     rect(p,0,0,WIDTH,HEIGHT,BG);
-    for(int y=128;y<1030;y+=48)
-        rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
+    if(blur_available) {
+        /* Opaque, darkened tint keeps Arabic captions legible. */
+        for(int y=116;y<1000;++y) {
+            uint32_t *line=p+(size_t)y*WIDTH;
+            int src_y=y*BLUR_HEIGHT/HEIGHT;
+            for(int x=0;x<WIDTH;++x) {
+                uint32_t color=blur_image[src_y*BLUR_WIDTH+x*BLUR_WIDTH/WIDTH];
+                unsigned r=(((color>>16)&255u)+6u*3u)/4u;
+                unsigned g=(((color>>8)&255u)+17u*3u)/4u;
+                unsigned b=((color&255u)+38u*3u)/4u;
+                line[x]=0xFF000000u|(r<<16)|(g<<8)|b;
+            }
+        }
+    } else {
+        for(int y=128;y<1030;y+=48)
+            rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
+    }
 }
 static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
@@ -475,6 +539,9 @@ static void draw(const ScannerUiEntry *entries,
     (void)start;
     if(!usable) return;
     uint32_t *p=surface[next_buffer];
+    if(!scanning && navigation.page!=UI_PAGE_DOWNLOADS &&
+       navigation.page!=UI_PAGE_SEARCH)
+        prepare_blurred_background(entries,count);
     background(p);
     header(p,scanning?UI_PAGE_HOME:navigation.page);
     if(scanning) {
@@ -517,6 +584,8 @@ extern "C" int scanner_ui_offer_icon(
 
 extern "C" int scanner_ui_begin(void) {
     ui_icon_cache_reset();
+    blurred_for[0]=0;
+    blur_available=0;
     OrbisUserServiceInitializeParams init = {};
     init.priority = ORBIS_KERNEL_PRIO_FIFO_LOWEST;
     (void)sceUserServiceInitialize(&init);

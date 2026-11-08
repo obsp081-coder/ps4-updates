@@ -1,5 +1,6 @@
 #include "scanner_ui_host_mock.h"
 #include "../../ps4/src/scanner_ui.h"
+#include "../../ps4/src/ui_models.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +17,9 @@ static int64_t last_flip = 0;
 static const uint32_t *display_buffers[2] = {nullptr, nullptr};
 static bool saw_blurred_background = false;
 static bool capture_live_ui = false;
+static bool verify_jobs = false;
+static bool saw_job_progress = false;
+static bool saw_job_scroll = false;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
  * is submitted to the host VideoOut mock; this is not a browser mock. */
@@ -74,6 +78,7 @@ static void reset() {
     saw_blurred_background = false;
     captured_pages = 0;
     capture_live_ui = false;
+    verify_jobs = saw_job_progress = saw_job_scroll = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -123,6 +128,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+72u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(verify_jobs) {
+            const uint32_t *frame=display_buffers[index];
+            if(frame[394u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
+                saw_job_progress=true;
+            if(pad_reads>=16 &&
+               frame[810u*SCREEN_WIDTH+150u]==0xFF164881u)
+                saw_job_scroll=true;
+        }
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];
             const size_t row=50u*SCREEN_WIDTH;
@@ -158,6 +171,18 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(verify_jobs) {
+        /* Synthetic host-only data: six Down presses scroll beyond
+         * the five visible rows without triggering network/install. */
+        if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_SQUARE;
+        if(pad_reads==4 || pad_reads==6 || pad_reads==8 ||
+           pad_reads==10 || pad_reads==12 || pad_reads==14 ||
+           pad_reads==16 || pad_reads==18)
+            data->buttons=ORBIS_PAD_BUTTON_DOWN;
+        if(pad_reads==20 || pad_reads==22)
+            data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     /* Exercise actual controller flow: home -> details -> home ->
      * downloads -> home -> Arabic/English search -> home ->
      * settings -> home -> exit.
@@ -226,6 +251,32 @@ int main() {
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);
+
+    /* Populate a fixture only for host tests, after scanner_ui_begin()
+     * resets the model. Production has no provider yet and shows zero. */
+    reset();
+    verify_jobs = true;
+    assert(scanner_ui_begin() == 1);
+    UiDownloadInfo jobs[7] = {};
+    for(unsigned i=0;i<7;++i) {
+        std::snprintf(jobs[i].cusa,sizeof jobs[i].cusa,"CUSA%05u",i+1);
+        std::snprintf(jobs[i].title,sizeof jobs[i].title,"HOST FIXTURE %u",i);
+        std::strcpy(jobs[i].version,"01.02");
+        jobs[i].bytes_total=1024;
+        jobs[i].bytes_done=512;
+        jobs[i].status=UI_JOB_DOWNLOADING;
+    }
+    assert(ui_model_set_downloads(jobs,7) == 0);
+    UiUpdateInfo update = {};
+    std::strcpy(update.cusa,"CUSA02343");
+    std::strcpy(update.version,"01.09");
+    update.verdict=UI_UPDATE_UNKNOWN;
+    assert(ui_model_set_updates(&update,1) == 0);
+    scanner_ui_results(entries,3,2,0,1,1);
+    assert(saw_job_progress);
+    assert(saw_job_scroll);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
 
     reset();
     fail_video = true;

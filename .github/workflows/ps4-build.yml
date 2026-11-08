@@ -61,16 +61,40 @@ jobs:
             python3 \
             libicu-dev
 
-      - name: Download OpenOrbis Toolchain
-        run: |
-          curl -fL --retry 8 --retry-all-errors --retry-delay 4 \
-            --connect-timeout 20 --max-time 300 \
-            https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz \
-            -o /tmp/openorbis.tar.gz
+      - name: Restore verified OpenOrbis archive from CI cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/openorbis.tar.gz
+          key: openorbis-v0.5.4-sha256-3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526
 
-          # Digest from the official OpenOrbis v0.5.4 GitHub release asset.
-          # Refuse unexpected SDK bytes before extracting/executing tools.
-          echo '3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526  /tmp/openorbis.tar.gz' | sha256sum --check --status
+      - name: Download and verify OpenOrbis Toolchain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526'
+          ASSET='/tmp/openorbis.tar.gz'
+          # Even cached archives are checked before execution.
+          if ! echo "$EXPECTED  $ASSET" | sha256sum --check --status; then
+            rm -f "$ASSET"
+            # Try the public release URL first; API asset negotiation is an
+            # alternative origin when GitHub's release CDN returns HTTP 504.
+            if ! curl -fL --retry 3 --retry-all-errors --retry-delay 5 \
+               --connect-timeout 20 --max-time 300 \
+               'https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz' \
+               -o "$ASSET"; then
+              rm -f "$ASSET"
+              curl -fL --retry 3 --retry-all-errors --retry-delay 5 \
+                --connect-timeout 20 --max-time 300 \
+                -H 'Accept: application/octet-stream' \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                'https://api.github.com/repos/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/assets/356303789' \
+                -o "$ASSET"
+            fi
+          fi
+          # SHA-256 published by the official OpenOrbis release (v0.5.4).
+          echo "$EXPECTED  $ASSET" | sha256sum --check
 
           mkdir -p "$RUNNER_TEMP/openorbis"
 

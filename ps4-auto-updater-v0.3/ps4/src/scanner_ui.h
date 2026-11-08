@@ -37,6 +37,10 @@ int scanner_ui_offer_icon(const char *cusa, const unsigned char *png,
 /* UI-thread handoff for an already-validated worker-decoded thumbnail. */
 int scanner_ui_offer_thumbnail(const char *cusa,const uint32_t *pixels,
                                size_t pixel_count);
+/* Optional read-only cover service callback, invoked ONLY on UI thread.
+ * Called for selected and visible base games; returns 1 if an image was
+ * committed to the UI's cache, 0 otherwise. No network on render thread. */
+void scanner_ui_set_cover_tick(int (*tick)(const char *cusa));
 
 #ifdef __cplusplus
 }

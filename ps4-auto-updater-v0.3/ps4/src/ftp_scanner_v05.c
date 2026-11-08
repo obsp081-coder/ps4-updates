@@ -158,20 +158,44 @@ static int bounds(
     return off <= size && len <= size - off;
 }
 
-static void value(
-    char *dst,
-    size_t cap,
-    const unsigned char *v,
-    size_t n
-) {
-    size_t i = 0;
-    if (!cap) return;
+/* Preserve JSON-valid UTF-8 even if a long title must be truncated.
+ * Invalid UTF-8 becomes '?'; never split a multibyte code point. */
+static size_t utf8_size(const unsigned char *p, size_t n) {
+    if (n == 0 || p[0] == 0) return 0;
+    if (p[0] < 0x80) return 1;
+    size_t l = 0;
+    if (p[0] >= 0xC2 && p[0] <= 0xDF) l = 2;
+    else if (p[0] >= 0xE0 && p[0] <= 0xEF) l = 3;
+    else if (p[0] >= 0xF0 && p[0] <= 0xF4) l = 4;
+    else return 0;
+    if (l > n) return 0;
+    for (size_t i = 1; i < l; ++i)
+        if (p[i] < 0x80 || p[i] > 0xBF) return 0;
+    if (l == 3 && p[0] == 0xE0 && p[1] < 0xA0) return 0;
+    if (l == 3 && p[0] == 0xED && p[1] >= 0xA0) return 0;
+    if (l == 4 && p[0] == 0xF0 && p[1] < 0x90) return 0;
+    if (l == 4 && p[0] == 0xF4 && p[1] >= 0x90) return 0;
+    return l;
+}
 
-    while (i < n && i + 1 < cap && v[i]) {
-        dst[i] = (char)v[i];
-        ++i;
+static void value(
+    char *dst, size_t cap, const unsigned char *v, size_t n
+) {
+    size_t i = 0, written = 0;
+    if (!cap) return;
+    while (i < n && v[i] && written + 1 < cap) {
+        size_t len = utf8_size(v + i, n - i);
+        if (!len) {
+            dst[written++] = '?';
+            ++i;
+            continue;
+        }
+        if (written + len >= cap) break;
+        memcpy(dst + written, v + i, len);
+        written += len;
+        i += len;
     }
-    dst[i] = 0;
+    dst[written] = 0;
 }
 
 /*
@@ -1000,8 +1024,11 @@ static void confirm_games(void) {
 }
 
 static int save_inventory(const char *path) {
-    FILE *fp = fopen(path, "wb");
-
+    char tmp[1024];
+    int n = snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof tmp)
+        return -1;
+    FILE *fp = fopen(tmp, "wb");
     if (!fp)
         return -1;
 
@@ -1090,7 +1117,11 @@ static int save_inventory(const char *path) {
     if (fclose(fp) != 0)
         ok = 0;
 
-    return ok ? 0 : -1;
+    if (!ok || rename(tmp, path) != 0) {
+        (void)remove(tmp);
+        return -1;
+    }
+    return 0;
 }
 
 int main(void) {

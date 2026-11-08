@@ -33,6 +33,8 @@ static bool saw_scan_settings = false;
 static bool test_lazy_cover = false;
 static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
+static bool test_cover_scroll = false;
+static bool saw_cover_beyond_eight = false;
 static volatile uint32_t mock_scan_status = 0;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
@@ -87,6 +89,12 @@ static void trace(const char *name, int) {
 /* Host-only mailbox fixture: the image is intentionally absent at first.
  * A subsequent UI tick imports an already-decoded thumbnail and requests
  * a repaint. This is not a real FTP fetch or PS4 device test. */
+static int cover_scroll_mock_tick(const char *cusa) {
+    if(test_cover_scroll && cusa &&
+       std::strcmp(cusa,"CUSA00008")==0)saw_cover_beyond_eight=true;
+    return 0; /* Read-only mailbox fixture; never start FTP in a host test. */
+}
+
 static int lazy_cover_mock_tick(const char *cusa) {
     if(!test_lazy_cover || !cusa ||
        std::strcmp(cusa,"CUSA02343")!=0)return 0;
@@ -112,7 +120,8 @@ static void reset() {
     capture_cached_preview = saw_cached_sixth_row = false;
     check_offline_cache = saw_offline_cache = false;
     test_async_scan = test_async_exit = saw_scan_details =
-        saw_scan_settings = test_lazy_cover = lazy_cover_offered = false;
+        saw_scan_settings = test_lazy_cover = lazy_cover_offered =
+        test_cover_scroll = saw_cover_beyond_eight = false;
     lazy_cover_polls = 0;
     mock_scan_status = 0;
     fail_video = fail_memory = fail_pad = stall_flip = false;
@@ -232,6 +241,12 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_cover_scroll) {
+        if(pad_reads>=2 && pad_reads<=16 && pad_reads%2==0)
+            data->buttons=ORBIS_PAD_BUTTON_DOWN;
+        if(pad_reads==18)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_async_exit) {
         if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
         return 0;
@@ -361,6 +376,29 @@ int main() {
     scanner_ui_set_cover_tick(nullptr);
     assert(lazy_cover_offered && lazy_cover_polls>=3);
     assert(saw_blurred_background);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* The on-demand callback must be reached after scrolling beyond the
+     * eight icons previously fetched only at startup. No network is mocked
+     * as successful: this verifies UI request coverage, not FTP behavior. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    ScannerUiEntry long_library[12]={};
+    char long_ids[12][10]={};
+    for(unsigned i=0;i<12;++i) {
+        std::snprintf(long_ids[i],10,"CUSA%05u",i);
+        long_library[i].cusa=long_ids[i];
+        long_library[i].title="Read-only host entry";
+        long_library[i].version="01.00";
+        long_library[i].category="gd";
+        long_library[i].install_state=-1;
+    }
+    test_cover_scroll=true;
+    scanner_ui_set_cover_tick(cover_scroll_mock_tick);
+    scanner_ui_results(long_library,12,12,0,1,1);
+    scanner_ui_set_cover_tick(nullptr);
+    assert(saw_cover_beyond_eight && pad_reads>=18);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

@@ -25,7 +25,7 @@ def sfo(title_id, name="Test Game", version="01.04", category="gd",
         ("TITLE", name),
         ("APP_VER", version),
         ("CONTENT_ID", content_id if content_id is not None else
-         "IV0000-" + title_id + "_00-SCANNER00000000"),
+         "IV0000-" + title_id + "_00-SCANNER000000000"),
         ("CATEGORY", category),
     ]
     if include_title_id:
@@ -168,18 +168,23 @@ class ScannerFTPTests(unittest.TestCase):
             raise unittest.SkipTest("C compiler unavailable")
         cls.temp = tempfile.TemporaryDirectory()
         cls.executable = str(Path(cls.temp.name) / "ftp-scanner")
-        subprocess.run(
-            ["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O2",
-             "-o", cls.executable, str(SCANNER)],
-            check=True, capture_output=True, text=True,
-        )
+        cls.limited_executable = str(Path(cls.temp.name) / "ftp-scanner-cap2")
+        for binary, extra_flags in (
+            (cls.executable, []),
+            (cls.limited_executable, ["-DMAX_GAMES=2"]),
+        ):
+            subprocess.run(
+                ["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O2",
+                 *extra_flags, "-o", binary, str(SCANNER)],
+                check=True, capture_output=True, text=True,
+            )
 
     @classmethod
     def tearDownClass(cls):
         if hasattr(cls, "temp"):
             cls.temp.cleanup()
 
-    def run_client(self, port):
+    def run_client(self, port, executable=None):
         with tempfile.TemporaryDirectory() as directory:
             inv = Path(directory) / "inventory.json"
             diagnostic = Path(directory) / "diagnostic.txt"
@@ -188,20 +193,22 @@ class ScannerFTPTests(unittest.TestCase):
                        PS4_FTP_TEST_OUT=str(inv),
                        PS4_FTP_TEST_REPORT=str(diagnostic))
             proc = subprocess.run(
-                [self.executable], env=env, text=True,
+                [executable or self.executable], env=env, text=True,
                 capture_output=True, timeout=20,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             return json.loads(inv.read_text()), diagnostic.read_text()
 
-    def with_server(self, listing, metadata, *, passthrough=None):
+    def with_server(self, listing, metadata, *, passthrough=None,
+                    executable=None):
         with MockFTP(listing, metadata) as server:
             if passthrough:
                 passthrough(server)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                inventory, diagnostic = self.run_client(server.server_address[1])
+                inventory, diagnostic = self.run_client(
+                    server.server_address[1], executable=executable)
                 return inventory, diagnostic, list(server.commands)
             finally:
                 server.shutdown()
@@ -441,7 +448,7 @@ class ScannerFTPTests(unittest.TestCase):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, _ = self.with_server(
             listing, {"CUSA02343": sfo("CUSA02343",
-                                       content_id="IV0000-CUSA99999_00-SCANNER00000000")})
+                                       content_id="IV0000-CUSA99999_00-SCANNER000000000")})
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
         self.assertIn("SFO CUSA02343: -35", diagnostic)
@@ -497,6 +504,42 @@ class ScannerFTPTests(unittest.TestCase):
             ["CUSA02343", "CUSA00411", "CUSA08032"]
         )
         self.assertTrue(inventory["scan_complete"])
+
+    def test_truncated_content_id_does_not_restore_missing_title_id(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\\r\\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo(
+                "CUSA02343", include_title_id=False,
+                content_id="IV0000-CUSA02343_")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -33", diagnostic)
+
+    def test_invalid_content_id_suffix_is_rejected(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\\r\\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo(
+                "CUSA02343", content_id="IV0000-CUSA02343_00-0123456789ABC_EF")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -35", diagnostic)
+
+    def test_listing_over_capacity_cannot_claim_complete_scan(self):
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 CUSA%05d\\r\\n" % i).encode()
+            for i in (2343, 411, 8032)
+        )
+        metadata = {
+            "CUSA02343": sfo("CUSA02343"),
+            "CUSA00411": sfo("CUSA00411"),
+            "CUSA08032": sfo("CUSA08032"),
+        }
+        inventory, diagnostic, _ = self.with_server(
+            listing, metadata, executable=self.limited_executable)
+        self.assertEqual(len(inventory["directory_candidates"]), 2)
+        self.assertEqual(len(inventory["games"]), 2)
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("LIST_TRUNCATED: 1", diagnostic)
 
     def test_content_id_substring_cannot_impersonate_title(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

@@ -25,6 +25,10 @@ static bool capture_cached_preview = false;
 static bool saw_cached_sixth_row = false;
 static bool check_offline_cache = false;
 static bool saw_offline_cache = false;
+static bool test_async_scan = false;
+static bool saw_scan_details = false;
+static bool saw_scan_settings = false;
+static volatile uint32_t mock_scan_status = 0;
 static unsigned captured_pages = 0;
 /* Visual-regression snapshots use the SAME native framebuffer output that
  * is submitted to the host VideoOut mock; this is not a browser mock. */
@@ -86,6 +90,8 @@ static void reset() {
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     capture_cached_preview = saw_cached_sixth_row = false;
     check_offline_cache = saw_offline_cache = false;
+    test_async_scan = saw_scan_details = saw_scan_settings = false;
+    mock_scan_status = 0;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -161,6 +167,13 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                frame[742u*SCREEN_WIDTH+220u]==0xFF102D50u)
                 saw_update_row=true;
         }
+        if(test_async_scan) {
+            const uint32_t *frame=display_buffers[index];
+            if(pad_reads>=2 && frame[50u*SCREEN_WIDTH+1112u]==0xFF116BCEu)
+                saw_scan_details=true;
+            if(pad_reads>=6 && frame[50u*SCREEN_WIDTH+1592u]==0xFF116BCEu)
+                saw_scan_settings=true;
+        }
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];
             const size_t row=50u*SCREEN_WIDTH;
@@ -196,6 +209,16 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_async_scan) {
+        /* Worker remains incomplete while we navigate cached details and
+         * settings. It signals completion only after Pad input is polled. */
+        if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_CROSS;
+        if(pad_reads==4)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        if(pad_reads==6)data->buttons=ORBIS_PAD_BUTTON_OPTIONS;
+        if(pad_reads==8)
+            mock_scan_status=SCANNER_UI_SCAN_DONE;
+        return 0;
+    }
     if(verify_jobs) {
         /* Synthetic host-only data: six Down presses scroll beyond
          * the five visible rows without triggering network/install. */
@@ -349,6 +372,18 @@ int main() {
     scanner_ui_results(entries,3,2,1,0,0);
     check_offline_cache=false;
     assert(saw_offline_cache);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* The scan worker is incomplete for eight input cycles: cached details
+     * and settings must remain reachable on the VideoOut thread. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
+    test_async_scan=true;
+    assert(scanner_ui_wait_for_scan(&mock_scan_status)==0);
+    assert(saw_scan_details && saw_scan_settings && pad_reads>=8);
+    test_async_scan=false;
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

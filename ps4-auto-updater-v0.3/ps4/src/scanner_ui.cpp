@@ -458,6 +458,50 @@ static void background(uint32_t *p) {
             rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
     }
 }
+/* Thin PS4 controller navigation rail. Draw once per state change with
+ * small geometric icons rather than decoding SVGs or GPU textures. The
+ * wide content panels still have their full original 1080p layout. */
+static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
+    const int active=section==current;
+    const uint32_t ink=active?WHITE:MUTED;
+    if(active) {
+        panel(p,5,y,58,69,0xFF174F92u);
+        rect(p,4,y+14,3,43,CYAN);
+    }
+    const int x=20, cy=y+17;
+    if(section==UI_PAGE_HOME) {
+        rect(p,x+12,cy,8,5,ink);
+        rect(p,x+8,cy+5,16,5,ink);
+        rect(p,x+4,cy+10,24,5,ink);
+        rect(p,x+8,cy+15,16,16,ink);
+        rect(p,x+14,cy+21,4,10,0xFF081D39u);
+    } else if(section==UI_PAGE_DETAILS) {
+        rect(p,x+1,cy+7,30,23,ink);
+        rect(p,x+4,cy+10,24,17,0xFF081D39u);
+        rect(p,x+8,cy+13,4,11,ink);
+        rect(p,x+5,cy+16,10,4,ink);
+        rect(p,x+21,cy+15,4,4,ink);
+        rect(p,x+25,cy+21,4,4,ink);
+    } else if(section==UI_PAGE_DOWNLOADS) {
+        rect(p,x+14,cy+1,4,19,ink);
+        rect(p,x+9,cy+17,14,5,ink);
+        rect(p,x+12,cy+22,8,5,ink);
+        rect(p,x+4,cy+29,24,3,ink);
+    } else if(section==UI_PAGE_SEARCH) {
+        rect(p,x+4,cy+4,21,21,ink);
+        rect(p,x+8,cy+8,13,13,0xFF081D39u);
+        rect(p,x+23,cy+23,5,5,ink);
+        rect(p,x+27,cy+27,5,5,ink);
+    }
+}
+static void rail(uint32_t *p,UiPage page) {
+    rect(p,0,116,69,884,0xFF081D39u);
+    rect(p,66,116,2,884,0xFF1A5189u);
+    rail_item(p,199,UI_PAGE_HOME,page);
+    rail_item(p,297,UI_PAGE_DETAILS,page);
+    rail_item(p,395,UI_PAGE_DOWNLOADS,page);
+    rail_item(p,493,UI_PAGE_SEARCH,page);
+}
 static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
     rect(p,0,1000,WIDTH,2,0xFF1F5C9Eu);
@@ -628,6 +672,7 @@ static void draw(const ScannerUiEntry *entries,
        navigation.page!=UI_PAGE_SEARCH)
         prepare_blurred_background(entries,count);
     background(p);
+    rail(p,scanning?UI_PAGE_HOME:navigation.page);
     header(p,scanning?UI_PAGE_HOME:navigation.page);
     if(scanning) {
         arabic(p,118,218,UI_AR_READING_METADATA,WHITE);

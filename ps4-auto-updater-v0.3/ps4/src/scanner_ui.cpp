@@ -361,9 +361,12 @@ static void prepare_blurred_background(const ScannerUiEntry *entries,
     blur_available=1;
 }
 static void background(uint32_t *p) {
-    rect(p,0,0,WIDTH,HEIGHT,BG);
     if(blur_available) {
-        /* Opaque, darkened tint keeps Arabic captions legible. */
+        /* Avoid clearing two million pixels that the opaque artwork
+         * immediately replaces. Header/footer still get a clean base. */
+        rect(p,0,0,WIDTH,116,BG);
+        rect(p,0,1000,WIDTH,HEIGHT-1000,BG);
+        /* The blurred pixels already include the dark text-safe tint. */
         static_assert(WIDTH % BLUR_WIDTH == 0 &&
                       HEIGHT % BLUR_HEIGHT == 0,
                       "Backdrop must fit integer pixel blocks");
@@ -379,6 +382,7 @@ static void background(uint32_t *p) {
             }
         }
     } else {
+        rect(p,0,0,WIDTH,HEIGHT,BG);
         for(int y=128;y<1030;y+=48)
             rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
     }

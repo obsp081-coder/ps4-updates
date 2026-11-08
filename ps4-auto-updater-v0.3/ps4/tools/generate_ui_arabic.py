@@ -191,6 +191,57 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
             base, ",".join("%du" % idx for idx in indexes)
         ))
     header.append("};")
+
+    # Small OFL Noto Sans Latin glyph atlas for the same CPU framebuffer.
+    # Improves the look of English game names/CUSA without font engines,
+    # dynamic heap allocation, font files or antialias work on the PS4.
+    latin_path = font_path.parent / "NotoSans-Regular.ttf"
+    if not latin_path.is_file():
+        raise FileNotFoundError(
+            "Latin font missing (install fonts-noto-core)"
+        )
+    latin_bytes = bytearray()
+    latin_rows = []
+    for latin_size in (23, 32, 42):
+        latin_font = ImageFont.truetype(str(latin_path), latin_size)
+        glyphs = []
+        for codepoint in range(32, 127):
+            letter = chr(codepoint)
+            bounds = latin_font.getbbox(letter)
+            width = max(2, bounds[2] - bounds[0] + 4)
+            height = max(2, bounds[3] - bounds[1] + 4)
+            advance = max(2, int(round(latin_font.getlength(letter))) + 1)
+            if not (width <= 80 and height <= 80 and advance <= 80):
+                raise ValueError("Latin glyph size exceeds safe limit")
+            canvas = Image.new("L", (width, height), 0)
+            ImageDraw.Draw(canvas).text(
+                (2 - bounds[0], 2 - bounds[1]),
+                letter, font=latin_font, fill=255
+            )
+            pixels = list(canvas.getdata())
+            packed = bytearray((len(pixels) + 3) // 4)
+            for k, alpha in enumerate(pixels):
+                packed[k//4] |= min(3, (alpha + 42)//85) << (2*(3-k%4))
+            glyphs.append((len(latin_bytes), width, height, advance))
+            latin_bytes.extend(packed)
+        latin_rows.append(glyphs)
+    header.append("/* OFL Noto Sans Latin, raster glyphs only; no font files. */")
+    header.append("typedef struct UiLatinGlyph {")
+    header.append(" uint32_t offset; uint16_t width,height,advance;")
+    header.append("} UiLatinGlyph;")
+    header.append("static const UiLatinGlyph UI_LATIN_GLYPHS[3][95] = {")
+    for row in latin_rows:
+        header.append(" {")
+        for off,w,h,advance in row:
+            header.append(f"  {{{off}u,{w}u,{h}u,{advance}u}},")
+        header.append(" },")
+    header.append("};")
+    header.append(f"static const uint8_t UI_LATIN_BITS[{len(latin_bytes)}] = {{")
+    for i in range(0, len(latin_bytes), 24):
+        header.append(
+            " " + ",".join(f"0x{x:02x}" for x in latin_bytes[i:i+24]) + ","
+        )
+    header.append("};")
     header.append("#endif")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(header)+"\n", encoding="ascii")

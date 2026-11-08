@@ -14,6 +14,9 @@ typedef struct ScannerUiEntry {
 } ScannerUiEntry;
 
 int scanner_ui_begin(void);
+/* Paint stale cached game metadata during a synchronous scan.
+ * This is NOT background scanning, installed proof or interactive loading. */
+int scanner_ui_preview_snapshot(const ScannerUiEntry *items,unsigned entries);
 void scanner_ui_progress(const char *cusa, unsigned current, unsigned total);
 void scanner_ui_results(
     const ScannerUiEntry *items, unsigned entries,

@@ -1,6 +1,6 @@
 
 TITLE       := PS4 Game Scanner Test
-VERSION     := 01.04
+VERSION     := 01.05
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
@@ -10,7 +10,7 @@ INTDIR      := build
 
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
-LIBS        := -lc -lkernel -lc++
+LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil
 
 CFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
@@ -28,7 +28,7 @@ all: $(CONTENT_ID).pkg
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: src/main.c | $(INTDIR)
+$(INTDIR)/main.o: src/ftp_scanner_v05.c | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
 eboot.bin: $(INTDIR)/main.o
@@ -69,7 +69,7 @@ $(CONTENT_ID).pkg: pkg.gp4
 	$(TOOLBIN)/PkgTool.Core pkg_build $< .
 
 host-check: | $(INTDIR)
-	cc -std=c99 -Wall -Wextra -Werror -O2 -o $(INTDIR)/scanner-host src/main.c
+	cc -std=c99 -Wall -Wextra -Werror -O2 -o $(INTDIR)/scanner-host src/ftp_scanner_v05.c
 
 clean:
 	rm -rf $(INTDIR) eboot.bin pkg.gp4 sce_sys/param.sfo $(RUNTIME_PRXS) *.pkg

@@ -107,6 +107,39 @@ int main(void) {
     assert(ui_nav_action(&nav,UI_ACT_OPEN));
     ui_nav_filter(&nav,entries,2,"absent");
     assert(nav.page==UI_PAGE_HOME && nav.available==0);
+
+    /* A fresh scan may reorder records after a user opened Details.
+     * The selected CUSA must follow identity, never the old list index. */
+    fill(9);
+    for(unsigned i=0;i<7;i++)assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(nav.selected==7 && nav.scroll==2);
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    UiRecord reordered[9];
+    for(unsigned i=0;i<9;++i)reordered[i]=entries[8-i];
+    ui_nav_rebind(&nav,reordered,9,"CUSA00007");
+    assert(nav.page==UI_PAGE_DETAILS);
+    assert(ui_nav_resolve(&nav,nav.selected)==1);
+    assert(strcmp(reordered[ui_nav_resolve(&nav,nav.selected)].cusa,
+                  "CUSA00007")==0);
+    /* Removed selected title closes Details; it must not display another
+     * game's metadata as though it were the previously selected title. */
+    ui_nav_rebind(&nav,reordered,9,"CUSA99999");
+    assert(nav.page==UI_PAGE_HOME && nav.selected==0);
+    assert(nav.scroll==0);
+
+    /* Search, Arabic keyboard and query survive a completed rescan. */
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    nav.keyboard_arabic=1;
+    nav.keyboard_index=27;
+    ui_nav_filter(&nav,entries,9,"روبلكس");
+    assert(nav.available==1);
+    ui_nav_rebind(&nav,reordered,9,"CUSA00001");
+    assert(nav.page==UI_PAGE_SEARCH && nav.available==1);
+    assert(strcmp(nav.query,"روبلكس")==0);
+    assert(nav.keyboard_arabic==1 && nav.keyboard_index==27);
+    assert(strcmp(reordered[ui_nav_resolve(&nav,nav.selected)].cusa,
+                  "CUSA00001")==0);
     puts("UI_NAVIGATION_HOST_OK");
     return 0;
 }

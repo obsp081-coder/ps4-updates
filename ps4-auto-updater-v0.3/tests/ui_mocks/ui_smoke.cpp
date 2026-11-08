@@ -245,6 +245,11 @@ int main() {
     assert(scanner_ui_begin() == 1);
     assert(scanner_ui_offer_icon("CUSA02343",
                                  icon_png_sample,sizeof icon_png_sample) == 0);
+    /* Cached metadata is painted before the real scanner completes.
+     * It remains visibly stale, unverified and non-interactive. */
+    const int first_flip = flip_count;
+    assert(scanner_ui_preview_snapshot(entries,3)==1);
+    assert(flip_count>first_flip);
     scanner_ui_progress("CUSA02343", 1, 3);
     capture_live_ui = true;
     scanner_ui_results(entries, 3, 2, 1, 0, 1);

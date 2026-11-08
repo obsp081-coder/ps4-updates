@@ -61,7 +61,7 @@ static size_t mem_size = 0;
 static void *mapped = nullptr;
 static uint32_t *surface[2] = {nullptr, nullptr};
 static int64_t frame_id = 0;
-static char progress_line[128] = "CONNECTING TO GOLDHEN FTP";
+static char progress_line[128] = "...";
 static UiNavigation navigation;
 /* Borrowed static metadata from the scanner, never treated as installed. */
 static ScannerUiEntry previous_scan[UI_MAX_TITLES];
@@ -599,7 +599,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         arabic(p,1240,362,UI_AR_NO_SELECTED_GAME,MUTED);
     }
     arabic(p,1240,875,UI_AR_DATA_NOT_PROOF,MUTED);
-    snprintf(number,sizeof(number),"ITEM %u / %u",
+    snprintf(number,sizeof(number),"%u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);
     ascii(p,89,960,number,MUTED,2,28);
@@ -961,10 +961,10 @@ extern "C" void scanner_ui_progress(
     if (!usable) return;
     if (total > 0 && cusa)
         snprintf(progress_line, sizeof(progress_line),
-                 "READING %u OF %u - %s", current, total, cusa);
+                 "%u / %u - %s", current, total, cusa);
     else
         snprintf(progress_line, sizeof(progress_line),
-                 "%s", cusa ? cusa : "WORKING");
+                 "%s", cusa ? cusa : "...");
     draw(nullptr, 0, 0, 0, 0, 0, 0, 1);
 }
 

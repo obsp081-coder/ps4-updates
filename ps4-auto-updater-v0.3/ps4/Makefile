@@ -1,5 +1,6 @@
-# PS4 Auto Updater 0.3 - metadata scanner SMOKE TEST ONLY.
-# Build with OpenOrbis PS4 Toolchain. See README_AR.md before running.
+
+# PS4 Auto Updater - FTP Diagnostic v0.3.3
+
 TITLE       := PS4 Game Scanner Test
 VERSION     := 01.03
 TITLE_ID    := BREW00197
@@ -8,22 +9,28 @@ CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 TOOLCHAIN   := $(OO_PS4_TOOLCHAIN)
 TOOLBIN     := $(TOOLCHAIN)/bin/linux
 INTDIR      := build
-# The OpenOrbis runtime stubs must be packaged inside sce_module/.
+
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
-LIBS        := -lc -lkernel -lc++ -lSceNetCFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+
+LIBS        := -lc -lkernel -lc++ -lSceNet
+
+CFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
+
 LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr \
                -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o
+
 CC          := clang
 LD          := ld.lld
 
 .PHONY: all clean host-check
+
 all: $(CONTENT_ID).pkg
 
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: src/main.c | $(INTDIR)
+$(INTDIR)/main.o: src/ftp_probe.c | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
 eboot.bin: $(INTDIR)/main.o
@@ -46,11 +53,9 @@ sce_sys/param.sfo: Makefile
 sce_sys/about/right.sprx:
 	mkdir -p sce_sys/about
 	@f=$$(find '$(TOOLCHAIN)/samples' -name right.sprx -print -quit); \
-	  test -n "$$f" || { echo 'right.sprx missing from toolchain sample'; exit 1; }; \
+	  test -n "$$f" || { echo 'right.sprx missing'; exit 1; }; \
 	  cp "$$f" '$@'
 
-# Fail the build if a required runtime PRX is missing.
-# OpenOrbis 0.5.4 may place these in src/modules or bin/data/modules.
 sce_module/%.prx:
 	@set -eu; \
 	  mkdir -p sce_module; \
@@ -62,7 +67,7 @@ sce_module/%.prx:
 	    source_file="$$(find '$(TOOLCHAIN)' -type f -name '$*.prx' -print -quit)"; \
 	  fi; \
 	  if [ -z "$$source_file" ] || [ ! -s "$$source_file" ]; then \
-	    echo 'ERROR: OpenOrbis runtime $*.prx not found in the downloaded toolchain' >&2; \
+	    echo 'ERROR: Missing runtime $*.prx' >&2; \
 	    exit 1; \
 	  fi; \
 	  cp "$$source_file" "$@"

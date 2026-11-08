@@ -976,26 +976,12 @@ static int scan_root(
 
 static void confirm_games(void) {
 #ifdef __ORBIS__
-    uint32_t load =
-        sceSysmoduleLoadModuleInternal(
-            ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL
-        );
-
-    if (report)
-        fprintf(
-            report,
-            "AppInstUtil module load: 0x%08x\n",
-            load
-        );
-
-    if (load != 0) {
-        /* 0x80020008 = kernel ENOEXEC; do not claim app absent. */
-        if (load == 0x80020008u)
-            logmsg("AppInstUtil ENOEXEC", 1);
-        api_stage = 1;
-        return;
-    }
-
+    /* ItemzFlow's read-only AppExists path initializes the linked
+     * AppInstUtil import directly. Our old sysmodule load attempt
+     * returned 0x80020008 on firmware 14.00 and prevented this call
+     * from running at all. That load failure is NOT evidence that the
+     * already-linked API is unavailable. No install API is called. */
+    logmsg("AppInstUtil direct initialization attempted", 1);
     int32_t init = sceAppInstUtilInitialize();
 
     if (report)
@@ -1020,8 +1006,14 @@ static void confirm_games(void) {
             &exists
         );
 
-        if (rc == 0)
-            games[i].installed = exists ? 1 : 0;
+        if (rc == 0 && (exists == 0 || exists == 1)) {
+            games[i].installed = exists;
+        } else if (report) {
+            fprintf(report,
+                    "AppInstUtil exists %s: rc=0x%08x state=%d\n",
+                    games[i].cusa, (uint32_t)rc, (int)exists);
+            fflush(report);
+        }
     }
 
     int32_t done = sceAppInstUtilTerminate();

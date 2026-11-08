@@ -72,6 +72,19 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # Main royal-blue header must be nonblank for every page.
                     self.assertNotEqual(pixels.getpixel((200, 45)),
                                         pixels.getpixel((0, 550)))
+                    if page == "search":
+                        # All A-J keys on the 10-column keyboard must have
+                        # visible white glyphs; proportional fonts can be
+                        # clipped if the old 5x7 fixed-cell width is reused.
+                        for col in range(10):
+                            x = 128 + col * 163
+                            patch = pixels.crop((x + 45, 434, x + 116, 501))
+                            bright = sum(1 for r, g, b in patch.getdata()
+                                         if r >= 175 and g >= 175 and b >= 175)
+                            self.assertGreater(
+                                bright, 10,
+                                "Keyboard Latin glyph invisible: " + chr(65+col)
+                            )
                     if export:
                         destination = Path(export)
                         destination.mkdir(parents=True, exist_ok=True)

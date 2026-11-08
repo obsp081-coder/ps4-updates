@@ -169,12 +169,11 @@ def compare_updates(inventory, installed_check, catalog, firmware):
         eligible = [
             item
             for item in supported
-            if item[2].get("required_base_version")
-            in (None, current)
+            if item[2].get("required_base_version") == current
         ]
 
         if not eligible:
-            row["status"] = "BASE_VERSION_MISMATCH"
+            row["status"] = "BASE_VERSION_NOT_CONFIRMED"
             continue
 
         best = max(

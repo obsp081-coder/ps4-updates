@@ -42,7 +42,7 @@ LABELS = (
     ("FOOTER_SETTINGS", "دائرة: رجوع    الخيارات الحالية للعرض فقط"),
     ("LIBRARY", "مكتبة الألعاب"),
     ("BASE_GAMES", "الألعاب الأساسية"),
-    ("CUSA_FOLDERS", "مجلدات الألعاب"),
+    ("INSTALL_UNKNOWN", "تثبيت غير مؤكد"),
     ("SCAN_ERRORS", "أخطاء الفحص"),
     ("SELECTED_GAME", "اللعبة المحددة"),
     ("VERSION", "الإصدار"),

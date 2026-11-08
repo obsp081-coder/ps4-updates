@@ -15,6 +15,38 @@ static int sleep_count = 0;
 static int64_t last_flip = 0;
 static const uint32_t *display_buffers[2] = {nullptr, nullptr};
 static bool saw_blurred_background = false;
+static bool capture_live_ui = false;
+static unsigned captured_pages = 0;
+/* Visual-regression snapshots use the SAME native framebuffer output that
+ * is submitted to the host VideoOut mock; this is not a browser mock. */
+static void capture_ppm(const uint32_t *frame, const char *page,
+                        unsigned page_bit) {
+    const char *root = std::getenv("PS4_UI_PREVIEW_DIR");
+    if (!root || !*root || (captured_pages & page_bit)) return;
+    char path[768];
+    const int n = std::snprintf(path, sizeof path, "%s/%s.ppm", root, page);
+    if(n<0 || (size_t)n>=sizeof path) return;
+    FILE *out = std::fopen(path, "wb");
+    if(!out) return;
+    const unsigned width=1920u, height=1080u;
+    if(std::fprintf(out, "P6\n%u %u\n255\n", width, height) < 0) {
+        std::fclose(out); return;
+    }
+    unsigned char rgb[1920u*3u];
+    for(unsigned y=0;y<height;++y) {
+        for(unsigned x=0;x<width;++x) {
+            const uint32_t pixel=frame[(size_t)y*width+x];
+            rgb[3*x]=(unsigned char)(pixel>>16);
+            rgb[3*x+1]=(unsigned char)(pixel>>8);
+            rgb[3*x+2]=(unsigned char)pixel;
+        }
+        if(std::fwrite(rgb,1,sizeof rgb,out)!=sizeof rgb) {
+            std::fclose(out); return;
+        }
+    }
+    if(std::fclose(out)==0) captured_pages|=page_bit;
+}
+
 static constexpr unsigned SCREEN_WIDTH = 1920u;
 static const unsigned char icon_png_sample[] = {
 0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a,0x00,0x00,0x00,0x0d,0x49,0x48,0x44,0x52,0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x02,0x08,0x06,0x00,0x00,0x00,0x72,0xb6,0x0d,0x24,0x00,0x00,0x00,0x14,0x49,0x44,0x41,0x54,0x78,0x9c,0x63,0x94,0xf4,0xde,0xf2,0x9f,0x81,0x81,0x81,0x81,0x89,0x01,0x0a,0x00,0x1f,0x0d,0x02,0x1b,0x4c,0x07,0x75,0x81,0x00,0x00,0x00,0x00,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82
@@ -40,6 +72,8 @@ static void reset() {
     last_flip = 0;
     display_buffers[0] = display_buffers[1] = nullptr;
     saw_blurred_background = false;
+    captured_pages = 0;
+    capture_live_ui = false;
     fail_video = fail_memory = fail_pad = stall_flip = false;
     registered = false;
     unregister_count = trace_count = shutdown_done = retained_warning = 0;
@@ -86,6 +120,18 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
          * 75% royal-blue with blending performed once, not per pixel. */
         const uint32_t sample = display_buffers[index][500u*SCREEN_WIDTH];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(capture_live_ui) {
+            const uint32_t *frame=display_buffers[index];
+            const size_t row=50u*SCREEN_WIDTH;
+            const uint32_t active=0xFF116BCEu;
+            const int home=frame[row+1122u]==active;
+            const int details=frame[row+1382u]==active;
+            const int downloads=frame[row+1622u]==active;
+            if(home) capture_ppm(frame,"home",1u);
+            else if(details) capture_ppm(frame,"details",2u);
+            else if(downloads) capture_ppm(frame,"downloads",4u);
+            else capture_ppm(frame,"search",8u);
+        }
     }
     return 0;
 }
@@ -159,7 +205,9 @@ int main() {
     assert(scanner_ui_offer_icon("CUSA02343",
                                  icon_png_sample,sizeof icon_png_sample) == 0);
     scanner_ui_progress("CUSA02343", 1, 3);
+    capture_live_ui = true;
     scanner_ui_results(entries, 3, 2, 1, 0, 1);
+    capture_live_ui = false;
     assert(saw_blurred_background);
     scanner_ui_shutdown(trace);
     assert(flip_count >= 8);

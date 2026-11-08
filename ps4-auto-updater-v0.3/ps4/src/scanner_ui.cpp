@@ -4,10 +4,14 @@
  * No installation, download, or game-file writes.
  */
 #include "scanner_ui.h"
+#ifdef PS4_UI_HOST_TEST
+#include "scanner_ui_host_mock.h"
+#else
 #include <orbis/VideoOut.h>
 #include <orbis/Pad.h>
 #include <orbis/UserService.h>
 #include <orbis/libkernel.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>

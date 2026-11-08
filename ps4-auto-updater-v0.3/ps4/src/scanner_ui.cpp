@@ -434,6 +434,41 @@ static void downloads(uint32_t *p) {
     arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
     footer(p,UI_AR_FOOTER_DOWNLOADS);
 }
+static void search_screen(uint32_t *p) {
+    arabic(p,92,143,UI_AR_SEARCH_HINT,WHITE);
+    panel(p,90,230,1655,104,0xFF0E2A51u);
+    if(navigation.query[0])
+        ui_title(p,130,240,1550,navigation.query,CYAN,3);
+    else
+        arabic(p,130,243,UI_AR_SEARCH_BY_NAME,MUTED);
+    arabic(p,109,353,navigation.keyboard_arabic ?
+           UI_AR_KEYBOARD_ARABIC:UI_AR_KEYBOARD_ENGLISH,CYAN);
+    char line[64];
+    snprintf(line,sizeof(line),"%u",navigation.available);
+    arabic(p,1415,354,UI_AR_SEARCH_RESULTS,MUTED);
+    ascii(p,1715,370,line,WHITE,3,10);
+
+    const unsigned max=ui_nav_keyboard_count(&navigation);
+    for(unsigned i=0;i<max;++i) {
+        int col=(int)(i%10), row=(int)(i/10);
+        int x=128+col*163, y=410+row*129;
+        panel(p,x,y,140,105,
+              i==navigation.keyboard_index?ACCENT:0xFF112E51u);
+        const char *key=ui_nav_keyboard_key(&navigation,i);
+        if(!key)continue;
+        if(navigation.keyboard_arabic) {
+            ui_title(p,x+18,y+17,104,key,WHITE,3);
+        } else {
+            if(key[0]==' ') {
+                ascii(p,x+28,y+42,"SPACE",MUTED,2,8);
+            } else {
+                ascii(p,x+54,y+32,key,WHITE,4,1);
+            }
+        }
+    }
+    footer(p,UI_AR_FOOTER_SEARCH);
+}
+
 static void draw(const ScannerUiEntry *entries,
                  unsigned count, unsigned good, unsigned errors,
                  int complete, int saved, unsigned start, int scanning) {
@@ -448,6 +483,8 @@ static void draw(const ScannerUiEntry *entries,
         ascii(p,150,408,progress_line,CYAN,4,75);
         arabic(p,150,525,UI_AR_DOWNLOAD_BLOCKED,MUTED);
         footer(p,UI_AR_FOOTER_SCANNING);
+    }else if(navigation.page==UI_PAGE_SEARCH) {
+        search_screen(p);
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
@@ -580,11 +617,16 @@ extern "C" void scanner_ui_results(
         UiAction action;
         if(pressed&ORBIS_PAD_BUTTON_CIRCLE) action=UI_ACT_BACK;
         else if(pressed&ORBIS_PAD_BUTTON_CROSS) action=UI_ACT_OPEN;
-        else if(pressed&ORBIS_PAD_BUTTON_SQUARE) action=UI_ACT_DOWNLOADS;
+        else if(pressed&ORBIS_PAD_BUTTON_TRIANGLE) action=
+            navigation.page==UI_PAGE_SEARCH?UI_ACT_TOGGLE_KEYBOARD:UI_ACT_SEARCH;
+        else if(pressed&ORBIS_PAD_BUTTON_SQUARE) action=
+            navigation.page==UI_PAGE_SEARCH?UI_ACT_REMOVE:UI_ACT_DOWNLOADS;
         else if(pressed&ORBIS_PAD_BUTTON_R1) action=UI_ACT_NEXT_TAB;
         else if(pressed&ORBIS_PAD_BUTTON_L1) action=UI_ACT_PREVIOUS_TAB;
         else if(pressed&ORBIS_PAD_BUTTON_DOWN) action=UI_ACT_DOWN;
         else if(pressed&ORBIS_PAD_BUTTON_UP) action=UI_ACT_UP;
+        else if(pressed&ORBIS_PAD_BUTTON_LEFT) action=UI_ACT_LEFT;
+        else if(pressed&ORBIS_PAD_BUTTON_RIGHT) action=UI_ACT_RIGHT;
         else continue;
         if(!ui_nav_action(&navigation,action))continue;
         if(navigation.exit_requested)break;

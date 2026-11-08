@@ -65,6 +65,11 @@ LABELS = (
     ("NO_ACTIVE_DOWNLOAD", "لا توجد تنزيلات نشطة"),
     ("NO_QUEUED_DOWNLOAD", "لا توجد مهام في الانتظار"),
     ("NO_INSTALL_JOB", "لا توجد عمليات تثبيت"),
+    ("SEARCH_RESULTS", "نتائج البحث"),
+    ("SEARCH_HINT", "ابحث باسم اللعبة أو رقم CUSA"),
+    ("KEYBOARD_ARABIC", "لوحة مفاتيح عربية"),
+    ("KEYBOARD_ENGLISH", "لوحة مفاتيح إنجليزية"),
+    ("FOOTER_SEARCH", "الأسهم: الحروف    إكس: كتابة    مربع: حذف    مثلث: تبديل اللغة    دائرة: رجوع"),
 )
 
 

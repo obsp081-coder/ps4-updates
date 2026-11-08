@@ -23,6 +23,7 @@
 #include "scanner_ui.h"
 #include "ui_snapshot.h"
 #include "ui_png_transport.h"
+#include "ui_image.h"
 #include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)
@@ -80,6 +81,32 @@ typedef struct {
 static DirectoryCandidate candidate_list[MAX_GAMES];
 static unsigned candidate_count = 0;
 static int candidate_overflow = 0;
+
+#ifdef __ORBIS__
+/* Single producer (FTP worker) / single consumer (VideoOut main thread).
+ * Only scan_status/scan_abort are shared while the worker is running.
+ * Scan data and decoded thumbnails are consumed AFTER scePthreadJoin. */
+static volatile uint32_t scan_status;
+static volatile int scan_abort;
+static int scan_native_ui;
+static int scan_run_rc;
+static int scan_inventory_saved;
+static int scan_inventory_complete;
+static ScannerUiEntry ui_items[MAX_GAMES];
+static struct {
+    char cusa[10];
+    uint32_t pixels[UI_ICON_PIXELS];
+    int valid;
+} worker_thumbnails[8];
+
+static int scan_should_abort(void) {
+    return __atomic_load_n(&scan_abort,__ATOMIC_ACQUIRE)!=0;
+}
+static void scan_publish_progress(unsigned current,unsigned total) {
+    const uint32_t packed=((current & 0x7FFFu)<<16) | (total & 0xFFFFu);
+    __atomic_store_n(&scan_status,packed,__ATOMIC_RELEASE);
+}
+#endif
 
 static void logmsg(const char *name, int value) {
     if (report) {
@@ -847,6 +874,9 @@ static int scan_root(
     int optional
 ) {
     static unsigned char listing[MAX_LIST];
+#ifdef __ORBIS__
+    if(scan_should_abort())return -1;
+#endif
     size_t bytes = 0;
     char cmd[320];
 
@@ -909,7 +939,8 @@ static int scan_root(
 
     for (int i = 0; i < count; ++i) {
 #ifdef __ORBIS__
-        scanner_ui_progress(ids[i], (unsigned)i + 1, (unsigned)count);
+        if(scan_should_abort())return -1;
+        scan_publish_progress((unsigned)i+1u,(unsigned)count);
 #endif
         if (duplicate(ids[i]))
             continue;
@@ -1011,6 +1042,7 @@ static void prefetch_local_icons(sock_t control) {
     static unsigned char icon_png[2 * 1024 * 1024];
     unsigned attempted = found < 8 ? found : 8;
     for (unsigned i=0; i<attempted; ++i) {
+        if(scan_should_abort())break;
         const Game *candidate = &games[i];
         if (!valid_id(candidate->cusa)) continue;
         const char *root = strcmp(candidate->source,"external") == 0
@@ -1033,7 +1065,13 @@ static void prefetch_local_icons(sock_t control) {
             continue;
         }
         if(recovered==1)logmsg("ICON_FTP_ASCII_CRC_RECOVERED",1);
-        const int decoded=scanner_ui_offer_icon(candidate->cusa,icon_png,(unsigned)got);
+        /* Decode off the render thread, then stage an immutable thumbnail
+         * until the worker has joined. Do not mutate the UI LRU cache. */
+        const int decoded=ui_image_thumbnail(
+            icon_png,got,worker_thumbnails[i].pixels,UI_ICON_PIXELS);
+        worker_thumbnails[i].valid=(decoded==0);
+        if(decoded==0)
+            memcpy(worker_thumbnails[i].cusa,candidate->cusa,10);
         logmsg("ICON_THUMBNAIL_RC",decoded);
         if(report) {
             fprintf(report,"ICON_RESULT %s transfer_bytes=%lu decode_rc=%d\n",
@@ -1226,13 +1264,8 @@ static int save_inventory(const char *path) {
     return 0;
 }
 
-int main(void) {
+static int scan_readonly(void) {
 #ifdef __ORBIS__
-    if (
-        mkdir(ROOT, 0777) != 0 &&
-        errno != EEXIST
-    ) ps4_shell_exit(2, NULL);
-
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
         ROOT "/inventory_v065.json";
@@ -1284,32 +1317,7 @@ int main(void) {
     }
 
 #ifdef __ORBIS__
-    int native_ui = scanner_ui_begin();
-    logmsg("NATIVE_UI_AVAILABLE", native_ui);
-
-    /* The cache is bounded, atomically written by this app and checked
-     * before display. It is NOT evidence a title is installed today. */
-    static UiSnapshotGame previous_games[MAX_GAMES];
-    static ScannerUiEntry previous_items[MAX_GAMES];
-    unsigned previous_count=0;
-    const int previous_status=ui_snapshot_load(
-        ROOT "/snapshot_v1.bin", previous_games, MAX_GAMES,
-        &previous_count
-    );
-    logmsg("UI_PREVIOUS_CACHE_READ",previous_status);
-    if(native_ui && previous_status==1 && previous_count) {
-        for(unsigned i=0;i<previous_count;++i) {
-            previous_items[i].cusa=previous_games[i].cusa;
-            previous_items[i].title=previous_games[i].title;
-            previous_items[i].version=previous_games[i].version;
-            previous_items[i].category=previous_games[i].category;
-            previous_items[i].metadata_verified=0;
-            previous_items[i].install_state=-1;
-        }
-        logmsg("UI_PREVIOUS_CACHE_COUNT",(int)previous_count);
-        logmsg("UI_PREVIOUS_CACHE_DISPLAYED",
-               scanner_ui_preview_snapshot(previous_items,previous_count));
-    }
+    logmsg("NATIVE_UI_AVAILABLE",scan_native_ui);
 #endif
 
     if (pool < 0) {
@@ -1337,7 +1345,13 @@ int main(void) {
         }
 #endif
 
-        sock_t control = connect_local(port);
+#ifdef __ORBIS__
+        if(scan_should_abort()) {
+            logmsg("SCAN_ABORT_BEFORE_CONNECT",1);
+            pool = -1;
+        }
+#endif
+        sock_t control = pool < 0 ? NET_BAD : connect_local(port);
 
         if (control == NET_BAD) {
             logmsg("CONTROL_CONNECT_FAILED", -1);
@@ -1359,6 +1373,9 @@ int main(void) {
                     0
                 );
 
+#ifdef __ORBIS__
+                if(!scan_should_abort())
+#endif
                 scan_root(
                     control,
                     "/system_data/priv/appmeta/external",
@@ -1366,7 +1383,8 @@ int main(void) {
                     1
                 );
 #ifdef __ORBIS__
-                if(native_ui) prefetch_local_icons(control);
+                if(scan_native_ui && !scan_should_abort())
+                    prefetch_local_icons(control);
 #endif
             } else {
                 ++errors;
@@ -1386,6 +1404,9 @@ int main(void) {
     }
 
     logmsg("SCAN_STAGE_FINISHED", 1);
+#ifdef __ORBIS__
+    logmsg("UI_SCAN_CANCEL_REQUESTED",scan_should_abort());
+#endif
     confirm_games();
     logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
 
@@ -1394,7 +1415,7 @@ int main(void) {
      * listing is a known FW14 limitation; the next start displays this
      * partial internal metadata with an explicit stale-data warning. */
     if(ftp_login_ok && primary_listing_ok && errors==0 &&
-       sfo_invalid==0 && !candidate_overflow &&
+       !scan_should_abort() && sfo_invalid==0 && !candidate_overflow &&
        (found>0u || external_listing_ok)) {
         static UiSnapshotGame current[MAX_GAMES];
         for(unsigned i=0;i<found;++i) {
@@ -1455,7 +1476,6 @@ int main(void) {
     /* UI library lists validated BASE games only. Directory candidates,
      * Patch and DLC remain separate in the read-only diagnostic inventory.
      * Metadata verification is NOT installation confirmation. */
-    static ScannerUiEntry ui_items[MAX_GAMES];
     for (unsigned i = 0; i < found; ++i) {
         const Game *g = &games[i];
         ui_items[i].cusa = g->cusa;
@@ -1465,21 +1485,14 @@ int main(void) {
         ui_items[i].install_state = g->installed;
         ui_items[i].category = g->category;
     }
-    scanner_ui_results(
-        ui_items, found, found, (unsigned)errors,
-        ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0,
-        saved == 0
-    );
-    logmsg("UI_RESULTS_RETURNED", 1);
-    scanner_ui_shutdown(logmsg);
-    logmsg("UI_SHUTDOWN_RETURNED", 1);
+    scan_inventory_saved=(saved==0);
+    scan_inventory_complete=ftp_login_ok && primary_listing_ok &&
+        external_listing_ok && errors==0 && !scan_should_abort();
+    logmsg("UI_RESULTS_STAGED",(int)found);
 #endif
 
 #ifdef __ORBIS__
-    /* The PS4 libc _exit trampoline is not a verified process exit.
-     * Keep the diagnostic stream open and flushed until shell exit. */
-    logmsg("APP_MAIN_RETURN_PREVENTED", 1);
-    ps4_shell_exit(saved == 0 ? 0 : 1, logmsg);
+    return saved == 0 ? 0 : 1;
 #else
     logmsg("APP_MAIN_RETURNING", saved == 0 ? 0 : 1);
     if (report) {
@@ -1490,3 +1503,98 @@ int main(void) {
     return saved == 0 ? 0 : 1;
 #endif
 }
+
+#ifdef __ORBIS__
+static void *scan_worker_entry(void *unused) {
+    (void)unused;
+    scan_run_rc=scan_readonly();
+    /* Release protects games[], ui_items[], report and worker_thumbnails[].
+     * The main UI thread must still join before consuming these objects. */
+    __atomic_store_n(&scan_status,SCANNER_UI_SCAN_DONE,__ATOMIC_RELEASE);
+    return NULL;
+}
+
+int main(void) {
+    if (mkdir(ROOT,0777)!=0 && errno!=EEXIST)
+        ps4_shell_exit(2,NULL);
+
+    scan_native_ui=scanner_ui_begin();
+    /* Keep the safe headless diagnostic path if VideoOut is unavailable. */
+    if(!scan_native_ui) {
+        const int rc=scan_readonly();
+        ps4_shell_exit(rc,logmsg);
+    }
+
+    static UiSnapshotGame previous_games[MAX_GAMES];
+    static ScannerUiEntry previous_items[MAX_GAMES];
+    unsigned previous_count=0;
+    const int previous_status=ui_snapshot_load(
+        ROOT "/snapshot_v1.bin",previous_games,MAX_GAMES,&previous_count);
+    if(previous_status==1 && previous_count) {
+        for(unsigned i=0;i<previous_count;++i) {
+            previous_items[i].cusa=previous_games[i].cusa;
+            previous_items[i].title=previous_games[i].title;
+            previous_items[i].version=previous_games[i].version;
+            previous_items[i].category=previous_games[i].category;
+            previous_items[i].metadata_verified=0;
+            previous_items[i].install_state=-1;
+        }
+        (void)scanner_ui_preview_snapshot(previous_items,previous_count);
+    }
+
+    /* Verified OpenOrbis libkernel API. Stack deliberately larger than the
+     * default scePthread stack; FTP data buffers themselves are static. */
+    OrbisPthreadAttr attributes;
+    int rc=scePthreadAttrInit(&attributes);
+    const int attributes_valid=(rc==0);
+    if(rc==0)rc=scePthreadAttrSetstacksize(&attributes,256u*1024u);
+    OrbisPthread worker;
+    if(rc==0)
+        rc=scePthreadCreate(&worker,&attributes,scan_worker_entry,NULL,
+                            "ps4auto_scan");
+    if(attributes_valid)(void)scePthreadAttrDestroy(&attributes);
+    if(rc!=0) {
+        /* A failed worker must never fall back to a blocking network scan
+         * on the UI thread or present a false list as freshly verified. */
+        FILE *failure=fopen(ROOT "/diagnostic_v065.txt","wb");
+        if(failure) {
+            fprintf(failure,"SCAN_THREAD_CREATE_FAILED: 0x%08x\n",
+                    (unsigned)rc);
+            fclose(failure);
+        }
+        scanner_ui_results(NULL,0,0,1,0,0);
+        scanner_ui_shutdown(NULL);
+        ps4_shell_exit(3,NULL);
+    }
+
+    const int user_exit=scanner_ui_wait_for_scan(&scan_status);
+    if(user_exit)
+        __atomic_store_n(&scan_abort,1,__ATOMIC_RELEASE);
+    const int join_rc=scePthreadJoin(worker,NULL);
+    if(join_rc!=0) {
+        /* Worker ownership could not be confirmed; do not access its
+         * output, game state, thumbnails, or log FILE*. */
+        scanner_ui_shutdown(NULL);
+        ps4_shell_exit(4,NULL);
+    }
+
+    if(!user_exit) {
+        for(unsigned i=0;i<8u;++i)
+            if(worker_thumbnails[i].valid)
+                (void)scanner_ui_offer_thumbnail(
+                    worker_thumbnails[i].cusa,
+                    worker_thumbnails[i].pixels,UI_ICON_PIXELS);
+        scanner_ui_results(ui_items,found,found,(unsigned)errors,
+                            scan_inventory_complete,scan_inventory_saved);
+    }
+    logmsg("UI_RESULTS_RETURNED",1);
+    scanner_ui_shutdown(logmsg);
+    logmsg("UI_SHUTDOWN_RETURNED",1);
+    /* Never return to PS4 musl's _exit trampoline. */
+    ps4_shell_exit(scan_run_rc,logmsg);
+}
+#else
+int main(void) {
+    return scan_readonly();
+}
+#endif

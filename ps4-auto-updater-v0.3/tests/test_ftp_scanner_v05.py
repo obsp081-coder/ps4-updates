@@ -55,7 +55,16 @@ class MockHandler(socketserver.StreamRequestHandler):
         self.respond("220 mock FTP ready")
         try:
             while True:
-                raw = self.rfile.readline()
+                if self.server.packet_strict:
+                    # FTPS4-style control loop: each recv is treated as
+                    # an entire command (no partial-line buffering).
+                    raw = self.request.recv(4096)
+                    if raw and (not raw.endswith(b"\r\n") or raw.count(b"\n") != 1):
+                        self.server.commands.append("FRAGMENT")
+                        self.respond("500 Command received without CRLF")
+                        break
+                else:
+                    raw = self.rfile.readline()
                 if not raw:
                     break
                 command, _, argument = raw.decode("ascii", "replace").strip().partition(" ")
@@ -143,6 +152,7 @@ class MockFTP(socketserver.TCPServer):
         self.require_login = False
         self.challenge_password = False
         self.type_unknown = False
+        self.packet_strict = False
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -216,8 +226,9 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("Metadata records: 2", diagnostic)
         self.assertIn("FTP_LOGIN_OK: 1", diagnostic)
         self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
-        self.assertIn("FTP_INITIAL_TYPE_CODE: 200", diagnostic)
-        self.assertIn("FTP_AUTH_MODE (0=no login,1=anonymous): 0", diagnostic)
+        self.assertIn("FTP_COMMAND_MODE (0=PASV-first, no TYPE): 0", diagnostic)
+        self.assertEqual(commands[0], "PASV")
+        self.assertNotIn("TYPE", commands)
         self.assertNotIn("USER", commands)
         self.assertNotIn("PASS", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
@@ -286,7 +297,7 @@ class ScannerFTPTests(unittest.TestCase):
             b"", {}, passthrough=configure)
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
-        self.assertIn("FTP_INITIAL_TYPE_CODE: 530", diagnostic)
+        self.assertIn("FTP_PASV_CODE: 530", diagnostic)
         self.assertIn("FTP_USER_CODE: 530", diagnostic)
         self.assertIn("FTP_LOGIN_OK: 0", diagnostic)
         self.assertIn("USER", commands)
@@ -299,10 +310,10 @@ class ScannerFTPTests(unittest.TestCase):
             passthrough=lambda server: setattr(server, "require_login", True))
         self.assertEqual(inventory["games"], [])
         self.assertTrue(inventory["scan_complete"])
-        self.assertIn("FTP_INITIAL_TYPE_CODE: 530", diagnostic)
+        self.assertIn("FTP_PASV_CODE: 530", diagnostic)
         self.assertIn("FTP_USER_CODE: 230", diagnostic)
         self.assertIn("FTP_AUTH_MODE (0=no login,1=anonymous): 1", diagnostic)
-        self.assertEqual(commands[:3], ["TYPE", "USER", "TYPE"])
+        self.assertEqual(commands[:3], ["PASV", "USER", "PASV"])
         self.assertNotIn("PASS", commands)
 
     def test_legacy_server_password_challenge_is_supported(self):
@@ -315,7 +326,7 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertTrue(inventory["scan_complete"])
         self.assertIn("FTP_USER_CODE: 331", diagnostic)
         self.assertIn("FTP_PASS_CODE: 230", diagnostic)
-        self.assertEqual(commands[:4], ["TYPE", "USER", "PASS", "TYPE"])
+        self.assertEqual(commands[:4], ["PASV", "USER", "PASS", "PASV"])
 
     def test_real_console_type_500_still_lists_games(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
@@ -326,8 +337,8 @@ class ScannerFTPTests(unittest.TestCase):
         )
         self.assertEqual([g["cusa"] for g in inventory["games"]], ["CUSA02343"])
         self.assertTrue(inventory["scan_complete"])
-        self.assertIn("FTP_INITIAL_TYPE_CODE: 500", diagnostic)
-        self.assertIn("FTP_TYPE_UNSUPPORTED_CONTINUING: 500", diagnostic)
+        self.assertIn("FTP_PASV_CODE: 227", diagnostic)
+        self.assertNotIn("TYPE", commands)
         self.assertNotIn("USER", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
@@ -340,14 +351,44 @@ class ScannerFTPTests(unittest.TestCase):
             b"", {}, passthrough=configure
         )
         self.assertTrue(inventory["scan_complete"])
-        self.assertIn("FTP_INITIAL_TYPE_CODE: 500", diagnostic)
         self.assertIn("FTP_PASV_CODE: 530", diagnostic)
         self.assertIn("FTP_USER_CODE: 230", diagnostic)
-        self.assertIn("FTP_AUTH_TYPE_CODE: 500", diagnostic)
         self.assertIn("FTP_PASV_AFTER_AUTH_CODE: 227", diagnostic)
-        self.assertEqual(commands[:5], ["TYPE", "PASV", "USER", "TYPE", "PASV"])
+        self.assertEqual(commands[:3], ["PASV", "USER", "PASV"])
+        self.assertNotIn("TYPE", commands)
         self.assertNotIn("PASS", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+
+    def test_ftps4_recv_packet_parser_needs_single_write_per_command(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", "Packet Sensitive Game")},
+            passthrough=lambda server: setattr(server, "packet_strict", True),
+        )
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertTrue(inventory["scan_complete"])
+        self.assertEqual(commands[0], "PASV")
+        self.assertNotIn("FRAGMENT", commands)
+        self.assertNotIn("TYPE", commands)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_ftps4_style_server_rejects_partial_ftp_command(self):
+        with MockFTP(b"", {}) as server:
+            server.packet_strict = True
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with socket.create_connection(server.server_address, timeout=4) as conn:
+                    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    file = conn.makefile("rb")
+                    self.assertTrue(file.readline().startswith(b"220"))
+                    conn.sendall(b"PASV")
+                    self.assertTrue(file.readline().startswith(b"500"))
+                self.assertIn("FRAGMENT", server.commands)
+            finally:
+                server.shutdown()
+                thread.join(timeout=4)
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

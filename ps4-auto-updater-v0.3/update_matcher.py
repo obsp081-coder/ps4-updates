@@ -46,6 +46,22 @@ def compare_updates(inventory, installed_check, catalog, firmware):
                 "Invalid input: missing list '" + key + "'"
             )
 
+    # Reject any catalog asking the read-only reviewer to enable actions.
+    # A producer-controlled flag never grants install/download permission.
+    if any(catalog.get(key) is True for key in (
+        "auto_install", "install_enabled", "downloads_enabled",
+        "compatibility_confirmed", "fpkg_compatibility_confirmed",
+    )):
+        raise ValueError("Catalog cannot enable install or download actions")
+
+    # Duplicate CUSA rows are ambiguous, including identical duplicates.
+    # Prevent accidental multiple update decisions for the same title.
+    counts = {}
+    for game in inventory["games"]:
+        if isinstance(game, dict) and isinstance(game.get("cusa"), str):
+            ident = game["cusa"]
+            counts[ident] = counts.get(ident, 0) + 1
+
     # A conflicting/duplicate installed-app report cannot prove presence.
     # Fail closed rather than letting the final row silently override it.
     installation = {}
@@ -90,6 +106,10 @@ def compare_updates(inventory, installed_check, catalog, firmware):
             or not CUSA_PATTERN.fullmatch(cusa)
         ):
             row["status"] = "INVALID_GAME_ID"
+            continue
+
+        if counts.get(cusa, 0) != 1:
+            row["status"] = "DUPLICATE_GAME_RECORD"
             continue
 
         installed = (None if cusa in duplicate_installations
@@ -186,10 +206,13 @@ def compare_updates(inventory, installed_check, catalog, firmware):
             row["status"] = "BASE_VERSION_NOT_CONFIRMED"
             continue
 
-        best = max(
-            eligible,
-            key=lambda item: item[0]
-        )[2]
+        best_version = max(item[0] for item in eligible)
+        matching_best = [item for item in eligible
+                         if item[0] == best_version]
+        if len(matching_best) != 1:
+            row["status"] = "AMBIGUOUS_UPDATE_METADATA"
+            continue
+        best = matching_best[0][2]
 
         row["candidate_version"] = best["version"]
 

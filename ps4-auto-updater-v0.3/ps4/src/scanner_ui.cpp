@@ -987,13 +987,16 @@ extern "C" void scanner_ui_results(
 ) {
     if (!usable) return;
     if (!entries) count=0;
-    /* A failed scan must not erase the saved library from the screen.
-     * The cache remains unverified and never authorizes any operation. */
-    final_view_is_stale=(!scan_complete && count==0u &&
-                         previous_scan_count>0u);
+    /* Even a nonempty partial FTP result is not a complete inventory.
+     * Preserve the previous read-only library until a complete scan succeeds.
+     * Cache entries always remain unverified and do not grant permissions. */
+    final_view_is_stale=(!scan_complete && previous_scan_count>0u);
     if(final_view_is_stale) {
         entries=previous_scan;
         count=previous_scan_count;
+        /* The primary summary describes the visible cached games, not the
+         * partial SFO count from this failed scan. */
+        metadata_count=count;
     }
     if(count>UI_MAX_TITLES)count=UI_MAX_TITLES;
     for(unsigned i=0;i<count;++i) {

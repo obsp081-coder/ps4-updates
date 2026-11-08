@@ -190,11 +190,12 @@ static int parse_sfo(
     if (!valid_id(g.cusa) || strcmp(g.cusa, id))
         return 0;
 
+    /* A syntactically valid DLC/non-game SFO is an expected skip. */
     if (
         g.category[0] &&
         strcmp(g.category, "gd") &&
         strcmp(g.category, "gde")
-    ) return 0;
+    ) return 2;
 
     if (g.cid[0] && !strstr(g.cid, id))
         return 0;
@@ -694,10 +695,12 @@ static int scan_root(
             control, cmd, sfo, sizeof sfo, &bytes
         );
 
-        if (
-            status == 0 &&
-            !parse_sfo(sfo, bytes, ids[i], source)
-        ) status = -21;
+        if (status == 0) {
+            /* 1=game, 2=valid non-game, 0=invalid metadata. */
+            int parsed = parse_sfo(sfo, bytes, ids[i], source);
+            if (parsed == 0)
+                status = -21;
+        }
 
         if (status != 0) {
             ++errors;

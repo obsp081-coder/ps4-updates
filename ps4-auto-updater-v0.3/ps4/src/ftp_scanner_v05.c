@@ -1481,12 +1481,26 @@ static int scan_readonly(void) {
     logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
 
 #ifdef __ORBIS__
-    /* Preserve the last useful cache when FTP fails. A missing external
-     * listing is a known FW14 limitation; the next start displays this
-     * partial internal metadata with an explicit stale-data warning. */
-    if(ftp_login_ok && primary_listing_ok && errors==0 &&
-       !scan_should_abort() && sfo_invalid==0 && !candidate_overflow &&
-       (found>0u || external_listing_ok)) {
+    /* Critical cache invariant: never erase an existing, valid library
+     * with a partial scan. A successful internal scan combined with a
+     * failed optional external LIST may otherwise lose all external games
+     * after restarting the UI. A partial first scan can seed a snapshot
+     * only when there is no valid previous cache at all. */
+    const int base_verified=ftp_login_ok && primary_listing_ok &&
+        errors==0 && sfo_invalid==0 && !candidate_overflow &&
+        !scan_should_abort();
+    const int complete_scan=base_verified && external_listing_ok;
+    const int partial_seed=base_verified && found>0u;
+    int prior_valid=0;
+    if(!complete_scan && partial_seed) {
+        static UiSnapshotGame prior[MAX_GAMES];
+        unsigned prior_count=0;
+        const int status=ui_snapshot_load(
+            ROOT "/snapshot_v1.bin",prior,MAX_GAMES,&prior_count);
+        prior_valid=(status==1); /* valid empty snapshot still counts */
+        logmsg("UI_CACHE_PRIOR_LOAD_RC",status);
+    }
+    if(ui_snapshot_should_save(complete_scan,partial_seed,prior_valid)) {
         static UiSnapshotGame current[MAX_GAMES];
         for(unsigned i=0;i<found;++i) {
             memset(&current[i],0,sizeof current[i]);
@@ -1499,6 +1513,7 @@ static int scan_readonly(void) {
             memcpy(current[i].category,games[i].category,
                    sizeof current[i].category);
         }
+        if(!complete_scan)logmsg("UI_CACHE_PARTIAL_FIRST_SNAPSHOT",1);
         logmsg("UI_CACHE_WRITE_RC",ui_snapshot_save(
             ROOT "/snapshot_v1.bin",current,found));
     } else {

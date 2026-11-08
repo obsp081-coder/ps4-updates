@@ -974,8 +974,16 @@ static int scan_root(
     return count;
 }
 
+/* The fw14 hardware crash after the scan is under investigation.
+ * AppInstUtil direct init is EXPERIMENTAL and disabled in official builds.
+ * Without a safe lookup, all installation states stay UNKNOWN. */
 static void confirm_games(void) {
 #ifdef __ORBIS__
+#ifndef PS4_ENABLE_EXPERIMENTAL_APPINSTUTIL
+    api_stage = 3;
+    logmsg("AppInstUtil skipped (unverified on firmware 14)", 1);
+    return;
+#else
     /* ItemzFlow's read-only AppExists path initializes the linked
      * AppInstUtil import directly. Our old sysmodule load attempt
      * returned 0x80020008 on firmware 14.00 and prevented this call
@@ -1024,6 +1032,7 @@ static void confirm_games(void) {
             "AppInstUtil term: 0x%08x\n",
             (uint32_t)done
         );
+#endif /* PS4_ENABLE_EXPERIMENTAL_APPINSTUTIL */
 #else
     api_stage = -1;
 #endif
@@ -1262,9 +1271,12 @@ int main(void) {
         }
     }
 
+    logmsg("SCAN_STAGE_FINISHED", 1);
     confirm_games();
+    logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
 
     int saved = save_inventory(outpath);
+    logmsg("SCAN_STAGE_INVENTORY_SAVE_RETURNED", saved);
 
     unsigned confirmed = 0;
     unsigned unknown = 0;
@@ -1285,7 +1297,7 @@ int main(void) {
     logmsg("Installation unknown", (int)unknown);
 
     logmsg(
-        "AppInstUtil status (0=OK,2=init failed,-1=host)",
+        "AppInstUtil status (0=OK,2=init failed,3=skipped,-1=host)",
         api_stage
     );
 
@@ -1295,8 +1307,10 @@ int main(void) {
     logmsg("Scan complete", ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0);
     logmsg("Inventory saved (0=OK)", saved);
 
+    logmsg("SCAN_STAGE_RESULTS_NEXT", 1);
     if (report)
         fclose(report);
+    report = NULL;
 
 #ifdef __ORBIS__
     /* Display candidates separately from metadata-verified games. */

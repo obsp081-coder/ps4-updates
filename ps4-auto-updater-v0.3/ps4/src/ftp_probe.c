@@ -1,39 +1,39 @@
 
 /*
- * PS4 Auto Updater v0.3.6
- * Installed-title verification using libSceAppInstUtil.
+ * PS4 Auto Updater v0.3.7
+ * Installed Game Verification
  *
- * Reads existing inventory.json.
- * Writes installed_check.txt and installed_check.json.
- * Does not modify games, system files or inventory.json.
+ * Uses the PS4 AppInstUtil system module.
+ * Read-only: no game or system file changes.
  */
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
 #include <sys/stat.h>
-#include <orbis/libkernel.h>
+
+#include <orbis/Sysmodule.h>
+#include <orbis/AppInstUtil.h>
 
 #define ROOT "/data/PS4AutoUpdater"
 #define INPUT ROOT "/inventory.json"
 #define TEXT_OUT ROOT "/installed_check.txt"
 #define JSON_OUT ROOT "/installed_check.json"
 
-typedef int32_t (*InitFn)(void);
-typedef int32_t (*ExistsFn)(const char *, int32_t *);
-typedef int32_t (*TermFn)(void);
+#define MAX_GAMES 128
 
-static int next_cusa(const char *line, char out[10])
+static int get_cusa(const char *line, char id[10])
 {
     const char *p = strstr(line, "\"cusa\":\"");
 
     if (!p)
         return 0;
 
-    p += strlen("\"cusa\":\"");
+    p += 8;
 
     if (strncmp(p, "CUSA", 4) != 0)
         return 0;
@@ -46,8 +46,8 @@ static int next_cusa(const char *line, char out[10])
     if (p[9] != '"')
         return 0;
 
-    memcpy(out, p, 9);
-    out[9] = 0;
+    memcpy(id, p, 9);
+    id[9] = '\0';
 
     return 1;
 }
@@ -64,103 +64,69 @@ int main(void)
         return 2;
 
     fputs(
-        "PS4 Auto Updater Installed Check v0.3.6\n"
-        "READ ONLY - source: inventory.json\n",
+        "PS4 Auto Updater Installed Check v0.3.7\n"
+        "Mode: READ ONLY\n"
+        "Method: PS4 AppInstUtil system module\n",
         log
     );
 
-    FILE *in = fopen(INPUT, "rb");
+    FILE *input = fopen(INPUT, "rb");
 
-    if (!in) {
+    if (!input) {
         fputs("Result: INVENTORY_NOT_FOUND\n", log);
         fclose(log);
         return 3;
     }
 
-    int32_t module = (int32_t)sceKernelLoadStartModule(
-        "/system/common/lib/libSceAppInstUtil.sprx",
-        0, NULL, 0, NULL, NULL
-    );
+    uint32_t module_result =
+        sceSysmoduleLoadModuleInternal(
+            ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL
+        );
 
     fprintf(
         log,
-        "Module load: 0x%08X\n",
-        (uint32_t)module
+        "Sysmodule load: 0x%08X\n",
+        module_result
     );
 
-    if (module < 0) {
-        fputs("Result: MODULE_LOAD_FAILED\n", log);
-        fclose(in);
+    if (module_result != 0) {
+        fputs("Result: SYSMODULE_LOAD_FAILED\n", log);
+        fclose(input);
         fclose(log);
         return 4;
     }
 
-    InitFn initialize = NULL;
-    ExistsFn exists = NULL;
-    TermFn terminate = NULL;
-
-    int a = sceKernelDlsym(
-        module,
-        "sceAppInstUtilInitialize",
-        (void **)&initialize
-    );
-
-    int b = sceKernelDlsym(
-        module,
-        "sceAppInstUtilAppExists",
-        (void **)&exists
-    );
-
-    int c = sceKernelDlsym(
-        module,
-        "sceAppInstUtilTerminate",
-        (void **)&terminate
-    );
+    int32_t init_result =
+        sceAppInstUtilInitialize();
 
     fprintf(
         log,
-        "Symbols: init=%d exists=%d terminate=%d\n",
-        a, b, c
-    );
-
-    if (a < 0 || b < 0 || c < 0 ||
-        !initialize || !exists || !terminate) {
-
-        fputs("Result: SYMBOL_NOT_FOUND\n", log);
-        fclose(in);
-        fclose(log);
-        return 5;
-    }
-
-    int init_result = initialize();
-
-    fprintf(
-        log,
-        "Initialize: 0x%08X\n",
+        "AppInstUtil initialize: 0x%08X\n",
         (uint32_t)init_result
     );
 
     if (init_result != 0) {
-        fputs("Result: INIT_FAILED\n", log);
-        fclose(in);
+        fputs("Result: APPINST_INIT_FAILED\n", log);
+        fclose(input);
         fclose(log);
-        return 6;
+        return 5;
     }
 
     FILE *json = fopen(JSON_OUT, "wb");
 
     if (!json) {
-        fputs("Result: OUTPUT_FAILED\n", log);
-        terminate();
-        fclose(in);
+        fputs("Result: JSON_OPEN_FAILED\n", log);
+        sceAppInstUtilTerminate();
+        fclose(input);
         fclose(log);
-        return 7;
+        return 6;
     }
 
     fputs(
         "{\n"
-        "  \"schema\": 1,\n"
-        "  \"source\": \"sceAppInstUtilAppExists\",\n"
+        "  \"schema\": 2,\n"
+        "  \"source\": \"ps4-appinstutil\",\n"
+        "  \"read_only\": true,\n"
         "  \"games\": [\n",
         json
     );
@@ -168,98 +134,120 @@ int main(void)
     char line[2048];
     char cusa[10];
 
-    unsigned checked = 0;
+    unsigned total = 0;
     unsigned installed = 0;
-    unsigned absent = 0;
-    unsigned errors = 0;
+    unsigned not_installed = 0;
+    unsigned unknown = 0;
 
-    while (fgets(line, sizeof(line), in)) {
+    while (fgets(line, sizeof(line), input)) {
 
-        if (!next_cusa(line, cusa))
+        if (!get_cusa(line, cusa))
             continue;
 
-        if (checked >= 128)
+        if (total >= MAX_GAMES)
             break;
 
-        int32_t flag = -1;
+        int32_t exists_flag = -1;
 
-        int32_t ret = exists(cusa, &flag);
+        int32_t result =
+            sceAppInstUtilAppExists(
+                cusa,
+                &exists_flag
+            );
 
-        const char *status =
-            ret != 0 ? "UNKNOWN" :
-            flag ? "INSTALLED" : "NOT_INSTALLED";
+        const char *status;
 
-        if (ret != 0)
-            ++errors;
-        else if (flag)
+        if (result != 0) {
+            status = "UNKNOWN";
+            ++unknown;
+        }
+        else if (exists_flag != 0) {
+            status = "INSTALLED";
             ++installed;
-        else
-            ++absent;
+        }
+        else {
+            status = "NOT_INSTALLED";
+            ++not_installed;
+        }
 
         fprintf(
             log,
-            "%s | %s | ret=0x%08X flag=%d\n",
-            cusa, status, (uint32_t)ret, flag
+            "%s | %s | ret=0x%08X | flag=%d\n",
+            cusa,
+            status,
+            (uint32_t)result,
+            exists_flag
         );
 
-        if (checked)
+        if (total > 0)
             fputs(",\n", json);
 
         fprintf(
             json,
-            "    {\"cusa\":\"%s\",\"installed\":",
-            cusa
+            "    {\"cusa\":\"%s\","
+            "\"status\":\"%s\","
+            "\"installed\":",
+            cusa,
+            status
         );
 
-        if (ret != 0)
+        if (result != 0)
             fputs("null", json);
+        else if (exists_flag != 0)
+            fputs("true", json);
         else
-            fputs(flag ? "true" : "false", json);
+            fputs("false", json);
 
         fprintf(
             json,
             ",\"result_code\":%u}",
-            (uint32_t)ret
+            (uint32_t)result
         );
 
-        ++checked;
+        ++total;
     }
 
     fputs("\n  ]\n}\n", json);
 
-    int write_failed = ferror(json);
+    int output_error = ferror(json);
 
     if (fclose(json) != 0)
-        write_failed = 1;
+        output_error = 1;
 
-    fclose(in);
+    fclose(input);
 
-    int term_result = terminate();
+    int32_t terminate_result =
+        sceAppInstUtilTerminate();
 
     fprintf(
         log,
-        "Total checked: %u\n"
+        "\nTotal checked: %u\n"
         "Installed: %u\n"
         "Not installed: %u\n"
         "Unknown: %u\n"
         "Terminate: 0x%08X\n",
-        checked,
+        total,
         installed,
-        absent,
-        errors,
-        (uint32_t)term_result
+        not_installed,
+        unknown,
+        (uint32_t)terminate_result
     );
 
-    if (write_failed)
+    if (output_error) {
         fputs("Result: OUTPUT_FAILED\n", log);
-    else if (!checked)
-        fputs("Result: NO_CUSA_FOUND\n", log);
-    else if (errors)
+    }
+    else if (total == 0) {
+        fputs("Result: NO_GAMES_FOUND\n", log);
+    }
+    else if (unknown > 0) {
         fputs("Result: CHECK_PARTIAL\n", log);
-    else
+    }
+    else {
         fputs("Result: CHECK_OK\n", log);
+    }
 
     fclose(log);
 
-    return (write_failed || !checked || errors) ? 8 : 0;
+    return (output_error || total == 0 || unknown > 0)
+        ? 7 : 0;
 }

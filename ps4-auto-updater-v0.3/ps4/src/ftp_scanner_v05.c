@@ -38,7 +38,9 @@ typedef int sock_t;
 #endif
 
 #define ROOT "/data/PS4AutoUpdater"
+#ifndef MAX_GAMES
 #define MAX_GAMES 256
+#endif
 #define MAX_SFO (256 * 1024)
 #define MAX_LIST (128 * 1024)
 #define FTP_PORT 2121
@@ -92,7 +94,9 @@ static int valid_id(const char *s) {
  * XX0000-CUSA12345_00-XXXXXXXXXXXXXXXX. A substring elsewhere is
  * not reliable proof that the metadata belongs to this title. */
 static int content_id_matches(const char *cid, const char *id) {
-    if (strlen(cid) < 17 || !valid_id(id))
+    /* A valid PS4 Content ID is exactly 36 characters:
+       XX0000-CUSA12345_00-XXXXXXXXXXXXXXXX. */
+    if (strlen(cid) != 36 || !valid_id(id))
         return 0;
     if (!isupper((unsigned char)cid[0]) ||
         !isupper((unsigned char)cid[1]) ||
@@ -100,8 +104,14 @@ static int content_id_matches(const char *cid, const char *id) {
         !isdigit((unsigned char)cid[3]) ||
         !isdigit((unsigned char)cid[4]) ||
         !isdigit((unsigned char)cid[5]) ||
-        cid[6] != '-' || cid[16] != '_')
+        cid[6] != '-' || cid[16] != '_' ||
+        !isdigit((unsigned char)cid[17]) ||
+        !isdigit((unsigned char)cid[18]) || cid[19] != '-')
         return 0;
+    for (size_t i = 20; i < 36; ++i)
+        if (!isupper((unsigned char)cid[i]) &&
+            !isdigit((unsigned char)cid[i]))
+            return 0;
     return memcmp(cid + 7, id, 9) == 0;
 }
 
@@ -703,12 +713,15 @@ static int transfer(
 static int listing_names(
     const unsigned char *data,
     size_t size,
-    char ids[MAX_GAMES][10]
+    char ids[MAX_GAMES][10],
+    int *truncated
 ) {
     size_t off = 0;
     int count = 0;
+    *truncated = 0;
 
-    while (off < size && count < MAX_GAMES) {
+    /* Continue parsing after reaching capacity to detect a partial scan. */
+    while (off < size) {
         size_t end = off;
 
         while (end < size && data[end] != '\n')
@@ -742,8 +755,12 @@ static int listing_names(
                         seen = 1;
 
                 if (!seen) {
-                    memcpy(ids[count], s, 10);
-                    ++count;
+                    if (count == MAX_GAMES) {
+                        *truncated = 1;
+                    } else {
+                        memcpy(ids[count], s, 10);
+                        ++count;
+                    }
                 }
             }
         }
@@ -794,9 +811,15 @@ static int scan_root(
 
     static char ids[MAX_GAMES][10];
 
+    int truncated = 0;
     int count = listing_names(
-        listing, bytes, ids
+        listing, bytes, ids, &truncated
     );
+    if (truncated) {
+        /* Never report an incomplete subset as a full inventory. */
+        ++errors;
+        logmsg("LIST_TRUNCATED", 1);
+    }
 
     if (report)
         fprintf(

@@ -66,6 +66,8 @@ static UiNavigation navigation;
 /* Borrowed static metadata from the scanner, never treated as installed. */
 static ScannerUiEntry previous_scan[UI_MAX_TITLES];
 static unsigned previous_scan_count;
+/* True only when the current scan failed and stale data is still shown. */
+static int final_view_is_stale;
 static unsigned job_selected=0;
 static unsigned job_scroll=0;
 static UiRecord navigation_records[UI_MAX_TITLES];
@@ -847,10 +849,19 @@ static void draw(const ScannerUiEntry *entries,
         settings_screen(p);
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
+        if(final_view_is_stale) {
+            panel(p,90,937,1730,67,0xFF102D50u);
+            arabic(p,128,943,UI_AR_CACHE_PREVIEW,AMBER);
+        }
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
         downloads(p);
     }else {
         dashboard(p,entries,count,good,errors,complete,saved);
+        if(final_view_is_stale) {
+            panel(p,1212,820,615,138,0xFF102D50u);
+            arabic(p,1223,832,UI_AR_CACHE_PREVIEW,AMBER);
+            arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
+        }
     }
     /* Continue using the video flip completion protocol verified by
      * previous hardware tests; teardown remains unchanged. */
@@ -898,6 +909,7 @@ extern "C" int scanner_ui_offer_icon(
 extern "C" int scanner_ui_begin(void) {
     ui_icon_cache_reset();
     previous_scan_count=0;
+    final_view_is_stale=0;
     ui_nav_init(&navigation,nullptr,0);
     ui_model_reset();
     job_selected=0;
@@ -975,12 +987,20 @@ extern "C" void scanner_ui_results(
 ) {
     if (!usable) return;
     if (!entries) count=0;
-    if (count>UI_MAX_TITLES) count=UI_MAX_TITLES;
+    /* A failed scan must not erase the saved library from the screen.
+     * The cache remains unverified and never authorizes any operation. */
+    final_view_is_stale=(!scan_complete && count==0u &&
+                         previous_scan_count>0u);
+    if(final_view_is_stale) {
+        entries=previous_scan;
+        count=previous_scan_count;
+    }
+    if(count>UI_MAX_TITLES)count=UI_MAX_TITLES;
     for(unsigned i=0;i<count;++i) {
         navigation_records[i].cusa=entries[i].cusa;
         navigation_records[i].name=entries[i].title;
     }
-    previous_scan_count=0;
+    if(!final_view_is_stale)previous_scan_count=0;
     ui_nav_init(&navigation,navigation_records,count);
     draw(entries,count,metadata_count,errors,
          scan_complete,inventory_saved,0,0);

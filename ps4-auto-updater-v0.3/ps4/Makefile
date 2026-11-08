@@ -12,11 +12,17 @@ RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
 LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil
 
-CFLAGS      := -D__ORBIS__ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
-               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include
+CFLAGS      := -D__ORBIS__ -include stdbool.h \
+               --target=x86_64-pc-freebsd12-elf \
+               -fPIC -funwind-tables -c \
+               -isysroot $(TOOLCHAIN) \
+               -isystem $(TOOLCHAIN)/include
 
-LDFLAGS     := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr \
-               -L$(TOOLCHAIN)/lib $(LIBS) $(TOOLCHAIN)/lib/crt1.o
+LDFLAGS     := -m elf_x86_64 -pie \
+               --script $(TOOLCHAIN)/link.x \
+               --eh-frame-hdr \
+               -L$(TOOLCHAIN)/lib \
+               $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
 CC          := clang
 LD          := ld.lld

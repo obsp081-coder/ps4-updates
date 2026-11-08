@@ -226,10 +226,10 @@ class ScannerFTPTests(unittest.TestCase):
             [c["cusa"] for c in inventory["directory_candidates"]],
             ["CUSA02343", "CUSA00411", "CUSA99999"]
         )
-        self.assertTrue(all(
-            c["metadata_verified"] is False
-            for c in inventory["directory_candidates"]
-        ))
+        self.assertEqual(
+            [c["metadata_verified"] for c in inventory["directory_candidates"]],
+            [True, True, False]
+        )
         self.assertTrue(inventory["scan_complete"])
         self.assertEqual([g["cusa"] for g in inventory["games"]],
                          ["CUSA02343", "CUSA00411"])
@@ -478,6 +478,38 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertEqual(inventory["games"], [])
         self.assertIn("SFO CUSA02343: -32", diagnostic)
         self.assertFalse(inventory["scan_complete"])
+
+
+    def test_ps4_playable_categories_are_accepted(self):
+        listing = (
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA08032\r\n"
+        )
+        inventory, diagnostic, _ = self.with_server(
+            listing, {
+                "CUSA02343": sfo("CUSA02343", category="gda"),
+                "CUSA00411": sfo("CUSA00411", category="gdo"),
+                "CUSA08032": sfo("CUSA08032", category="gde"),
+            })
+        self.assertEqual(
+            [g["cusa"] for g in inventory["games"]],
+            ["CUSA02343", "CUSA00411", "CUSA08032"]
+        )
+        self.assertTrue(inventory["scan_complete"])
+
+    def test_content_id_substring_cannot_impersonate_title(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {
+                "CUSA02343": sfo(
+                    "CUSA02343", include_title_id=False,
+                    content_id="IV0000-CUSA99999_00-CUSA02343XXXXXXX",
+                )
+            })
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -33", diagnostic)
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

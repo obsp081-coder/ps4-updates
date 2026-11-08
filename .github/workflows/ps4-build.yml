@@ -3,13 +3,49 @@ name: PS4 Native Scanner Build (Experimental)
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "ps4-auto-updater-v0.3/**"
+      - ".github/workflows/ps4-build.yml"
 
 permissions:
   contents: read
 
 jobs:
-  ps4-scanner:
+
+  host-tests:
+    name: PC Simulation Tests
     runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Check original scanner
+        run: |
+          mkdir -p ps4-auto-updater-v0.3/ps4/build
+
+          cc -std=c99 -Wall -Wextra -Werror -O2 \
+            -o ps4-auto-updater-v0.3/ps4/build/scanner-host \
+            ps4-auto-updater-v0.3/ps4/src/main.c
+
+          python3 ps4-auto-updater-v0.3/tests/test_ps4_scanner.py
+
+      - name: Test installed game checker with mock PS4
+        run: |
+          python3 ps4-auto-updater-v0.3/tests/test_installed_mock.py
+
+      - name: Host checks completed
+        run: |
+          echo "Host tests completed."
+          echo "This does not confirm real PS4 compatibility."
+
+  ps4-scanner:
+    name: Build PS4 Package
+    runs-on: ubuntu-22.04
+
+    needs:
+      - host-tests
 
     steps:
       - name: Checkout project
@@ -18,15 +54,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld make curl ca-certificates python3 libicu-dev
-
-      - name: Host source check
-        run: |
-          mkdir -p ps4-auto-updater-v0.3/ps4/build
-          cc -std=c99 -Wall -Wextra -Werror -O2 \
-            -o ps4-auto-updater-v0.3/ps4/build/scanner-host \
-            ps4-auto-updater-v0.3/ps4/src/main.c
-          python3 ps4-auto-updater-v0.3/tests/test_ps4_scanner.py
+          sudo apt-get install -y \
+            clang \
+            lld \
+            make \
+            curl \
+            ca-certificates \
+            python3 \
+            libicu-dev
 
       - name: Download OpenOrbis Toolchain
         run: |
@@ -35,12 +70,17 @@ jobs:
             -o /tmp/openorbis.tar.gz
 
           mkdir -p "$RUNNER_TEMP/openorbis"
-          tar -xzf /tmp/openorbis.tar.gz -C "$RUNNER_TEMP/openorbis"
 
-          SDK_LINK=$(find "$RUNNER_TEMP/openorbis" -name link.x -type f -print -quit)
+          tar -xzf /tmp/openorbis.tar.gz \
+            -C "$RUNNER_TEMP/openorbis"
+
+          SDK_LINK=$(find "$RUNNER_TEMP/openorbis" \
+            -name link.x -type f -print -quit)
+
           test -n "$SDK_LINK"
 
           SDK_ROOT=$(dirname "$SDK_LINK")
+
           echo "OO_PS4_TOOLCHAIN=$SDK_ROOT" >> "$GITHUB_ENV"
 
       - name: Compile PS4 Package

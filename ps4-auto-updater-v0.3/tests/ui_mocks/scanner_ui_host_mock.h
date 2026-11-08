@@ -13,6 +13,10 @@
 #define ORBIS_PAD_BUTTON_CIRCLE 0x2000
 #define ORBIS_PAD_BUTTON_DOWN 0x0040
 #define ORBIS_PAD_BUTTON_UP 0x0010
+#define ORBIS_PAD_BUTTON_L1 0x0400
+#define ORBIS_PAD_BUTTON_R1 0x0800
+#define ORBIS_PAD_BUTTON_CROSS 0x4000
+#define ORBIS_PAD_BUTTON_SQUARE 0x8000
 
 typedef struct OrbisVideoOutBufferAttribute {
     int32_t format, tiling, aspect;

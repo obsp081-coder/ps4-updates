@@ -111,6 +111,16 @@ LABELS = (
     ("PREV_MENU", "السابق"),
     ("WELCOME_TITLE", "مرحباً بك في مدير تحديثات ألعاب بلايستيشن"),
     ("WELCOME_NOTE", "افحص مكتبتك المحلية واستعرض المعلومات المتاحة بأمان"),
+    ("GAMES_MENU", "الألعاب"),
+    ("AVAILABLE_MENU", "التحديثات المتاحة"),
+    ("QUEUE_MENU", "قائمة الانتظار"),
+    ("INSTALLED_MENU", "التحديثات المثبتة"),
+    ("ABOUT_MENU", "حول البرنامج"),
+    ("QUEUE_EMPTY", "لا توجد مهام انتظار فعلية"),
+    ("INSTALLED_UNKNOWN", "لم نتحقق من التحديثات المثبتة بعد"),
+    ("UPDATES_UNVERIFIED", "لا يمكن اعتبار بيانات التحديث تحديثاً موثوقاً"),
+    ("ABOUT_NOTE", "نسخة تجريبية للقراءة فقط دون تنزيل أو تثبيت"),
+    ("ABOUT_SAFETY", "البيانات المحلية لا تؤكد تثبيت الألعاب"),
 )
 
 
@@ -131,6 +141,8 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     # Rasterize the long caption once at build time, not during frames.
     rail_font = ImageFont.truetype(str(font_path), 26,
                                    layout_engine=layout)
+    rail_long_font = ImageFont.truetype(str(font_path), 20,
+                                         layout_engine=layout)
     welcome_font = ImageFont.truetype(str(font_path), 29,
                                       layout_engine=layout)
     welcome_note_font = ImageFont.truetype(str(font_path), 21,
@@ -156,9 +168,15 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     atlas = bytearray()
     entries = []
     for name, caption in LABELS:
-        label_font = (rail_font if name == "RAIL_DETAILS" else
-                      welcome_font if name == "WELCOME_TITLE" else
-                      welcome_note_font if name == "WELCOME_NOTE" else font)
+        label_font = (
+            rail_long_font if name in ("AVAILABLE_MENU", "INSTALLED_MENU")
+            else rail_font if name in (
+                "RAIL_DETAILS", "GAMES_MENU", "QUEUE_MENU", "ABOUT_MENU",
+                "DOWNLOADS", "SETTINGS", "HOME")
+            else welcome_font if name == "WELCOME_TITLE"
+            else welcome_note_font if name == "WELCOME_NOTE"
+            else font
+        )
         bbox = label_font.getbbox(caption, direction="rtl", language="ar")
         width = bbox[2] - bbox[0] + 4
         height = bbox[3] - bbox[1] + 4

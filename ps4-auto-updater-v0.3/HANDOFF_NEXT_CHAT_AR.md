@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `54294a55a41c2454a1f82ceeaeb2ec512a20f577`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `1ed079bf4bdf09350da4b503c1cc2fbfb4bfd85c`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit 54294a55**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42596513513 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. سجل Host CPU لــ128 بحثًا ضمن 256 اسمًا عربيًا طويلًا: **50.669ms إجمالًا على Runner واحد**، وليس أداء PS4.
+- CI الأخير الناجح **على كود Commit 1ed079bf**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42598165602 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. CPU Host-only لـ12 Native 1080p Submissions: **25.728ms إجمالًا (2.144ms/submission)**، وDirect Memory للـFramebuffers **16 MiB**؛ ليس إجمالي RAM أو أداء PS4. اختبار Idle لا يعيد رسم الواجهة خلال 120 Polls بلا تغيير.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -38,7 +38,7 @@
 ## 4. الأولويات التالية — بدون انتظار أسئلة للمستخدم
 
 1. **القائمة الجانبية العربية العريضة (DONE IN CODE + HOST TESTS):** 252px بديل Icon Rail القديم مع جميع أقسام الواجهة. **لم يُختبر على PS4 الحقيقي**؛ لا تعد بناءه من الصفر إلا عند وجود عيب موثق.
-2. **Navigation/Search hardening (DONE IN CODE + HOST TESTS):** ستة صفوف وجدول عربي وتحذيرات Cache/Empty آمنة، وعناوين RTL/LTR طويلة مختصرة. تم إغلاق تسرب فلتر البحث عبر Back/L1/R1/OPTIONS وبعد إزالة CUSA؛ تم تحسين البحث العربي المحدود بلا Heap، واختبار 256 × 128 بحثًا على Host. **أولوية P1 الحالية:** تحسين Contrast/Spacing وأيقونات الفئات، ضبط حالات بيانات ناقصة أو طويلة، ومراجعة استهلاك RAM/CPU على Host ثم الجهاز الحقيقي؛ لا تُعد الإصلاحات السابقة دون عيب مثبت.
+2. **Navigation/Search/Host 1080p baseline (DONE IN CODE + HOST TESTS):** ستة صفوف وجدول عربي وتحذيرات Cache/Empty آمنة، RTL/LTR ellipsis، إصلاح L1/R1/OPTIONS/Rebind، بحث عربي محدود. أُضيف قياس Host 1080p CPU وحجز 16 MiB لاثنين Framebuffers واختبار أن 120 Idle Pad Polls لا تسبب Repaint زائد. **أولوية P1 الحالية:** ضبط Contrast/Spacing والأغلفة، واختبار موارد وFlip/Pad/GoldHEN FTP على جهاز PS4 الحقيقي عند توفره؛ أي Native Host CPU benchmark ليس Hardware FPS أو Total RAM. لا تُعد الإصلاحات السابقة دون عيب مثبت.
 3. تحسين التركيز البصري وNavigation states للـSearch/Details/Downloads/Settings، ولا تضف أزرار Download/Install فعالة أو Progress وهمية.
 4. كل تغيير: اقرأ الملفات المعنية من GitHub، عدّل بحذر وبـCommit واضح، أضف Host Regression Tests، راجع صور `ui-native-host-previews` بصريًا، انتظر CI المكتمل على أحدث HEAD، وصحّح الفشل الفعلي قبل اعتماد التعديل.
 5. قياس الموارد والذاكرة/الأداء على الكمبيوتر عند الإمكان مع تمييز أنها ليست أرقام PS4. PS4 Hardware Tests، FTP على GoldHEN FW14، الأعطال والتثبيت تؤجل حتى الجهاز متاح.
@@ -53,4 +53,4 @@
 
 ## 6. أول عمل في المحادثة التالية
 
-افتح `UI_IMPLEMENTATION_STATUS_AR.md`، وافحص أحدث HEAD وCI و`scanner_ui.cpp`/`ui_navigation.c`. **Sidebar/3-column game table/RTL-LTR Ellipsis/Cached-Stale-Empty وSearch Navigation/Arabic Folding نُفذت واختُبرت على Host**؛ لا تعدها من الصفر بلا عيب مثبت. الأولوية هي ضبط التفاصيل البصرية وحالات البيانات الفعلية وأداء/ذاكرة UI ثم اختبار PS4 الحقيقي. راجع صور Native Host، شغّل Host Tests وOpenOrbis Build، ولا ترسل PKG قبل اكتمال شروط التسليم.
+افتح `UI_IMPLEMENTATION_STATUS_AR.md`، وافحص أحدث HEAD وCI و`scanner_ui.cpp`/`ui_navigation.c`. **Sidebar/3-column game table/RTL-LTR Ellipsis/Cached-Stale-Empty وSearch Navigation/Arabic Folding نُفذت واختُبرت على Host**؛ لا تعدها من الصفر بلا عيب مثبت. الأولوية هي ضبط التفاصيل البصرية وحالات البيانات الفعلية **والتحقق من Lazy Cover Worker وFlip/Pad وذاكرة PS4 الحقيقية**؛ قياسات Host CPU/Framebuffer أُنجزت بالفعل. راجع صور Native Host، شغّل Host Tests وOpenOrbis Build، ولا ترسل PKG قبل اكتمال شروط التسليم.

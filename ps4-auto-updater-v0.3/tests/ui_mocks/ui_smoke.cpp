@@ -392,7 +392,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                frame[850u*SCREEN_WIDTH+310u]==0xFF164881u)
                 saw_job_scroll=true;
             if(pad_reads==22 &&
-               frame[742u*SCREEN_WIDTH+450u]==0xFF102D50u)
+               frame[710u*SCREEN_WIDTH+450u]==0xFF102D50u)
                 saw_update_row=true;
         }
         if(test_async_scan) {

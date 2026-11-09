@@ -197,7 +197,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             const uint32_t *frame=display_buffers[index];
             unsigned left_ink=0,right_ink=0;
             for(unsigned yy=340;yy<382;++yy) {
-                for(unsigned xx=197;xx<292;++xx) {
+                for(unsigned xx=380;xx<469;++xx) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++left_ink;
                 }

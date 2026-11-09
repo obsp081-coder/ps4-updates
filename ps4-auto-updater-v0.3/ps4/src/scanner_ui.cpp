@@ -729,8 +729,22 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         game_item(p,&entries[resolved],348+(int)i*99,
                   navigation.selected==navigation.scroll+i);
     }
-    if(!navigation.available)
-        arabic(p,299,397,count?UI_AR_NO_MATCHING_GAME:UI_AR_NO_GAME_METADATA,AMBER);
+    if(!navigation.available) {
+        /* The empty library is NOT an empty update catalog and does not
+         * imply that there are no installed games. Show an explicit
+         * read-only diagnostic instead of a tiny label on a blank grid.
+         * No external assets and no allocations in the renderer. */
+        panel(p,285,371,866,390,0xFF102D50u);
+        rect(p,301,388,5,350,AMBER);
+        panel(p,331,410,167,163,0xFF123C74u);
+        rect(p,350,427,125,4,CYAN);
+        rect(p,350,552,125,4,0xFF245F9Bu);
+        ascii(p,361,472,"PS4",WHITE,3,3);
+        arabic(p,529,411,UI_AR_NO_GAME_METADATA,AMBER);
+        arabic(p,529,469,complete?UI_AR_EMPTY_LIBRARY_HELP:
+               UI_AR_SCAN_INCOMPLETE,complete?MUTED:AMBER);
+        arabic(p,529,526,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+    }
     if(!saved)
         arabic(p,455,955,UI_AR_MISSING_INVENTORY,AMBER);
 

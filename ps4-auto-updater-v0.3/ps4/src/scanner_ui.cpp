@@ -678,7 +678,13 @@ static void footer(uint32_t *p, UiArabicLabel hint) {
     arabic(p,85,1015,hint,MUTED);
     /* Always describe the real shoulder-button behavior, even in Search
      * and on an empty library. Rendered from a pre-shaped static atlas. */
-    arabic(p,1490,1015,UI_AR_SHOULDER_NAV,CYAN);
+    /* The fixed Arabic atlas intentionally contains no Latin glyphs.
+     * Two Noto Latin button labels and two short Arabic captions stay
+     * independent, avoiding mixed-script shaping or clipping. */
+    ascii(p,1485,1027,"R1",CYAN,2,2);
+    arabic(p,1535,1015,UI_AR_NEXT_MENU,CYAN);
+    ascii(p,1690,1027,"L1",CYAN,2,2);
+    arabic(p,1740,1015,UI_AR_PREV_MENU,CYAN);
 }
 static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
                        const char *value,uint32_t color) {

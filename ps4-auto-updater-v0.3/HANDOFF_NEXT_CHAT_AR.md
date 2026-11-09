@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `a3c80fac0ab7f73a5349518188c380aee5b38533`؛ قد يكون توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `38bab300675071fe5f8c89746be3eff438257ce4`؛ قد يكون توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit a3c80fac**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42577043953 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. الصور الناتجة **Host Framebuffer** وليست PS4.
+- CI الأخير الناجح **على كود Commit 38bab300**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42582714894 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. الصور الناتجة **Host Framebuffer** وليست PS4.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -33,12 +33,12 @@
 - `metadata_verified` **لا تعني installed proof**. `Retail PKG` و`FPKG` ليست حزمًا قابلة للخلط تلقائيًا. لا يوجد Provider تحديثات مثبت الصلاحية أو Downloader/Installer آمن ومتحقق من عمله. **لا تفعّلها افتراضيًا**.
 - البحث يدعم اختيار نتيجة حقيقية والانتقال إلى Details والعودة إلى البحث، مع Host tests.
 - `UI title layout` يحسّن العربية/Latin لكنه **ليس Unicode Bidi كاملًا**.
-- آخر أعمال UI نفذت **Sidebar عربية 252px** في جميع الصفحات، وأضافت أعمدة أساسية **اللعبة / الإصدار / الحالة** فوق صفوف الألعاب الستة؛ اختبارات Pixel تتحقق من القوائم والأعمدة. ما زالت مطابقة كل تفاصيل الجدول والتصميم المرجعي **غير مكتملة**؛ لا تكتب "UI finished".
+- آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وأصلحت إسقاط الأسماء العربية/الإنجليزية الطويلة بإظهار جزء محسوب بـGlyph Advance مع `...` (RTL/LTR). أزيلت تبويبات الهيدر المكررة؛ الآن يعرض `READ ONLY` و`FW14 TARGET`. اختبارات Pixel وNative Host screenshots تم التحقق منها. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
 
 ## 4. الأولويات التالية — بدون انتظار أسئلة للمستخدم
 
 1. **القائمة الجانبية العربية العريضة (DONE IN CODE + HOST TESTS):** 252px بديل Icon Rail القديم مع جميع أقسام الواجهة. **لم يُختبر على PS4 الحقيقي**؛ لا تعد بناءه من الصفر إلا عند وجود عيب موثق.
-2. **جدول الألعاب الأساسي (DONE IN CODE + HOST TESTS):** أعمدة عربية للعبة/Version/State وCUSA وستة صفوف، مع Metadata غير مؤكدة بشكل واضح. **أولوية P1 الحالية:** دقة أحجام الخطوط والـSpacing، الحالات الفارغة/الممتلئة وRTL في العناوين الطويلة، ومدى مطابقة المرجع دون اختلاق بيانات Update/Compatibility.
+2. **جدول الألعاب الأساسي + Long Title Ellipsis (DONE IN CODE + HOST TESTS):** أعمدة عربية للعبة/Version/State وCUSA وستة صفوف، وPrefix قابل للقراءة مع `...` للعناوين الطويلة في LTR/RTL، ولا تداخل مع Version. **أولوية P1 الحالية:** دراسة الفارق البصري مع الـMockup (تباعد وتدرجات وأيقونات)، وفحص أسماء متنوعة وحالات القوائم الطويلة، دون اختلاق Provider/Compatibility.
 3. تحسين التركيز البصري وNavigation states للـSearch/Details/Downloads/Settings، ولا تضف أزرار Download/Install فعالة أو Progress وهمية.
 4. كل تغيير: اقرأ الملفات المعنية من GitHub، عدّل بحذر وبـCommit واضح، أضف Host Regression Tests، راجع صور `ui-native-host-previews` بصريًا، انتظر CI المكتمل على أحدث HEAD، وصحّح الفشل الفعلي قبل اعتماد التعديل.
 5. قياس الموارد والذاكرة/الأداء على الكمبيوتر عند الإمكان مع تمييز أنها ليست أرقام PS4. PS4 Hardware Tests، FTP على GoldHEN FW14، الأعطال والتثبيت تؤجل حتى الجهاز متاح.
@@ -53,4 +53,4 @@
 
 ## 6. أول عمل في المحادثة التالية
 
-افتح `UI_IMPLEMENTATION_STATUS_AR.md`، افحص أحدث HEAD وCI والملفات `scanner_ui.cpp`/`ui_navigation.c`. **Wide Arabic Sidebar وجدول الأعمدة الثلاثة نُفذا؛ الأولوية التالية هي التنقيح البصري للخطوط/المسافات/RTL والحالات الحدية** بالرجوع إلى التصميم المعتمد. اختبر Host Native Screenshots وOpenOrbis Build، ولا ترسل PKG أو تعتبر الواجهة مكتملة دون Hardware verification.
+افتح `UI_IMPLEMENTATION_STATUS_AR.md`، وافحص أحدث HEAD وCI و`scanner_ui.cpp`/`ui_navigation.c`. **Sidebar وجدول الأعمدة الثلاثة وLong RTL/LTR Ellipsis وإزالة تكرار الهيدر نُفذت واختُبرت على Host.** لا تعِد تنفيذها بلا عيب موثق. الأولوية هي التنقيح البصري والحالات الحدية ثم اختبارات الأداء/الموارد؛ راجع صور Native Host الحقيقية، شغّل Host Tests وOpenOrbis Build. لا ترسل PKG أو تعتبر الواجهة مكتملة دون Hardware verification.

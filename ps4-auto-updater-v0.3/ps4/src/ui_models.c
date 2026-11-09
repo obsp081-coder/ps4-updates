@@ -42,11 +42,14 @@ int ui_model_set_updates(const UiUpdateInfo *rows,unsigned count) {
         if(!valid_id(p->cusa) ||
            !version_valid(p->version,sizeof p->version,1) ||
            !version_valid(p->minimum_fw,sizeof p->minimum_fw,0) ||
-           p->verdict<UI_UPDATE_UNKNOWN || p->verdict>UI_UPDATE_VERIFIED)
+           p->verdict<UI_UPDATE_UNKNOWN || p->verdict>=UI_UPDATE_VERIFIED ||
+           p->source_kind<UI_SOURCE_UNSPECIFIED ||
+           p->source_kind>UI_SOURCE_FPKG_SUBMITTED)
             return -2;
         for(unsigned j=0;j<i;++j)
             if(!strcmp(p->cusa,rows[j].cusa) &&
-               !strcmp(p->version,rows[j].version))return -3;
+               !strcmp(p->version,rows[j].version) &&
+               p->source_kind==rows[j].source_kind)return -3;
     }
     if(count)memcpy(updates,rows,(size_t)count*sizeof updates[0]);
     updates_count=count;

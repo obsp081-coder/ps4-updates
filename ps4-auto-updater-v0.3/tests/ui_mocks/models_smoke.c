@@ -31,6 +31,9 @@ int main(void) {
     strcpy(bad[0].cusa,"BADID");
     assert(ui_model_set_updates(bad,1)<0);
     assert(ui_model_update_count()==2u);
+    u[0].verdict=UI_UPDATE_VERIFIED;
+    assert(ui_model_set_updates(u,1)<0); /* Phase 3 denies fake approval */
+    u[0].verdict=UI_UPDATE_UNKNOWN;
     assert(ui_model_set_updates(NULL,1)<0);
     assert(ui_model_set_updates(u,UI_MODEL_MAX_UPDATES+1u)<0);
 

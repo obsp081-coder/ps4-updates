@@ -13,12 +13,19 @@ typedef enum UiUpdateVerdict {
     UI_UPDATE_BLOCKED=1,
     UI_UPDATE_VERIFIED=2
 } UiUpdateVerdict;
+/* Source kind is provenance, not authorization or compatibility. */
+typedef enum UiUpdateSourceKind {
+    UI_SOURCE_UNSPECIFIED=0, UI_SOURCE_RETAIL_HTTP=1,
+    UI_SOURCE_FPKG_SUBMITTED=2
+} UiUpdateSourceKind;
 typedef struct UiUpdateInfo {
     char cusa[10];
     char version[16];
     char minimum_fw[16];
     uint64_t size_bytes; /* zero = not known */
     UiUpdateVerdict verdict;
+    UiUpdateSourceKind source_kind;
+    char content_id[37];
 } UiUpdateInfo;
 typedef enum UiJobStatus {
     UI_JOB_QUEUED=0,

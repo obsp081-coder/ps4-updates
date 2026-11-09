@@ -170,6 +170,76 @@ jobs:
           print(manifest)
           PY
 
+      # Targeted emulator-only ZIP on this draft development branch:
+      # produce the SAME assembled app files as the successful native build,
+      # but do not release/upload the PS4-installable .pkg from this branch.
+      # shadPS4's core accepts a direct eboot.bin path even if the Qt game
+      # discovery UI does not support this BREW title ID.
+      - name: Stage read-only shadPS4 extracted app
+        if: github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='ps4-auto-updater-v0.3/ps4'
+          TARGET="${RUNNER_TEMP}/shadps4-smoke/BREW00197"
+          mkdir -p "$TARGET/sce_sys/about" "$TARGET/sce_module"
+          install -m 0644 "$APP/eboot.bin" "$TARGET/eboot.bin"
+          install -m 0644 "$APP/sce_sys/param.sfo" "$TARGET/sce_sys/param.sfo"
+          install -m 0644 "$APP/sce_sys/icon0.png" "$TARGET/sce_sys/icon0.png"
+          install -m 0644 "$APP/sce_sys/about/right.sprx" "$TARGET/sce_sys/about/right.sprx"
+          install -m 0644 "$APP/sce_module/libc.prx" "$TARGET/sce_module/libc.prx"
+          install -m 0644 "$APP/sce_module/libSceFios2.prx" "$TARGET/sce_module/libSceFios2.prx"
+          install -m 0644 'ps4-auto-updater-v0.3/SHADPS4_SMOKE_TEST_AR.md' \
+            "${RUNNER_TEMP}/shadps4-smoke/README_AR.md"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "shadps4-smoke"
+          target = root / "BREW00197"
+          required = [
+              "eboot.bin",
+              "sce_sys/param.sfo",
+              "sce_sys/icon0.png",
+              "sce_sys/about/right.sprx",
+              "sce_module/libc.prx",
+              "sce_module/libSceFios2.prx",
+          ]
+          for rel in required:
+              path = target / rel
+              assert path.is_file() and path.stat().st_size > 0, f"missing {rel}"
+          assert (target / "eboot.bin").read_bytes()[:4] != b"", "empty eboot"
+          expected_pkg = list(Path("ps4-auto-updater-v0.3/ps4").glob("*.pkg"))
+          assert len(expected_pkg) == 1, "this app must match the validated single-PKG build"
+          meta = "\n".join([
+              "shadPS4 extracted-app smoke fixture ONLY",
+              "COMMIT: " + os.environ["GITHUB_SHA"],
+              "BUILD: OpenOrbis, read-only scanner UI",
+              "APP ID: BREW00197",
+              "PKG: intentionally NOT included; draft release gate remains closed",
+              "RUN: shadPS4 /absolute/path/to/BREW00197/eboot.bin",
+              "EXPECTED: UI/input only; localhost GoldHEN FTP and installed games absent",
+              "UNKNOWN: shadPS4 support for this app; NOT tested on physical PS4",
+              "",
+          ]) + "\n"
+          (root / "SMOKE_MANIFEST.txt").write_text(meta, encoding="utf-8")
+          (root / "EBoot_SHA256.txt").write_text(
+              hashlib.sha256((target / "eboot.bin").read_bytes()).hexdigest()
+              + "  BREW00197/eboot.bin\n",
+              encoding="utf-8",
+          )
+          print(meta)
+          PY
+
+      - name: Upload shadPS4-only smoke artifact (NOT PKG release)
+        if: github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadps4-readonly-smoke-${{ github.sha }}
+          path: ${{ runner.temp }}/shadps4-smoke/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload PS4 Package
         # Do not distribute unverified test packages from draft feature branches.
         # A green CI only proves host tests/build, not PS4 firmware support.

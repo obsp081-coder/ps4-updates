@@ -340,21 +340,28 @@ class NativeUiSmokeTests(unittest.TestCase):
                         )
                     if page == "downloads":
                         self.assertEqual(
-                            pixels.getpixel((320, 370)), (16, 45, 80),
+                            pixels.getpixel((320, 410)), (16, 45, 80),
                             "Missing actual no-jobs explanation panel"
                         )
                         self.assertEqual(
                             pixels.getpixel((1150, 700)), (16, 45, 80),
                             "Installation-disabled safety gate is missing"
                         )
-                        # The page heading must stay above the three
-                        # summary tiles, not be overpainted by their fill.
+                        # The page heading stays above four REAL job counters,
+                        # with a right-side selected-job pane and no fake ETA.
                         heading = pixels.crop((280, 135, 650, 178))
                         heading_ink = sum(
                             1 for r, g, b in heading.getdata()
                             if r > 145 and g > 145 and b > 145
                         )
                         self.assertGreater(heading_ink, 18)
+                        self.assertEqual(
+                            pixels.getpixel((1410, 250)), (11, 33, 66),
+                            "Selected-job right rail is missing")
+                        for x in (269, 548, 827, 1106):
+                            self.assertEqual(
+                                pixels.getpixel((x+8, 256)), (12, 36, 74),
+                                "Four genuine job counters are missing")
                     if page == "search_ar":
                         # Dynamic Arabic glyphs must be visible inside key
                         # rectangles rather than tofu squares or blank keys.

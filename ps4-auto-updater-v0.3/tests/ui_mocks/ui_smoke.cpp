@@ -384,12 +384,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(verify_jobs) {
             const uint32_t *frame=display_buffers[index];
-            /* Downloads KPIs moved down to make room for the page
-             * heading; the first REAL model job's bar is now y=409..419. */
-            if(frame[414u*SCREEN_WIDTH+380u]==0xFF37ADFFu)
+            /* Reference split pane: the first REAL model-backed progress
+             * bar is at y=478..487; no mock network transfer is begun. */
+            if(frame[483u*SCREEN_WIDTH+380u]==0xFF37ADFFu)
                 saw_job_progress=true;
             if(pad_reads>=14 && pad_reads<=19 &&
-               frame[810u*SCREEN_WIDTH+310u]==0xFF164881u)
+               frame[850u*SCREEN_WIDTH+310u]==0xFF164881u)
                 saw_job_scroll=true;
             if(pad_reads==22 &&
                frame[742u*SCREEN_WIDTH+450u]==0xFF102D50u)

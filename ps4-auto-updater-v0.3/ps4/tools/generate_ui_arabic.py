@@ -135,7 +135,7 @@ LABELS = (
     ("NO_SELECTED_JOB", "لا توجد مهمة محددة"),
     ("DOWNLOAD_PREVIEW", "التنزيل متوقف حتى التحقق من المصادر والتوافق"),
     ("TABLE_META_VERSION", "إصدار البيانات"),
-    ("TABLE_UPDATE_VERSION", "التحديث المرصود"),
+    ("TABLE_UPDATE_VERSION", "تحديث مرصود"),
     ("TABLE_UPDATE_SIZE", "الحجم"),
     ("TABLE_STATE_UNKNOWN", "غير مؤكد"),
     ("TABLE_STATE_BASE", "بيانات لعبة"),

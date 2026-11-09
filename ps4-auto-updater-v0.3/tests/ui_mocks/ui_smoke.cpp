@@ -4,6 +4,7 @@
 #include "../../ps4/src/ui_icon_cache.h"
 #include "../../ps4/src/ui_navigation.h"
 #include "../../ps4/src/ui_visual_fx.h"
+#include "ui_arabic_generated.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -588,6 +589,13 @@ int32_t sceKernelUsleep(uint32_t) {
 } // extern "C"
 
 int main() {
+    /* Real atlas widths are computed at build time with Noto/RAQM.
+     * Keep 18+ px separation between the observed-patch and local SFO
+     * version headers at the native 1920x1080 table positions. The
+     * previous long wording left only 4px and looked merged on shadPS4. */
+    assert(634+(int)UI_AR_GLYPHS[UI_AR_TABLE_UPDATE_VERSION].width+18<=789);
+    assert(789+(int)UI_AR_GLYPHS[UI_AR_TABLE_META_VERSION].width+18<=1180);
+    assert(513+(int)UI_AR_GLYPHS[UI_AR_TABLE_UPDATE_SIZE].width+18<=634);
     /* Bilinear sampler: exact flat colors and predictable smooth steps.
      * Prevent channel overflow or tint changes in the real C++ renderer. */
     assert(ui_fx_lerp_rgb8(0xFF123456u,0xFF123456u,7u)==

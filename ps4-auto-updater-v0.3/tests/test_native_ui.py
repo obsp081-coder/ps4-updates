@@ -253,9 +253,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                         )
                         # A real local square icon is now at the right
                         # of each row, not at x285. No synthetic game art.
+                        # The selected row's status lives in its own
+                        # amber/blue capsule. A tint must be visible, while
+                        # the adjacent size column remains untouched and
+                        # no green compatibility claim appears.
+                        capsule = pixels.getpixel((285, 429))
+                        self.assertNotEqual(
+                            capsule, (22, 72, 129),
+                            "The reference-style status badge is missing"
+                        )
                         self.assertEqual(
-                            pixels.getpixel((300, 430)), (22, 72, 129),
-                            "The game row reverted to left-side icon"
+                            pixels.getpixel((500, 430)), (22, 72, 129),
+                            "Status badge bled into update-size column"
                         )
                         self.assertNotEqual(
                             pixels.getpixel((1325, 425)),

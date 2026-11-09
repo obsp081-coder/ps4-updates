@@ -816,10 +816,19 @@ static void game_item(uint32_t *p,const ScannerUiEntry *g,
         ascii(p,677,y+30,"--",MUTED,2,2);
         ascii(p,531,y+30,"--",MUTED,2,2);
     }
+    /* Reference-style compact status capsule. Its amber/blue palette
+     * describes metadata certainty ONLY, never "update compatible".
+     * The badge stays inside its own 197px status column, clear of the
+     * next size field at x500. No tick/lock art suggesting verified
+     * installation and no hidden provider status. */
     const UiArabicLabel state=compact_state(g);
-    arabic(p,292,y+24,state,
-           g->metadata_verified && g->install_state>=0 ?
-               MUTED:AMBER);
+    const int is_unknown=!g->metadata_verified ||
+                         g->install_state<0;
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,284,y+17,197,53,
+                      is_unknown?0xFF57402Du:0xFF18507Au,
+                      is_unknown?0xFF25243Au:0xFF092443u,0);
+    rect(p,296,y+28,4,30,is_unknown?AMBER:CYAN);
+    arabic(p,307,y+24,state,is_unknown?AMBER:WHITE);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       unsigned count,unsigned good,unsigned errors,

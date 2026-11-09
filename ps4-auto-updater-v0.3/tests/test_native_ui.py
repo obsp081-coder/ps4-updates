@@ -193,6 +193,28 @@ class NativeUiSmokeTests(unittest.TestCase):
                             amber, 18,
                             "Zero-game state has no visible explanation"
                         )
+                        # Empty / incomplete results are not evidence of a
+                        # failed snapshot write; the old orange false error
+                        # used to appear along the bottom of this screen.
+                        false_error_area = pixels.crop((455, 952, 780, 994))
+                        false_error_amber = sum(
+                            1 for pixel in false_error_area.getdata()
+                            if pixel == (255, 195, 125)
+                        )
+                        self.assertEqual(
+                            false_error_amber, 0,
+                            "Incomplete empty scan falsely reports save failure"
+                        )
+                        help_area = pixels.crop((528, 468, 900, 513))
+                        help_ink = sum(
+                            1 for r, g, b in help_area.getdata()
+                            if 140 < r < 215 and 150 < g < 230
+                            and 160 < b < 245
+                        )
+                        self.assertGreater(
+                            help_ink, 12,
+                            "Missing GoldHEN FTP troubleshooting guidance"
+                        )
                     if page in ("cached", "stale"):
                         # Cache warnings have one bounded line above the
                         # footer; two-line warnings previously disappeared

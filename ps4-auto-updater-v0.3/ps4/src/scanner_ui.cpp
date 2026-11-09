@@ -600,7 +600,10 @@ static void rail(uint32_t *p,UiPage page) {
     rect(p,24,906,204,2,0xFF245885u);
     panel(p,25,919,200,53,0xFF102D50u);
     rect(p,34,935,4,23,AMBER);
-    ascii(p,51,936,"READ ONLY",MUTED,2,9);
+    /* Split the label into two bounded runs: Noto's proportional glyphs
+     * otherwise exceed the legacy 9-character cell and truncate "ONLY". */
+    ascii(p,45,936,"READ",MUTED,2,24);
+    ascii(p,45+latin_width("READ",2,24)+12,936,"ONLY",MUTED,2,24);
 }
 static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
@@ -633,7 +636,15 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     /* Only metadata-verified and unknown-install markers are shown.
      * Game presence in appmeta is never called proof of installation. */
     ascii(p,929,y+16,fallback_version(g),CYAN,2,16);
-    arabic(p,928,y+37,category_label(g),
+    /* Short row status stays inside the narrowed 899px list without
+     * misrepresenting SFO metadata as an installed package. */
+    const int base_meta=g && g->category &&
+        (!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
+         !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"));
+    const UiArabicLabel row_status =
+        base_meta && g->install_state<0 ? UI_AR_INSTALL_UNKNOWN :
+        category_label(g);
+    arabic(p,928,y+37,row_status,
            g->metadata_verified?MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,

@@ -1009,11 +1009,12 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,1423,623,UI_AR_VERSION,MUTED);
     ascii(p,1696,632,fallback_version(g),WHITE,2,12);
     rect(p,1423,667,399,1,0xFF204568u);
-    arabic(p,1423,675,UI_AR_SOURCE,MUTED);
-    arabic(p,1613,675,UI_AR_UNAVAILABLE,AMBER);
-    rect(p,1423,729,399,1,0xFF204568u);
-    arabic(p,1423,745,UI_AR_COMPATIBILITY_HEADING,MUTED);
-    arabic(p,1440,795,UI_AR_COMPATIBILITY_UNKNOWN,AMBER);
+    /* Source caption and value must never collide at 1080p. */
+    arabic(p,1423,672,UI_AR_SOURCE,MUTED);
+    arabic(p,1430,708,UI_AR_UNAVAILABLE,AMBER);
+    rect(p,1423,749,399,1,0xFF204568u);
+    arabic(p,1423,762,UI_AR_COMPATIBILITY_HEADING,MUTED);
+    arabic(p,1430,806,UI_AR_COMPATIBILITY_UNKNOWN,AMBER);
     /* Preserve the bottom of the right card as a quiet/unclickable area. */
     footer(p,UI_AR_FOOTER_DETAILS);
 }

@@ -580,7 +580,7 @@ int main() {
         1000.0*(double)(render_end-render_start)/CLOCKS_PER_SEC;
     std::printf(
         "HOST_ONLY_NATIVE_1080P_CPU_MS=%.3f FRAMES=%d "
-        "CPU_MS_PER_SUBMISSION=%.3f FRAMEBUFFER_BYTES=%zu\\n",
+        "CPU_MS_PER_SUBMISSION=%.3f FRAMEBUFFER_BYTES=%zu\n",
         elapsed_ms,measured_frames,elapsed_ms/measured_frames,mapped_bytes);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);

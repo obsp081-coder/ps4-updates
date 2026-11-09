@@ -277,8 +277,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
+            /* A failed FTP scan preserves all six rows, shows a cache
+             * banner BELOW the list, and never overwrites the selected
+             * game's read-only Details button at x=1500,y=884. */
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
-               frame[940u*SCREEN_WIDTH+1250u]==0xFF102D50u)
+               frame[954u*SCREEN_WIDTH+800u]==0xFF102D50u &&
+               frame[884u*SCREEN_WIDTH+1500u]==0xFF15589Du)
                 saw_offline_cache=true;
         }
         if(capture_cached_preview) {
@@ -287,7 +291,11 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             capture_ppm(display_buffers[index],"cached",64u);
             /* Sixth row is y=827..915. The stale warning must not cover it. */
             if(display_buffers[index][903u*SCREEN_WIDTH+600u]==
-               0xFF0C244Au)
+                   0xFF0C244Au &&
+               display_buffers[index][954u*SCREEN_WIDTH+800u]==
+                   0xFF102D50u &&
+               display_buffers[index][884u*SCREEN_WIDTH+1500u]==
+                   0xFF15589Du)
                 saw_cached_sixth_row=true;
         }
         if(verify_jobs) {

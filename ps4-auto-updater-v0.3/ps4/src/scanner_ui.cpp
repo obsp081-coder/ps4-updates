@@ -529,17 +529,30 @@ static void background(uint32_t *p) {
             rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
     }
 }
-/* Thin PS4 controller navigation rail. Draw once per state change with
- * small geometric icons rather than decoding SVGs or GPU textures. The
- * wide content panels still have their full original 1080p layout. */
+/* Wide 252px Arabic navigation rail. Reuses existing geometrical icons
+ * and build-time shaped Arabic atlas: no runtime SVG/font or GPU textures.
+ * Only pages with real in-app navigation are displayed, not nonfunctional
+ * mockup sections for installer/available updates. */
+#define RAIL_W 252
+#define CONTENT_LEFT 266
+static UiArabicLabel rail_label(UiPage page) {
+    switch(page) {
+        case UI_PAGE_HOME: return UI_AR_HOME;
+        case UI_PAGE_DETAILS: return UI_AR_DETAILS;
+        case UI_PAGE_DOWNLOADS: return UI_AR_DOWNLOADS;
+        case UI_PAGE_SEARCH: return UI_AR_SEARCH_MENU;
+        default: return UI_AR_SETTINGS;
+    }
+}
 static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
     const int active=section==current;
     const uint32_t ink=active?WHITE:MUTED;
     if(active) {
-        panel(p,5,y,58,69,0xFF174F92u);
-        rect(p,4,y+14,3,43,CYAN);
+        panel(p,9,y,233,74,0xFF15589Du);
+        rect(p,9,y+12,4,50,CYAN);
+        rect(p,25,y+8,199,2,0xFF2694EDu);
     }
-    const int x=20, cy=y+17;
+    const int x=28, cy=y+19;
     if(section==UI_PAGE_HOME) {
         rect(p,x+12,cy,8,5,ink);
         rect(p,x+8,cy+5,16,5,ink);
@@ -572,15 +585,22 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
         rect(p,x,cy+15,5,6,ink);
         rect(p,x+27,cy+15,5,6,ink);
     }
+    arabic(p,78,y+20,rail_label(section),ink);
 }
 static void rail(uint32_t *p,UiPage page) {
-    rect(p,0,116,69,884,0xFF081D39u);
-    rect(p,66,116,2,884,0xFF1A5189u);
-    rail_item(p,199,UI_PAGE_HOME,page);
-    rail_item(p,297,UI_PAGE_DETAILS,page);
-    rail_item(p,395,UI_PAGE_DOWNLOADS,page);
-    rail_item(p,493,UI_PAGE_SEARCH,page);
-    rail_item(p,591,UI_PAGE_SETTINGS,page);
+    rect(p,0,116,RAIL_W,884,0xFF081D39u);
+    rect(p,RAIL_W-3,116,3,884,0xFF1A5189u);
+    rect(p,16,145,219,2,0xFF1B518Au);
+    rail_item(p,190,UI_PAGE_HOME,page);
+    rail_item(p,290,UI_PAGE_DETAILS,page);
+    rail_item(p,390,UI_PAGE_DOWNLOADS,page);
+    rail_item(p,490,UI_PAGE_SEARCH,page);
+    rail_item(p,590,UI_PAGE_SETTINGS,page);
+    /* Honest preview/read-only footer inside the native sidebar. */
+    rect(p,24,906,204,2,0xFF245885u);
+    panel(p,25,919,200,53,0xFF102D50u);
+    rect(p,34,935,4,23,AMBER);
+    ascii(p,51,936,"READ ONLY",MUTED,2,9);
 }
 static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);

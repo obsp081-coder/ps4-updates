@@ -282,8 +282,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
              * game's read-only Details button at x=1500,y=884. */
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au &&
                frame[954u*SCREEN_WIDTH+800u]==0xFF102D50u &&
-               frame[884u*SCREEN_WIDTH+1500u]==0xFF15589Du)
+               frame[884u*SCREEN_WIDTH+1500u]==0xFF15589Du) {
                 saw_offline_cache=true;
+                /* Capture the failed-scan state separately from active
+                 * cache revalidation. The labels must differ. */
+                capture_ppm(frame,"stale",2048u);
+            }
         }
         if(capture_cached_preview) {
             /* This is a real host CPU-framebuffer capture of the cached

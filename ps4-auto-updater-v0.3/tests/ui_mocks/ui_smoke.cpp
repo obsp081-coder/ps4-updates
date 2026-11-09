@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 
 static int video_opened = 0;
 static int video_closed = 0;
@@ -14,6 +15,7 @@ static int pad_closed = 0;
 static int flip_count = 0;
 static int pad_reads = 0;
 static int allocated = 0;
+static size_t mapped_bytes = 0;
 static int sleep_count = 0;
 static int64_t last_flip = 0;
 static const uint32_t *display_buffers[2] = {nullptr, nullptr};
@@ -133,6 +135,7 @@ static int lazy_cover_mock_tick(const char *cusa) {
 static void reset() {
     video_opened = video_closed = pad_closed = 0;
     flip_count = pad_reads = allocated = sleep_count = 0;
+    mapped_bytes=0;
     last_flip = 0;
     display_buffers[0] = display_buffers[1] = nullptr;
     saw_blurred_background = false;
@@ -488,6 +491,7 @@ int32_t sceKernelAllocateDirectMemory(off_t, off_t, size_t, size_t,
 }
 int32_t sceKernelMapDirectMemory(void **ptr, size_t size, int32_t, int32_t,
                                   off_t, size_t) {
+    mapped_bytes=size;
     *ptr = std::malloc(size);
     if (!*ptr) return -1;
     ++allocated;
@@ -551,6 +555,36 @@ int main() {
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);
+
+    /* End-to-end native 1080p framebuffer CPU baseline (Host ONLY).
+     * Unlike screenshot fixtures, this session does not perform disk I/O,
+     * allowing a reproducible approximate cost per repaint. Timing also
+     * includes mock Pad handling, therefore it is NOT GPU frame time, PS4
+     * FPS, or a strict regression gate. Two 1920x1080 RGBA buffers are
+     * backed by the platform's 2-MiB-aligned direct memory allocation. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    assert(mapped_bytes==16u*1024u*1024u);
+    assert(scanner_ui_offer_icon("CUSA02343",
+                                 icon_png_sample,sizeof icon_png_sample)==0);
+    const int frame_before=flip_count;
+    const std::clock_t render_start=std::clock();
+    scanner_ui_results(entries,3,2,0,1,1);
+    const std::clock_t render_end=std::clock();
+    const int measured_frames=flip_count-frame_before;
+    assert(measured_frames>=8);
+    assert(render_start!=(std::clock_t)-1 &&
+           render_end!=(std::clock_t)-1 &&
+           render_end>=render_start);
+    const double elapsed_ms=
+        1000.0*(double)(render_end-render_start)/CLOCKS_PER_SEC;
+    std::printf(
+        "HOST_ONLY_NATIVE_1080P_CPU_MS=%.3f FRAMES=%d "
+        "CPU_MS_PER_SUBMISSION=%.3f FRAMEBUFFER_BYTES=%zu\\n",
+        elapsed_ms,measured_frames,elapsed_ms/measured_frames,mapped_bytes);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+    assert(retained_warning==0);
 
     /* The selected cover can be absent at first render. A later,
      * nonblocking UI tick imports it and repaints the blurred backdrop.

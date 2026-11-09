@@ -115,7 +115,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "games", "available", "downloads", "queue", "installed", "about", "details", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "search_restored_home", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "wide_art", "games", "available", "downloads", "queue", "installed", "about", "details", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "search_restored_home", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -285,6 +285,15 @@ class NativeUiSmokeTests(unittest.TestCase):
                     cyan = sum(1 for r,g,b in shoulder.getdata()
                                if b>175 and g>90 and r<140)
                     self.assertGreater(cyan, 15)
+                    if page == "wide_art":
+                        # This is SYNTHETIC Host-only art. It establishes
+                        # that an eventual verified local 16:9 picture can
+                        # be displayed with correct aspect, not that FW14
+                        # exposes or authorizes any particular PNG path.
+                        self.assertEqual(
+                            pixels.getpixel((1490,245)),(192,120,52))
+                        self.assertEqual(
+                            pixels.getpixel((1490,427)),(40,91,160))
                     if page == "empty":
                         # The grid-like horizontal stripes visible in the
                         # shadPS4 screenshot are replaced by a smooth

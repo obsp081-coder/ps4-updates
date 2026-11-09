@@ -23,6 +23,8 @@ static const uint32_t *display_buffers[2] = {nullptr, nullptr};
 static bool saw_blurred_background = false;
 static bool test_cover_replacement = false;
 static bool saw_backdrop_before_replace = false;
+static bool test_wide_art = false;
+static bool saw_wide_art = false;
 static bool saw_backdrop_after_replace = false;
 static bool capture_live_ui = false;
 static bool verify_jobs = false;
@@ -223,6 +225,17 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+1383u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(test_wide_art && pad_reads==0) {
+            const uint32_t *frame=display_buffers[index];
+            /* The mock wide art is a top-half terracotta and lower-half
+             * deep blue original test pattern. The right hero is truly
+             * 16:9 rather than stretching the selected icon0 square. */
+            if(frame[245u*SCREEN_WIDTH+1490u]==0xFFC07834u &&
+               frame[427u*SCREEN_WIDTH+1490u]==0xFF285BA0u) {
+                saw_wide_art=true;
+                capture_ppm(frame,"wide_art",33554432u);
+            }
+        }
         if(test_cover_replacement) {
             /* Before: 0xFF18A04D (local green icon). After: decoded PNG
              * 0xFF194BB4. This background pixel is outside all panels. */
@@ -630,6 +643,30 @@ int main() {
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);
+
+    /* Host-only 16:9 display contract. Do not claim that pic1.png can
+     * be fetched from GoldHEN FW14 until read-only hardware testing. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    static uint32_t wide_art[SCANNER_UI_WIDE_PIXELS];
+    for(unsigned y=0;y<SCANNER_UI_WIDE_HEIGHT;++y)
+        for(unsigned x=0;x<SCANNER_UI_WIDE_WIDTH;++x)
+            wide_art[(size_t)y*SCANNER_UI_WIDE_WIDTH+x]=
+                y<SCANNER_UI_WIDE_HEIGHT/2u?
+                0xFFC07834u:0xFF285BA0u;
+    assert(scanner_ui_offer_wide_art(nullptr,wide_art,
+                                     SCANNER_UI_WIDE_PIXELS)<0);
+    assert(scanner_ui_offer_wide_art("CUSA0123",wide_art,
+                                     SCANNER_UI_WIDE_PIXELS)<0);
+    assert(scanner_ui_offer_wide_art("CUSA02343",wide_art,
+                                     SCANNER_UI_WIDE_PIXELS-1u)<0);
+    assert(scanner_ui_offer_wide_art("CUSA02343",wide_art,
+                                     SCANNER_UI_WIDE_PIXELS)==0);
+    test_wide_art=true;
+    scanner_ui_results(entries,3,2,0,1,1);
+    assert(saw_wide_art && pad_reads>=2);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
 
     /* No idle redraws: the UI uses Pad polling but does not repaint
      * the 1080p framebuffer 120 times with unchanged input/artwork. */

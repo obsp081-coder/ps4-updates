@@ -461,6 +461,44 @@ static void placeholder(uint32_t *p, int x, int y, int w, int h) {
     rect(p,x+15,y+15,w-30,4,CYAN);
     ascii(p,x+19,y+h/2-8,"PS4",WHITE,3,3);
 }
+/* One selected-title art slot (127 KiB), no per-frame heap or worker
+ * access. This receives only already-decoded, caller-owned ARGB pixels
+ * on the UI thread. The real FW14 source/permission path is UNVERIFIED. */
+static uint32_t wide_art_pixels[SCANNER_UI_WIDE_PIXELS];
+static char wide_art_for[10];
+static const uint32_t *wide_art_find(const char *cusa) {
+    return cusa && wide_art_for[0] &&
+           strcmp(cusa,wide_art_for)==0 ? wide_art_pixels:nullptr;
+}
+/* Preserve 16:9 aspect ratio, with bounded two-axis integer bilinear
+ * sampling. No landscape drawing when only square icon0 is available. */
+static int wide_cover(uint32_t *p,int x,int y,int w,int h,
+                      const char *cusa) {
+    const uint32_t *src=wide_art_find(cusa);
+    if(!src || !p || x<0 || y<0 || w<1 || h<1 ||
+       x+w>WIDTH || y+h>HEIGHT)return 0;
+    const unsigned sw=SCANNER_UI_WIDE_WIDTH;
+    const unsigned sh=SCANNER_UI_WIDE_HEIGHT;
+    for(int dy=0;dy<h;++dy) {
+        const unsigned fy=(unsigned)((uint64_t)dy*(sh-1u)*8u/(unsigned)h);
+        const unsigned sy=fy/8u;
+        const unsigned sy1=sy+1u<sh?sy+1u:sy;
+        const unsigned wy=fy&7u;
+        uint32_t *line=p+(size_t)(y+dy)*WIDTH+x;
+        for(int dx=0;dx<w;++dx) {
+            const unsigned fx=(unsigned)((uint64_t)dx*(sw-1u)*8u/(unsigned)w);
+            const unsigned sx=fx/8u;
+            const unsigned sx1=sx+1u<sw?sx+1u:sx;
+            const unsigned wx=fx&7u;
+            const uint32_t top=ui_fx_lerp_rgb8(
+                src[(size_t)sy*sw+sx],src[(size_t)sy*sw+sx1],wx);
+            const uint32_t bottom=ui_fx_lerp_rgb8(
+                src[(size_t)sy1*sw+sx],src[(size_t)sy1*sw+sx1],wx);
+            line[dx]=ui_fx_lerp_rgb8(top,bottom,wy);
+        }
+    }
+    return 1;
+}
 /* Decode outside draw(). The 128px local thumbnail is scaled on demand. */
 static void cover(uint32_t *p,int x,int y,int w,int h,const char *cusa) {
     const uint32_t *thumb=ui_icon_cache_find(cusa);
@@ -536,6 +574,40 @@ static void prepare_blurred_background(const ScannerUiEntry *entries,
     }
     const char *id=entries[idx].cusa;
     if(blurred_for[0] && strcmp(blurred_for,id)==0)return;
+    const uint32_t *wide=wide_art_find(id);
+    if(wide) {
+        /* The optional 16:9 thumbnail already matches 240x135. Blur,
+         * darken and blend with navy ONCE per selected artwork change,
+         * rather than blending high-res content on every VideoOut flip. */
+        for(int y=0;y<BLUR_HEIGHT;++y) {
+            for(int x=0;x<BLUR_WIDTH;++x) {
+                unsigned rr=0,gg=0,bb=0,ns=0;
+                for(int oy=-3;oy<=3;oy+=3) {
+                    int py=y+oy;
+                    if(py<0)py=0;
+                    if(py>=BLUR_HEIGHT)py=BLUR_HEIGHT-1;
+                    for(int ox=-3;ox<=3;ox+=3) {
+                        int px=x+ox;
+                        if(px<0)px=0;
+                        if(px>=BLUR_WIDTH)px=BLUR_WIDTH-1;
+                        const uint32_t c=wide[(size_t)py*BLUR_WIDTH+px];
+                        rr+=(c>>16)&255u;
+                        gg+=(c>>8)&255u;
+                        bb+=c&255u;
+                        ++ns;
+                    }
+                }
+                const unsigned r=((rr/ns)+18u)/4u;
+                const unsigned g=((gg/ns)+51u)/4u;
+                const unsigned b=((bb/ns)+114u)/4u;
+                blur_image[(size_t)y*BLUR_WIDTH+x]=
+                    0xFF000000u|(r<<16)|(g<<8)|b;
+            }
+        }
+        memcpy(blurred_for,id,10);
+        blur_available=1;
+        return;
+    }
     const uint32_t *src=ui_icon_cache_find(id);
     if(!src) {
         blurred_for[0]=0;
@@ -967,7 +1039,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
             panel(p,1453,223,334,286,0xFF0C244Au);
-            cover(p,1473,236,266,266,g->cusa);
+            if(!wide_cover(p,1421,231,399,225,g->cusa))
+                cover(p,1473,236,266,266,g->cusa);
             panel(p,1424,434,120,55,0xFF123C74u);
             ascii(p,1448,441,"PS4",WHITE,3,3);
             game_title(p,1423,542,400,g,WHITE,2);
@@ -1100,7 +1173,8 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     arabic(p,1415,141,UI_AR_SELECTED_GAME,CYAN);
     panel(p,1413,191,414,300,0xFF123158u);
     rect(p,1428,201,382,2,CYAN);
-    cover(p,1479,211,272,272,g->cusa);
+    if(!wide_cover(p,1419,204,402,226,g->cusa))
+        cover(p,1479,211,272,272,g->cusa);
     game_title(p,1422,512,401,g,WHITE,2);
     ascii(p,1427,565,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
     rect(p,1423,610,399,2,0xFF275980u);
@@ -1572,6 +1646,23 @@ extern "C" int scanner_ui_offer_thumbnail(
     return result;
 }
 
+extern "C" int scanner_ui_offer_wide_art(
+    const char *cusa,const uint32_t *pixels,size_t count
+) {
+    /* Strictly a trusted UI-thread handoff; future FTP source must
+     * independently verify read permissions, PNG CRC and dimensions. */
+    if(!cusa || !pixels || count!=SCANNER_UI_WIDE_PIXELS ||
+       strlen(cusa)!=9u || memcmp(cusa,"CUSA",4)!=0)return -1;
+    for(int i=4;i<9;++i)
+        if(cusa[i]<'0' || cusa[i]>'9')return -2;
+    for(size_t i=0;i<SCANNER_UI_WIDE_PIXELS;++i)
+        wide_art_pixels[i]=0xFF000000u|(pixels[i]&0x00FFFFFFu);
+    memcpy(wide_art_for,cusa,10);
+    if(blurred_for[0] && strcmp(blurred_for,cusa)==0)
+        blurred_for[0]=0;
+    return 0;
+}
+
 extern "C" void scanner_ui_set_cover_tick(int (*tick)(const char *)) {
     cover_tick=tick;
 }
@@ -1585,6 +1676,7 @@ extern "C" int scanner_ui_begin(void) {
     ui_model_reset();
     job_selected=0;
     job_scroll=0;
+    wide_art_for[0]=0;
     blurred_for[0]=0;
     blur_available=0;
     OrbisUserServiceInitializeParams init = {};

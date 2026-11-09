@@ -25,6 +25,7 @@ LABELS = (
     ("UPDATE_REVIEW", "تحديث للعرض فقط"),
     ("UPDATE_BLOCKED", "التحديث محظور"),
     ("DETAILS", "تفاصيل اللعبة"),
+    ("RAIL_DETAILS", "تفاصيل اللعبة"),
     ("DOWNLOADS", "التنزيلات"),
     ("SETTINGS", "الإعدادات"),
     ("SETTINGS_HEADER", "إعدادات البرنامج"),
@@ -122,6 +123,10 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         layout = ImageFont.LAYOUT_RAQM
     font = ImageFont.truetype(str(font_path), font_size,
                               layout_engine=layout)
+    # The 252px Sidebar has only 154px between its icon and right gutter.
+    # Rasterize the long caption once at build time, not during frames.
+    rail_font = ImageFont.truetype(str(font_path), 26,
+                                   layout_engine=layout)
     header = [
         "/* GENERATED at build time: Arabic shaped RTL label masks, 2 bits/px.",
         " * Source NotoSansArabic-Regular (SIL Open Font License 1.1).",
@@ -143,14 +148,15 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     atlas = bytearray()
     entries = []
     for name, caption in LABELS:
-        bbox = font.getbbox(caption, direction="rtl", language="ar")
+        label_font = rail_font if name == "RAIL_DETAILS" else font
+        bbox = label_font.getbbox(caption, direction="rtl", language="ar")
         width = bbox[2] - bbox[0] + 4
         height = bbox[3] - bbox[1] + 4
         if not (1 <= width <= 1100 and 1 <= height <= 90):
             raise ValueError(f"Illegal label dimensions: {name} {width}x{height}")
         image = Image.new("L", (width, height), 0)
         drawer = ImageDraw.Draw(image)
-        drawer.text((2-bbox[0], 2-bbox[1]), caption, font=font,
+        drawer.text((2-bbox[0], 2-bbox[1]), caption, font=label_font,
                     direction="rtl", language="ar", fill=255)
         mask = list(image.getdata())
         packed = bytearray((len(mask) + 3)//4)

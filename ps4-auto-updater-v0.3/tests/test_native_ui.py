@@ -199,6 +199,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
                         )
+                    if page in ("home", "details"):
+                        # The Details rail caption must stay clear of the
+                        # sidebar divider in both active and inactive states.
+                        gutter = pixels.crop((232, 310, 249, 345))
+                        bright_gutter = sum(
+                            1 for red, green, blue in gutter.getdata()
+                            if red >= 143 and green >= 143 and blue >= 143
+                        )
+                        self.assertEqual(
+                            bright_gutter, 0,
+                            "Arabic Details rail label overlaps right gutter"
+                        )
                     if page == "search_restored_home":
                         # Actual Pad sequence typed an unmatched Arabic
                         # query and exited Search; three real game records

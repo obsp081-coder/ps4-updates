@@ -587,7 +587,7 @@ static void background(uint32_t *p) {
 static UiArabicLabel rail_label(UiPage page) {
     switch(page) {
         case UI_PAGE_HOME: return UI_AR_HOME;
-        case UI_PAGE_DETAILS: return UI_AR_DETAILS;
+        case UI_PAGE_DETAILS: return UI_AR_RAIL_DETAILS;
         case UI_PAGE_DOWNLOADS: return UI_AR_DOWNLOADS;
         case UI_PAGE_SEARCH: return UI_AR_SEARCH_MENU;
         default: return UI_AR_SETTINGS;

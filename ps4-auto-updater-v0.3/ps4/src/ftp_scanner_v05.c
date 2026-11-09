@@ -130,11 +130,20 @@ static int metadata_index(const char *cusa) {
     return -1;
 }
 
+/* Conservative PS4 PARAM.SFO classification: gd is a game and gdO
+ * is used for PS2 Classics. Keep the old lowercase gdo spelling for
+ * compatibility with earlier metadata, but do not treat gda (system app)
+ * or gde (non-game video/native app) as playable base games.
+ * Unknown categories stay in metadata_records, never in the game library.
+ * Classification alone still does NOT establish installation. */
 static const char *metadata_kind(const char *category) {
-    if (!strcmp(category, "gd") || !strcmp(category, "gda") ||
-        !strcmp(category, "gdo") || !strcmp(category, "gde"))
+    if (!strcmp(category, "gd") || !strcmp(category, "gdO") ||
+        !strcmp(category, "gdo"))
         return "base_game";
-    if (!strcmp(category, "gp") || !strcmp(category, "gdp"))
+    if (!strcmp(category, "gp") || !strcmp(category, "gpc") ||
+        !strcmp(category, "gpd") || !strcmp(category, "gpe") ||
+        !strcmp(category, "gpk") || !strcmp(category, "gpl") ||
+        !strcmp(category, "gdp"))
         return "patch_metadata";
     if (!strcmp(category, "ac"))
         return "dlc_metadata";

@@ -41,6 +41,7 @@ static bool saw_search_details = false;
 static bool saw_search_return = false;
 static bool test_capacity_screen = false;
 static bool saw_capacity_sixth_row = false;
+static bool saw_empty_library_panel = false;
 static int mixed_title_probe = 0;
 static int long_title_probe = 0;
 static bool saw_long_title_left = false;
@@ -138,6 +139,7 @@ static void reset() {
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
         test_cover_scroll = saw_cover_beyond_eight =
         test_capacity_screen = saw_capacity_sixth_row =
+        saw_empty_library_panel =
         test_search_result_open = saw_search_focus =
         saw_search_details = saw_search_return = false;
     mixed_title_probe = long_title_probe = 0;
@@ -268,10 +270,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 saw_search_return=true;
         }
         if(test_capacity_screen) {
-            /* Actual sixth visible title row at y=827..915. The first
-             * initialization frame has no row; this must turn true only
-             * after scanner_ui_results receives the full 256-title set. */
+            /* Empty library and the full 256-game list must have distinct
+             * states in the genuine native framebuffer. No mocked game
+             * or update is drawn for the zero-record case. */
             const uint32_t *frame=display_buffers[index];
+            if(frame[620u*SCREEN_WIDTH+650u]==0xFF102D50u) {
+                saw_empty_library_panel=true;
+                capture_ppm(frame,"empty",4096u);
+            }
             if(frame[903u*SCREEN_WIDTH+600u]==0xFF0C244Au)
                 saw_capacity_sixth_row=true;
         }
@@ -543,7 +549,8 @@ int main() {
     test_capacity_screen=true;
     assert(scanner_ui_begin()==1);
     scanner_ui_results(nullptr,0,0,0,0,0);
-    assert(!saw_capacity_sixth_row && pad_reads>=2);
+    assert(saw_empty_library_panel &&
+           !saw_capacity_sixth_row && pad_reads>=2);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

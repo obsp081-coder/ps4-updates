@@ -104,6 +104,30 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # design. These are true native CPU framebuffer pixels,
                     # not a browser mock or actual PS4 screenshot.
                     if page == "home":
+                        # All five honest navigation destinations must be
+                        # readable Arabic labels in the 252px rail. The old
+                        # icon-only rail had no text in these areas.
+                        self.assertEqual(
+                            pixels.getpixel((232, 245)), (21, 88, 157),
+                            "Wide active navigation card missing"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((210, 740)), (8, 29, 57),
+                            "Sidebar should remain opaque and text-safe"
+                        )
+                        for rail_y in (190, 290, 390, 490, 590):
+                            rail_text = pixels.crop(
+                                (80, rail_y + 15, 231, rail_y + 69))
+                            bright = sum(
+                                1 for red, green, blue in rail_text.getdata()
+                                if red >= 143 and green >= 143
+                                and blue >= 143
+                            )
+                            self.assertGreater(
+                                bright, 25,
+                                "Missing Arabic navigation caption at y="
+                                + str(rail_y)
+                            )
                         self.assertEqual(
                             pixels.getpixel((1250, 300)), (17, 44, 80),
                             "Selected cover hero frame changed"

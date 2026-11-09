@@ -62,6 +62,32 @@ int main(void) {
     assert(!ui_nav_action(&nav,UI_ACT_OPEN));
     assert(ui_nav_resolve(&nav,0)==UI_MAX_TITLES);
 
+    /* Arabic search must find practical spelling/diacritic variants
+     * without modifying the displayed game title or the original bytes.
+     * Non-Arabic Unicode casefold intentionally remains unsupported. */
+    UiRecord spellings[]={
+        {"CUSA11001","أحمد: الإصدار الأول"},
+        {"CUSA11002","إسلام والفتى"},
+        {"CUSA11003","لُعبـة مغامرات"},
+        {"CUSA11004","PS4 Edition"},
+        {"CUSA11005","bad\xF0\x28\x8C\x28"}
+    };
+    ui_nav_init(&nav,spellings,5);
+    ui_nav_filter(&nav,spellings,5,"احمد");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==0);
+    ui_nav_filter(&nav,spellings,5,"اسلام");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==1);
+    ui_nav_filter(&nav,spellings,5,"الفتي");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==1);
+    ui_nav_filter(&nav,spellings,5,"لعبة");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==2);
+    ui_nav_filter(&nav,spellings,5,"ps4 edition");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==3);
+    ui_nav_filter(&nav,spellings,5,"not-in-library");
+    assert(nav.available==0);
+    assert(!strcmp(spellings[0].name,"أحمد: الإصدار الأول"));
+    assert(!strcmp(spellings[2].name,"لُعبـة مغامرات"));
+
     fill(9);
     assert(ui_nav_action(&nav,UI_ACT_SEARCH));
     assert(nav.page==UI_PAGE_SEARCH);

@@ -9,7 +9,7 @@
 
 | الملف/الوحدة | ما تنفذه الآن | مستوى الدليل |
 |---|---|---|
-| ps4/src/scanner_ui.cpp | Royal Blue و6 صفوف وتفاصيل وبحث وإعدادات؛ بطاقة غلاف للعبة المختارة، 6 بطاقات Metadata في Details، Zero-jobs state صريحة وHeader ثنائي اللغة؛ Snapshot أثناء الفحص، إعادة اختيار CUSA، Lazy Icon worker وPad Polling نحو 33ms | Host framebuffer pixel assertions + OpenOrbis Native Build؛ **يحتاج PS4 hardware** |
+| ps4/src/scanner_ui.cpp | Royal Blue بــ252px Arabic Sidebar لكل الصفحات، Home تعرض ستة صفوف ثابتة ومعلومات CUSA، Hero Card، Details بست Metadata Tiles، Search Keyboard وتنزيلات وإعدادات Read-only؛ يحافظ على Snapshot وعمل Lazy Icon worker | Host framebuffer pixel assertions + OpenOrbis Native Build؛ **يحتاج PS4 hardware** |
 | ps4/src/ui_snapshot.c/h | Cache ثنائي للعبة الأساسية بحد 256 سجلًا وCRC؛ سياسة جديدة تمنع الفحص الجزئي من استبدال Snapshot صالح سابق. أول فحص داخلي جزئي يمكنه تكوين Snapshot فقط عند غياب Snapshot صالح؛ وحتى Snapshot فارغ صحيح لا يُستبدل بنتيجة ناقصة | اختبار Host للتلف والتكرار والحفظ الجزئي والسياسة + Native Build |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
 | ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع الاحتفاظ باختيار CUSA؛ ويمكن النزول من آخر صف بالكيبورد إلى النتيجة، التنقل بين CUSA المطابقة وفتح Details ثم العودة للبحث | اختبارات Navigation Host + Native Controller Smoke |
@@ -32,6 +32,15 @@
 - Arabic shaping ثابتة في عناصر UI. العناوين المختلطة تستخدم LTR/RTL runs حسب أول حرف واضح؛ يظهر الفرق في `mixed_ltr.png` و`mixed_rtl.png` من Native Host Framebuffer. تم ضبط مسافات Dynamic Arabic glyphs بحيث تتصل حروف مثل «لعبة». **لا ندعي UAX #9 كاملًا أو دعم CJK.**
 - لوحة مفاتيح داخلية بدل استدعاء PS4 IME غير مثبت على FW14. تعرض صفحة Search نتيجة لعبة حقيقية (اسم وCUSA وغلاف محلي إن توفر) أسفل لوحة المفاتيح، وليس عدد النتائج فقط. سهم أسفل من آخر صف يركز النتيجة، يمين/يسار لتغيير النتيجة، وإكس يفتح تفاصيلها مع العودة إلى البحث بالدائرة.
 
+## Sidebar عربي عريض — 9 نوفمبر 2026
+
+- **تم في الكود:** استبدال الـ69px Icon Rail بقائمة 252px تضم خمسة أقسام وظيفية فقط (Home/Details/Downloads/Search/Settings) مع تسميات عربية مشتقة من Build-time Atlas وHighlight واضح ووسم READ ONLY كامل.
+- **تم في الكود:** نقل قائمة الألعاب وبطاقات الإحصاءات، وتوزيع Metadata في Details، ونقل Downloads/Settings ولوحة مفاتيح Search وشريط نتيجة البحث، وشاشة scanning، حتى لا تنزل العناصر تحت Sidebar أو تفقد صفوف الألعاب الستة.
+- **تم في الكود:** اختصار حالة install unknown في الصفوف دون أن تزعم حالة Installed؛ ما زالت خانة الإصدار من Metadata ولا تعني توافق تحديث.
+- **اختبارات:** Native Host frame captures لـHome/Details/Downloads/Search/Settings وCached، واختبار ظهور نصوص القوائم الخمسة وألوان Active Rail/Background وإحداثيات عناصر البحث والتنزيلات. آخر Commit كود ناجح: `fa4acc87bd3d80b17262bb3a7e4324e067822a7e`. **181/181 Host Tests وOpenOrbis Native Build ناجحان**: GitHub Actions run `42576271358`.
+- **حد الدليل:** صور Host ناتجة عن Renderer الأصلي مع Mock VideoOut/Pad؛ لم تُختبر القائمة أو الذاكرة أو Controller navigation على PS4 حقيقي.
+- **أولوية الواجهة التالية:** تحسين صفوف جدول الألعاب والأعمدة/العناوين والنسب البصرية أمام التصميم المرجعي مع تحذيرات غير متحققة، ثم مراجعة contrast و1080p وRAM/CPU.
+
 ## تحسينات مرئية منفذة — 9 نوفمبر 2026
 
 - **Home:** تم تكبير المعاينة الخاصة باللعبة المختارة إلى بطاقة Royal Blue ذات إطار للغلاف `icon0.png` المحلي، الاسم وCUSA والإصدار وحالة البيانات، وزر انتقال إلى تفاصيل **للقراءة فقط**. يظل غياب الغلاف Placeholder واضحًا؛ لا صور أو تحديثات مختلقة.
@@ -42,7 +51,7 @@
 - **اختبارات التصميم:** أُضيفت نقاط تحقق Pixel على Framebuffer الأصلي لبطاقة Home وبطاقات Details وتحذيرات Downloads، مع بقاء اختبارات التنقل وJobs والبحث وكامل القائمة السابقة. لقطة UI عبر Host لا تثبت تنفيذ PS4.
 - **الدليل:** على Commit `e98f1b57` نجح **181 اختبار Host** ونجح **Native Build** عبر GitHub Actions run `42572121599`، وتحققنا بصريًا من لقطات Home وDetails وDownloads وSettings.
 
-**ما زال مختلفًا عن التصميم المعتمد:** الشريط الجانبي حاليًا ضيق ويستخدم أيقونات فقط، بينما المرجع يتطلب قائمة عربية جانبية عريضة، وستحتاج قوائم الألعاب إلى صفوف بأعمدة أكثر قربًا من المرجع. لا توجد حالات Jobs حقيقية، ولا Cover عالية الدقة مضمونة، ولا إثبات FPS أو سلوك FW14. هذه الفجوات تمنع اعتماد الواجهة كمنتج نهائي.
+**ما زال مختلفًا عن التصميم المعتمد:** القائمة الجانبية العربية العريضة أصبحت منفذة ومختبرة على Host؛ لكن جدول الألعاب لم يُعاد تصميم أعمدته وتباعده وتفاصيله كلها على نحو مطابق للمرجع. لا توجد بيانات Update حقيقية أو Jobs تشغيلية، ولا Cover عالية الدقة مضمونة، ولا إثبات FPS أو سلوك FW14. هذه الفجوات تمنع اعتماد الواجهة كمنتج نهائي.
 
 ## نواقص الواجهة قبل اعتبارها كاملة
 

@@ -5,6 +5,14 @@
 **Verdict:** MODIFY — تكامل الواجهة **غير مكتمل**. هذا المستند ليس تقرير اختبار PS4.
 **سياسة التسليم:** لا إرسال PKG تجريبي للمستخدم إلى أن تكتمل الواجهة كما طلب؛ رغم أن CI يولد حزمة لأغراض فحص البنية محليًا.
 
+## إصلاح ثبات اختيار Search وتصحيح Metadata diagnostics — 9 نوفمبر 2026
+
+- **ROOT CAUSE:** `ui_nav_rebind()` كان يعيد استعمال `search_result_focus` بعد زوال CUSA المحددة، فيمكن أن يصبح التركيز على أول نتيجة أخرى دون اختيار المستخدم. الجديد: يحتفظ بـQuery والـKeyboard، ولكنه يزيل Result Focus عند فقدان الهوية؛ إذا تغير ترتيب الصفوف وبقيت CUSA، يُحفظ الاختيار الصحيح.
+- **LOG CORRECTION:** `ftp_scanner_v05.c` كان يسجل `Metadata records` بعدد `found` للألعاب الأساسية فقط، رغم حفظ `metadata_records` لكل Base/Patch/DLC. تم تعديل التشخيص إلى `metadata_found` مع Host Regression على 2 Base + 1 DLC.
+- **HOST EVIDENCE:** [Commit abb6bfc43aad](https://github.com/obsp081-coder/ps4-updates/commit/abb6bfc43aad78427741b6cbdce9c01c03b35ae2) نجح بـ **181/181 Host Tests** و**OpenOrbis Native Build** في [Run 42605227571](https://github.com/obsp081-coder/ps4-updates/actions/runs/42605227571). الاختبارات الإضافية ضمن Smoke الحالي ولم تضف Test Method جديدة.
+- **INTERPRETATION:** ظهور `gp` داخل Host UI Preview القديم مصدره Host fixture مختلط، وليس السلوك الإنتاجي الذي يمرر فقط Base `games[]`؛ لا نحتاج تغيير Scanner الإنتاجي لخلل غير مثبت.
+- **LIMIT:** لا Hardware PS4 test لهذا الفرع، ولا مسار Download/Install مخوّل أو مُفعّل.
+
 ## إصلاح تداخل تسمية Details مع Sidebar — 9 نوفمبر 2026
 
 - **FIXED / HOST VERIFIED:** في Native Host Preview قبل الإصلاح، وصلت تسمية «تفاصيل اللعبة» إلى الفاصل الأيمن من الـ252px Sidebar. قياس Pixel gutter `(232, 310, 249, 345)` على `home.png`/`details.png` أعطى **81/119 pixel ساطع** قبل التعديل، وصفرًا في الحالتين بعده.

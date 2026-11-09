@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `437fcdfde0b0a62422a9a170e44916b47c32d77b`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `abb6bfc43aad78427741b6cbdce9c01c03b35ae2`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit 437fcdfde0b0**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42602304942 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، وفحص 1080p Native Host Preview بعد الإصلاح. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
+- CI الأخير الناجح **على كود Commit abb6bfc43aad**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42605227571 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -35,6 +35,13 @@
 - `UI title layout` يحسّن العربية/Latin لكنه **ليس Unicode Bidi كاملًا**.
 - أحدث إصلاح بصري في `437fcdfde0b0`: عنوان «تفاصيل اللعبة» في Sidebar كان يصل إلى الفاصل (81 pixel ساطع في Home و119 في Details ضمن x=232..248)، وأُضيف Atlas label مستقل بحجم خط 26px بدل تغيير عناوين Details الأخرى؛ بعد الإصلاح العدد 0 في الصورتين. Regression Test ضمن 181 اختبارًا وNative Build ناجح؛ لم يُختبر على PS4 حقيقي.
 - آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وLong RTL/LTR Ellipsis؛ أُصلحت حالات Cached/Failed FTP وEmpty Library ومنع رسالة الحفظ الوهمية. **التحديث الأخير**: الخروج من Search لا يترك فلترًا مخفيًا في Home؛ يُستعاد عدد الألعاب ويُحفظ اختيار CUSA، كما تميز Details بين تحذير Cache أثناء الفحص والتحذير بعد فشل FTP. صور `search_restored_home.png` و`scanning_details.png` و`stale_details.png` اختُبرت بصريًا عبر Host. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
+
+### إصلاح 2026-11-09 — Search identity وMetadata diagnostics
+
+- **Commit code:** `abb6bfc43aad78427741b6cbdce9c01c03b35ae2` ([CI](https://github.com/obsp081-coder/ps4-updates/actions/runs/42605227571)). إذا اختفت نتيجة Search مركّزة أثناء Rescan، يعود التركيز للـKeyboard بدل الانتقال الصامت إلى CUSA مختلفة؛ يحتفظ بالـQuery، ويُبقي التركيز عند إعادة الترتيب ما دامت الهوية نفسها موجودة. اختبارات Host في `tests/ui_mocks/navigation_smoke.c` تغطي الحالتين.
+- **Diagnostic fix:** `Metadata records` يطبع `metadata_found` (جميع Base/Patch/DLC Metadata)، وليس `found` (Base فقط). اختبار 2 Base + 1 DLC يؤكد `Metadata records: 3` و`Base-game records: 2`.
+- **تصحيح تفسير Host screenshot:** ظهور سجل gp في Home Preview القديم جاء من `ui_smoke.cpp` fixture مصطنع. مسار `ftp_scanner_v05.c` الإنتاجي يمرر `games[]` الخاصة بالـBase فقط إلى `scanner_ui_results`؛ سجلات gp/ac محفوظة بصورة مستقلة في `metadata_records` داخل Inventory. لا يوجد دليل على ظهور Patch ضمن مكتبة الألعاب الحقيقية.
+- **الحالة:** Host 181/181 PASS + OpenOrbis Native Build PASS؛ لا يوجد اختبار على PS4 Firmware 14.00 لهذا التعديل. Download/Install غير مفعّلين.
 
 ## 4. الأولويات التالية — بدون انتظار أسئلة للمستخدم
 

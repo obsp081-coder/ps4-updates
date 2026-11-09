@@ -713,9 +713,11 @@ static void rail(uint32_t *p,UiPage page) {
         UI_PAGE_HOME,UI_PAGE_GAMES,UI_PAGE_AVAILABLE,UI_PAGE_DOWNLOADS,
         UI_PAGE_QUEUE,UI_PAGE_INSTALLED,UI_PAGE_ABOUT,UI_PAGE_SETTINGS
     };
-    /* All tabs visible without scroll; Settings + R1 always wraps Home. */
+    /* Compact 77px native tab pitch matches the approved Sidebar rhythm.
+     * Eight tabs fit above the read-only footer with breathing room.
+     * This is geometry only; Settings + R1 still wraps to Home. */
     for(unsigned i=0;i<8;++i)
-        rail_item(p,155+(int)i*92,sections[i],
+        rail_item(p,155+(int)i*77,sections[i],
                   page==UI_PAGE_DETAILS ? navigation.details_origin:page);
     /* Honest preview/read-only footer inside the native sidebar. */
     rect(p,24,906,204,2,0xFF245885u);

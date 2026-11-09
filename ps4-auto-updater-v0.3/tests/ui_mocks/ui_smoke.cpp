@@ -293,7 +293,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             const int sequence[]={
                 1,2,3,4,5,6,7,0,7,6,5,4,3,2,1,0
             };
-            const unsigned y=(unsigned)(210+sequence[idx]*92);
+            const unsigned y=(unsigned)(210+sequence[idx]*77);
             if(display_buffers[index][y*SCREEN_WIDTH+232u]==
                0xFF15589Du)
                 seen_circular_tabs|=1u<<idx;
@@ -404,7 +404,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                     capture_ppm(frame,"scanning_details",16384u);
                 }
             }
-            if(pad_reads>=6 && frame[854u*SCREEN_WIDTH+232u]==0xFF15589Du)
+            if(pad_reads>=6 && frame[749u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_scan_settings=true;
         }
         if(capture_live_ui) {

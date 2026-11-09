@@ -178,7 +178,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 count, 18,
                                 "Missing honest header badge: " + label
                             )
-                        # All eight honest navigation destinations must be
+                        # Eight compact 77px Sidebar destinations must be
                         # readable Arabic labels in the 252px rail. The old
                         # icon-only rail had no text in these areas.
                         self.assertEqual(
@@ -203,7 +203,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((210, 740)), (8, 29, 57),
                             "Sidebar should remain opaque and text-safe"
                         )
-                        for rail_y in (155, 247, 339, 431, 523, 615, 707, 799):
+                        for rail_y in (155, 232, 309, 386, 463, 540, 617, 694):
                             rail_text = pixels.crop(
                                 (80, rail_y + 15, 231, rail_y + 69))
                             bright = sum(

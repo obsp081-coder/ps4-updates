@@ -1040,99 +1040,143 @@ static uint32_t job_status_color(UiJobStatus status) {
     }
 }
 static void downloads(uint32_t *p) {
-    arabic(p,285,138,UI_AR_DOWNLOADS,WHITE);
+    /* Reference-style split: four genuine counters + compact queue on
+     * left, selected REAL task details on right. No synthetic transfer
+     * speed, network state, ETA, provider or installer control. */
     const unsigned total=ui_model_download_count();
-    unsigned running=0,queued=0,finished=0;
+    unsigned running=0,queued=0,finished=0,blocked=0;
     for(unsigned i=0;i<total;++i) {
         const UiDownloadInfo *r=ui_model_download(i);
         if(!r)continue;
         if(r->status==UI_JOB_DOWNLOADING)++running;
         if(r->status==UI_JOB_QUEUED)++queued;
         if(r->status==UI_JOB_COMPLETED)++finished;
+        if(r->status==UI_JOB_BLOCKED || r->status==UI_JOB_FAILED)++blocked;
     }
-    char n[24];
-    (void)snprintf(n,sizeof n,"%u",running);
-    summary_at(p,270,183,495,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
-    (void)snprintf(n,sizeof n,"%u",queued);
-    summary_at(p,787,183,495,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
-    (void)snprintf(n,sizeof n,"%u",finished);
-    summary_at(p,1304,183,500,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
-    panel(p,268,310,1579,640,PANEL);
+    panel(p,269,127,1109,75,0xFF0C2850u);
+    rect(p,282,143,5,44,CYAN);
+    arabic(p,311,137,UI_AR_DOWNLOAD_LIST_TITLE,WHITE);
+    arabic(p,710,140,UI_AR_ABOUT_NOTE,MUTED);
+
+    const UiArabicLabel headers[4]={
+        UI_AR_ACTIVE_DOWNLOADS,UI_AR_QUEUED_DOWNLOADS,
+        UI_AR_FINISHED_DOWNLOAD,UI_AR_JOB_BLOCKED
+    };
+    const uint32_t colors[4]={CYAN,ACCENT,0xFF6CCFACu,AMBER};
+    const unsigned numbers[4]={running,queued,finished,blocked};
+    const int xs[4]={269,548,827,1106};
+    char num[24];
+    for(unsigned i=0;i<4;++i) {
+        (void)snprintf(num,sizeof num,"%u",numbers[i]);
+        summary_at(p,xs[i],211,268,headers[i],num,colors[i]);
+    }
+
+    panel(p,269,340,1109,606,PANEL);
+    arabic(p,291,345,UI_AR_DOWNLOAD_LIST_TITLE,CYAN);
+    rect(p,283,389,1078,2,0xFF255B8Du);
     if(!total) {
-        /* Empty means genuinely zero active jobs. Render a deliberate
-         * read-only empty state instead of synthetic progress/status.
-         * No fake source, download speed, resume or completed PKG. */
-        panel(p,284,327,1540,209,0xFF102D50u);
-        rect(p,302,345,5,172,AMBER);
-        panel(p,336,352,147,153,0xFF123C74u);
-        /* Compact geometric padlock, no external image or font runtime. */
-        rect(p,376,373,67,7,CYAN);
-        rect(p,376,380,8,42,CYAN);
-        rect(p,435,380,8,42,CYAN);
-        rect(p,365,421,89,64,0xFF14315Bu);
-        rect(p,365,421,89,4,AMBER);
-        rect(p,365,481,89,4,AMBER);
-        rect(p,405,442,8,24,AMBER);
-        arabic(p,523,350,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
-        arabic(p,523,405,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
-        arabic(p,523,468,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-
-        /* Side-by-side capability gates, explicitly unconfigured. */
-        panel(p,285,555,749,279,0xFF102D50u);
-        rect(p,304,575,5,232,CYAN);
-        arabic(p,330,572,UI_AR_SOURCE,MUTED);
-        rect(p,327,632,674,2,0xFF22527Bu);
-        arabic(p,330,645,UI_AR_TRUSTED_SETTING,WHITE);
-        arabic(p,330,722,UI_AR_RETAIL_FPKG_WARNING,MUTED);
-
-        panel(p,1050,555,774,279,0xFF102D50u);
-        rect(p,1070,575,5,232,AMBER);
-        arabic(p,1095,572,UI_AR_INSTALL_SETTING,MUTED);
-        rect(p,1092,632,696,2,0xFF22527Bu);
-        arabic(p,1095,645,UI_AR_INSTALL_OFF_SETTING,AMBER);
-        arabic(p,1095,722,UI_AR_DATA_NOT_PROOF,MUTED);
-        footer(p,UI_AR_FOOTER_DOWNLOADS);
-        return;
-    }
-    /* Bounded list: at most five jobs visible; Up/Down scrolls all 16.
-     * Percent and downloaded bytes are derived from measured model data. */
-    for(unsigned i=0;i<5u && job_scroll+i<total;++i) {
-        const unsigned idx=job_scroll+i;
-        const UiDownloadInfo *r=ui_model_download(idx);
-        if(!r)continue;
-        const int y=327+(int)i*120;
-        panel(p,289,y,1522,108,idx==job_selected?
-              0xFF164881u:0xFF102D50u);
-        if(idx==job_selected)rect(p,290,y+12,5,84,CYAN);
-        ui_title(p,324,y+7,638,r->title[0]?r->title:r->cusa,WHITE,2);
-        ascii(p,324,y+45,r->cusa,MUTED,2,12);
-        ascii(p,600,y+45,r->version,CYAN,2,15);
-        arabic(p,1230,y+12,job_status_label(r->status),
-               job_status_color(r->status));
-        rect(p,324,y+82,936,10,0xFF254465u);
-        if(r->bytes_total>0u) {
-            /* The size is bounded before multiplication to avoid
-             * 64-bit overflow even for malformed provider metadata. */
-            const double ratio=(double)r->bytes_done/(double)r->bytes_total;
-            unsigned width=(unsigned)(ratio*936.0);
-            if(width>936u)width=936u;
-            if(width)rect(p,324,y+82,(int)width,10,CYAN);
-            const unsigned percent=(unsigned)(ratio*100.0);
-            char pcent[16];
-            (void)snprintf(pcent,sizeof pcent,"%u%%",percent>100u?100u:percent);
-            ascii(p,1288,y+77,pcent,WHITE,2,8);
-        } else {
-            ascii(p,1288,y+77,"--",MUTED,2,4);
+        panel(p,285,397,1075,174,0xFF102D50u);
+        rect(p,303,415,5,135,AMBER);
+        panel(p,330,419,137,134,0xFF123C74u);
+        /* Bounded padlock made from rect strokes, no fake job icon. */
+        rect(p,365,442,66,6,CYAN);
+        rect(p,365,448,7,27,CYAN);
+        rect(p,424,448,7,27,CYAN);
+        rect(p,352,475,92,60,0xFF14315Bu);
+        rect(p,352,475,92,3,AMBER);
+        rect(p,389,490,8,26,AMBER);
+        arabic(p,488,420,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
+        arabic(p,488,470,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
+        panel(p,285,599,1075,230,0xFF102D50u);
+        rect(p,303,619,5,186,AMBER);
+        arabic(p,331,619,UI_AR_SOURCE,MUTED);
+        arabic(p,331,668,UI_AR_TRUSTED_SETTING,WHITE);
+        arabic(p,331,727,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+        arabic(p,331,780,UI_AR_INSTALL_OFF_SETTING,AMBER);
+    } else {
+        /* Five visible rows; model bounds remain 16. No retry/cancel calls.
+         * Percent is measured bytes, if source provided totals; zero means
+         * UNKNOWN, never 0% claimed. */
+        for(unsigned i=0;i<5u && job_scroll+i<total;++i) {
+            const unsigned idx=job_scroll+i;
+            const UiDownloadInfo *r=ui_model_download(idx);
+            if(!r)continue;
+            const int y=401+(int)i*108;
+            panel(p,286,y,1073,99,idx==job_selected?
+                  0xFF164881u:0xFF102D50u);
+            if(idx==job_selected)rect(p,287,y+10,5,79,CYAN);
+            ui_title(p,309,y+6,600,r->title[0]?r->title:r->cusa,
+                     WHITE,2);
+            ascii(p,309,y+45,r->cusa,MUTED,2,12);
+            if(r->version[0])
+                ascii(p,797,y+45,r->version,CYAN,2,13);
+            arabic(p,1003,y+9,job_status_label(r->status),
+                   job_status_color(r->status));
+            rect(p,309,y+77,740,9,0xFF254465u);
+            if(r->bytes_total>0u) {
+                const double fraction=(double)r->bytes_done/
+                                      (double)r->bytes_total;
+                unsigned fill=(unsigned)(fraction*740.0);
+                if(fill>740u)fill=740u;
+                if(fill)rect(p,309,y+77,(int)fill,9,CYAN);
+                char percent[18];
+                unsigned value=(unsigned)(fraction*100.0);
+                (void)snprintf(percent,sizeof percent,"%u%%",
+                               value>100u?100u:value);
+                ascii(p,1101,y+70,percent,WHITE,2,8);
+            } else {
+                ascii(p,1101,y+70,"--",MUTED,2,4);
+            }
         }
-        char bytes[64];
-        (void)snprintf(bytes,sizeof bytes,"%llu / %llu MB",
-            (unsigned long long)(r->bytes_done/1048576u),
-            (unsigned long long)(r->bytes_total/1048576u));
-        ascii(p,1450,y+75,bytes,MUTED,2,25);
     }
-    (void)snprintf(n,sizeof n,"%u / %u",job_selected+1,total);
-    ascii(p,1490,922,n,MUTED,2,20);
-    footer(p,UI_AR_FOOTER_JOBS);
+
+    panel(p,1390,127,460,819,0xFF0B2142u);
+    arabic(p,1417,143,UI_AR_SELECTED_JOB,CYAN);
+    panel(p,1413,197,414,230,0xFF112C50u);
+    rect(p,1428,207,382,2,0xFF2C77C0u);
+    const UiDownloadInfo *selected=job_selected<total?
+        ui_model_download(job_selected):nullptr;
+    if(!selected) {
+        arabic(p,1430,253,UI_AR_NO_SELECTED_JOB,MUTED);
+        arabic(p,1430,331,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+    } else {
+        ui_title(p,1430,225,366,
+                 selected->title[0]?selected->title:selected->cusa,
+                 WHITE,2);
+        ascii(p,1430,282,selected->cusa,CYAN,2,14);
+        arabic(p,1430,335,job_status_label(selected->status),
+               job_status_color(selected->status));
+    }
+    panel(p,1413,444,414,216,0xFF112C50u);
+    if(selected && selected->bytes_total>0u) {
+        const double fraction=(double)selected->bytes_done/
+                              (double)selected->bytes_total;
+        unsigned w=(unsigned)(fraction*367.0);
+        if(w>367u)w=367u;
+        char percent[20];
+        const unsigned pc=(unsigned)(fraction*100.0);
+        (void)snprintf(percent,sizeof percent,"%u%%",
+                       pc>100u?100u:pc);
+        ascii(p,1430,458,percent,WHITE,3,8);
+        rect(p,1430,508,367,12,0xFF254465u);
+        if(w)rect(p,1430,508,(int)w,12,CYAN);
+        char bytes[68];
+        (void)snprintf(bytes,sizeof bytes,"%llu / %llu MB",
+                       (unsigned long long)(selected->bytes_done/1048576u),
+                       (unsigned long long)(selected->bytes_total/1048576u));
+        ascii(p,1430,552,bytes,MUTED,2,26);
+    } else {
+        arabic(p,1430,465,UI_AR_UNAVAILABLE,MUTED);
+        rect(p,1430,508,367,12,0xFF254465u);
+        arabic(p,1430,545,UI_AR_NO_NETWORK_DOWNLOADS,AMBER);
+    }
+    panel(p,1413,682,414,227,0xFF112C50u);
+    arabic(p,1431,699,UI_AR_SOURCE,MUTED);
+    arabic(p,1431,751,UI_AR_TRUSTED_SETTING,WHITE);
+    panel(p,1431,825,365,56,0xFF283648u);
+    rect(p,1444,835,5,37,AMBER);
+    arabic(p,1460,832,UI_AR_PAUSE_NOT_SUPPORTED,MUTED);
+    footer(p,total?UI_AR_FOOTER_JOBS:UI_AR_FOOTER_DOWNLOADS);
 }
 
 /* Reference-section shells. Display state only; no install or downloader

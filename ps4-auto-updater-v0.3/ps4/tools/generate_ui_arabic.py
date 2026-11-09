@@ -130,6 +130,10 @@ LABELS = (
     ("ACTION_DOWNLOAD_DISABLED", "التنزيل معطّل"),
     ("ACTION_QUEUE_DISABLED", "الانتظار معطّل"),
     ("ACTION_INSTALL_DISABLED", "التثبيت معطّل"),
+    ("DOWNLOAD_LIST_TITLE", "قائمة التنزيل"),
+    ("SELECTED_JOB", "تفاصيل المهمة المحددة"),
+    ("NO_SELECTED_JOB", "لا توجد مهمة محددة"),
+    ("DOWNLOAD_PREVIEW", "التنزيل متوقف حتى التحقق من المصادر والتوافق"),
 )
 
 

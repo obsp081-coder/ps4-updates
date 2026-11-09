@@ -79,6 +79,47 @@ class OfficialPatchLookupTests(unittest.TestCase):
             "01.09"
         )
 
+    def test_preserves_only_versions_actually_listed_in_xml(self):
+        r = parse_patch_xml(EXAMPLE, "CUSA02343")
+        self.assertEqual(
+            [x["version"] for x in r["observed_retail_versions"]],
+            ["01.09", "01.02"],
+        )
+        self.assertIs(r["history_complete"], False)
+        self.assertIs(r["metadata_transport_authenticated"], False)
+        self.assertIs(r["package_size_verified"], False)
+        self.assertIs(r["minimum_firmware_verified"], False)
+        self.assertNotIn("download_url", r)
+
+    def test_deduplicates_exact_package_entries(self):
+        duplicated = EXAMPLE.replace(
+            b"</tag></titlepatch>",
+            b'<package version="01.09" '
+            b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>'
+            b"</tag></titlepatch>",
+        )
+        r = parse_patch_xml(duplicated, "CUSA02343")
+        self.assertEqual(len(r["observed_retail_versions"]), 2)
+
+    def test_rejects_xml_entity_declarations(self):
+        bad = (b'<!DOCTYPE titlepatch [<!ENTITY x "TEST">]>'
+               b'<titlepatch><tag><package version="01.09" '
+               b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY">'
+               b'<paramsfo><title>&x;</title></paramsfo>'
+               b'</package></tag></titlepatch>')
+        with self.assertRaises(ValueError):
+            parse_patch_xml(bad, "CUSA02343")
+
+    def test_rejects_too_many_unique_packages(self):
+        packages = b"".join(
+            (f'<package version="{i:02}.00" '
+             'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>').encode()
+            for i in range(129)
+        )
+        with self.assertRaises(ValueError):
+            parse_patch_xml(b"<titlepatch><tag>" + packages +
+                            b"</tag></titlepatch>", "CUSA02343")
+
     def test_rejects_wrong_cusa(self):
         with self.assertRaises(ValueError):
             parse_patch_xml(

@@ -107,6 +107,12 @@ def parse_patch_xml(data, cusa):
             "Invalid XML data length"
         )
 
+    # ET is a metadata parser, not an entity expansion service.
+    # Refuse DTD/entity declarations even when present in an otherwise
+    # well-formed untrusted HTTP document.
+    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+        raise ValueError("DTD/entity declarations are unsupported")
+
     try:
         root = ET.fromstring(data)
     except ET.ParseError as error:
@@ -120,6 +126,7 @@ def parse_patch_xml(data, cusa):
         )
 
     candidates = []
+    seen = set()
 
     for pkg in root.iter("package"):
         version = pkg.get("version")
@@ -135,6 +142,13 @@ def parse_patch_xml(data, cusa):
             and match.group(1) == cusa
         ):
             continue
+
+        identity = (version, content_id)
+        if identity in seen:
+            continue
+        if len(candidates) >= 128:
+            raise ValueError("Too many patch metadata entries")
+        seen.add(identity)
 
         name = (
             pkg.findtext("./paramsfo/title")
@@ -156,12 +170,24 @@ def parse_patch_xml(data, cusa):
             "No matching version and content_id"
         )
 
-    _, version, content_id, name = max(candidates)
+    # A Sony response can list one or several versions. Do not invent
+    # historical versions absent from this exact response. Distinct Content
+    # IDs for one version are retained as separate *metadata candidates*.
+    candidates.sort(reverse=True)
+    _, version, content_id, name = candidates[0]
 
     return {
         "latest_retail_version": version,
         "content_id": content_id,
-        "title": name
+        "title": name,
+        "observed_retail_versions": [
+            {"version": item_version, "content_id": item_content_id}
+            for _, item_version, item_content_id, _ in candidates
+        ],
+        "history_complete": False,
+        "metadata_transport_authenticated": False,
+        "package_size_verified": False,
+        "minimum_firmware_verified": False,
     }
 
 

@@ -693,10 +693,6 @@ static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
     arabic(p,x+36,y+6,name,MUTED);
     ascii(p,x+36,y+63,value,WHITE,3,28);
 }
-static void summary(uint32_t *p, int x, int w, UiArabicLabel name,
-                    const char *value, uint32_t color) {
-    summary_at(p,x,145,w,name,value,color);
-}
 static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
     /* The approved composition gives the game list most of the width.

@@ -587,12 +587,16 @@ static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,2,0xFF1F5C9Eu);
     arabic(p,85,1015,hint,MUTED);
 }
+static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
+                       const char *value,uint32_t color) {
+    panel(p,x,y,w,110,PANEL);
+    rect(p,x+16,y+21,4,66,color);
+    arabic(p,x+36,y+6,name,MUTED);
+    ascii(p,x+36,y+63,value,WHITE,3,28);
+}
 static void summary(uint32_t *p, int x, int w, UiArabicLabel name,
                     const char *value, uint32_t color) {
-    panel(p,x,145,w,110,PANEL);
-    rect(p,x+16,166,4,66,color);
-    arabic(p,x+36,151,name,MUTED);
-    ascii(p,x+36,208,value,WHITE,3,28);
+    summary_at(p,x,145,w,name,value,color);
 }
 static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
@@ -666,8 +670,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
             arabic(p,1469,719,category_label(g),
                    g->metadata_verified?WHITE:AMBER);
             rect(p,1241,773,553,1,0xFF204568u);
-            arabic(p,1240,782,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-            arabic(p,1240,807,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+            /* One legible warning, not two captions overlapping a CTA. */
+            arabic(p,1240,789,UI_AR_NO_TRUSTED_UPDATE,AMBER);
             /* Navigates to read-only details; this is NOT a download button. */
             panel(p,1241,849,553,57,0xFF15589Du);
             rect(p,1256,857,5,40,CYAN);
@@ -812,12 +816,12 @@ static void downloads(uint32_t *p) {
     }
     char n[24];
     (void)snprintf(n,sizeof n,"%u",running);
-    summary(p,90,540,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
+    summary_at(p,90,183,540,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
     (void)snprintf(n,sizeof n,"%u",queued);
-    summary(p,645,540,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
+    summary_at(p,645,183,540,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
     (void)snprintf(n,sizeof n,"%u",finished);
-    summary(p,1200,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
-    panel(p,90,288,1655,640,PANEL);
+    summary_at(p,1200,183,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
+    panel(p,90,310,1655,640,PANEL);
     if(!total) {
         /* Empty means genuinely zero active jobs. Render a deliberate
          * read-only empty state instead of synthetic progress/status.
@@ -860,7 +864,7 @@ static void downloads(uint32_t *p) {
         const unsigned idx=job_scroll+i;
         const UiDownloadInfo *r=ui_model_download(idx);
         if(!r)continue;
-        const int y=307+(int)i*120;
+        const int y=327+(int)i*120;
         panel(p,118,y,1578,108,idx==job_selected?
               0xFF164881u:0xFF102D50u);
         if(idx==job_selected)rect(p,120,y+12,5,84,CYAN);
@@ -891,7 +895,7 @@ static void downloads(uint32_t *p) {
         ascii(p,1380,y+75,bytes,MUTED,2,25);
     }
     (void)snprintf(n,sizeof n,"%u / %u",job_selected+1,total);
-    ascii(p,1490,936,n,MUTED,2,20);
+    ascii(p,1490,922,n,MUTED,2,20);
     footer(p,UI_AR_FOOTER_JOBS);
 }
 static void settings_screen(uint32_t *p) {

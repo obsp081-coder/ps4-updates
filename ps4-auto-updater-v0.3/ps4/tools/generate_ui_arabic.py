@@ -158,6 +158,23 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         layout = ImageFont.LAYOUT_RAQM
     font = ImageFont.truetype(str(font_path), font_size,
                               layout_engine=layout)
+    # Heading glyphs ship as bitmaps only. No font file or shape engine
+    # is needed on the console itself. Weight is part of the design tokens.
+    bold_path = font_path.parent / "NotoSansArabic-Bold.ttf"
+    semi_path = font_path.parent / "NotoSansArabic-SemiBold.ttf"
+    if not bold_path.is_file() or not semi_path.is_file():
+        raise FileNotFoundError(
+            "Noto Sans Arabic Bold/SemiBold missing (fonts-noto-core)"
+        )
+    bold_font = ImageFont.truetype(
+        str(bold_path), 31, layout_engine=layout
+    )
+    bold_title_font = ImageFont.truetype(
+        str(bold_path), 33, layout_engine=layout
+    )
+    semibold_rail_font = ImageFont.truetype(
+        str(semi_path), 24, layout_engine=layout
+    )
     # The 252px Sidebar has only 154px between its icon and right gutter.
     # Rasterize the long caption once at build time, not during frames.
     rail_font = ImageFont.truetype(str(font_path), 26,
@@ -198,6 +215,18 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     entries = []
     for name, caption in LABELS:
         label_font = (
+            bold_title_font if name in (
+                "WELCOME_TITLE", "DOWNLOAD_LIST_TITLE",
+                "AVAILABLE_UPDATES", "SELECTED_GAME", "SELECTED_JOB"
+            ) else
+            bold_font if name in (
+                "LIBRARY", "COMPATIBILITY_HEADING", "SETTINGS_HEADER",
+                "DETAILS", "NO_TRUSTED_UPDATE"
+            ) else
+            semibold_rail_font if name in (
+                "HOME", "GAMES_MENU", "QUEUE_MENU", "ABOUT_MENU",
+                "DOWNLOADS", "SETTINGS"
+            ) else
             header_font if name == "APP_NAME" else
             header_note_font if name == "LOCAL_READ_ONLY" else
             table_font if name.startswith("TABLE_") else

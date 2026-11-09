@@ -1079,6 +1079,19 @@ static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
     footer(p,UI_AR_FOOTER_SEARCH);
 }
 
+/* Cache is unverified metadata, but the warning must never obscure the
+ * selected game's read-only Details control. The sixth game row ends at
+ * y=931; this status strip lives only in the gap before the footer. */
+static void cache_notice(uint32_t *p,int scanning) {
+    panel(p,269,937,899,59,0xFF102D50u);
+    rect(p,279,947,5,39,AMBER);
+    arabic(p,304,939,UI_AR_CACHE_PREVIEW,AMBER);
+    arabic(p,304,963,UI_AR_CACHE_ONLY,MUTED);
+    if(scanning) {
+        /* This is scanner progress, not a download progress bar. */
+        ascii(p,897,955,progress_line,CYAN,2,18);
+    }
+}
 static void draw(const ScannerUiEntry *entries,
                  unsigned count, unsigned good, unsigned errors,
                  int complete, int saved, unsigned start, int scanning) {
@@ -1097,12 +1110,9 @@ static void draw(const ScannerUiEntry *entries,
          * Cached names/versions are ALWAYS unverified and stale. */
         dashboard(p,previous_scan,previous_scan_count,
                   previous_scan_count,0,0,1);
-        /* Warning is placed in the side panel so all six library rows
-         * remain fully visible while cached metadata is on screen. */
-        panel(p,1212,820,615,138,0xFF102D50u);
-        arabic(p,1223,832,UI_AR_CACHE_PREVIEW,AMBER);
-        arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
-        ascii(p,1238,928,progress_line,CYAN,2,28);
+        /* Do not paint over the selected game's Details control.
+         * Cache warnings stay below the sixth library row. */
+        cache_notice(p,1);
     }else if(scanning && navigation.page==UI_PAGE_HOME) {
         arabic(p,293,218,UI_AR_READING_METADATA,WHITE);
         panel(p,280,328,1540,344,PANEL);
@@ -1123,11 +1133,8 @@ static void draw(const ScannerUiEntry *entries,
         downloads(p);
     }else {
         dashboard(p,entries,count,good,errors,complete,saved);
-        if(final_view_is_stale) {
-            panel(p,1212,820,615,138,0xFF102D50u);
-            arabic(p,1223,832,UI_AR_CACHE_PREVIEW,AMBER);
-            arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
-        }
+        if(final_view_is_stale)
+            cache_notice(p,0);
     }
     /* Continue using the video flip completion protocol verified by
      * previous hardware tests; teardown remains unchanged. */

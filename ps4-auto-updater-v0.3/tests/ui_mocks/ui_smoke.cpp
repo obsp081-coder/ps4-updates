@@ -188,7 +188,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         /* x=72 is outside the 69px sidebar rail and outside
          * content panels, so it genuinely measures the blurred art. */
         const uint32_t sample =
-            display_buffers[index][500u*SCREEN_WIDTH+72u];
+            display_buffers[index][500u*SCREEN_WIDTH+1190u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
         if(mixed_title_probe) {
             /* Native framebuffer pixel checks: mixed LTR-leading titles
@@ -261,13 +261,13 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             const uint32_t *frame=display_buffers[index];
             /* Downloads KPIs moved down to make room for the page
              * heading; the first REAL model job's bar is now y=409..419. */
-            if(frame[414u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
+            if(frame[414u*SCREEN_WIDTH+380u]==0xFF37ADFFu)
                 saw_job_progress=true;
             if(pad_reads>=14 && pad_reads<=19 &&
-               frame[810u*SCREEN_WIDTH+150u]==0xFF164881u)
+               frame[810u*SCREEN_WIDTH+310u]==0xFF164881u)
                 saw_job_scroll=true;
             if(pad_reads==22 &&
-               frame[742u*SCREEN_WIDTH+220u]==0xFF102D50u)
+               frame[742u*SCREEN_WIDTH+450u]==0xFF102D50u)
                 saw_update_row=true;
         }
         if(test_async_scan) {

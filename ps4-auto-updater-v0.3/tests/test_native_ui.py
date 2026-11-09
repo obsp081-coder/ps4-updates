@@ -156,6 +156,20 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((232, 245)), (21, 88, 157),
                             "Wide active navigation card missing"
                         )
+                        # The mockup's bright focus is now a bounded
+                        # two-tone rim, not a full-width CPU gradient.
+                        self.assertEqual(
+                            pixels.getpixel((120, 193)), (55, 173, 255),
+                            "Active sidebar highlight missing cyan rim"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((600, 351)), (55, 173, 255),
+                            "Selected game row missing cyan rim"
+                        )
+                        self.assertNotEqual(
+                            pixels.getpixel((600, 450)), (55, 173, 255),
+                            "Unselected game row gained active highlight"
+                        )
                         self.assertEqual(
                             pixels.getpixel((210, 740)), (8, 29, 57),
                             "Sidebar should remain opaque and text-safe"

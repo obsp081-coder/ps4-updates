@@ -20,6 +20,9 @@ static int sleep_count = 0;
 static int64_t last_flip = 0;
 static const uint32_t *display_buffers[2] = {nullptr, nullptr};
 static bool saw_blurred_background = false;
+static bool test_cover_replacement = false;
+static bool saw_backdrop_before_replace = false;
+static bool saw_backdrop_after_replace = false;
 static bool capture_live_ui = false;
 static bool verify_jobs = false;
 static bool saw_job_progress = false;
@@ -140,6 +143,9 @@ static void reset() {
     last_flip = 0;
     display_buffers[0] = display_buffers[1] = nullptr;
     saw_blurred_background = false;
+    test_cover_replacement = false;
+    saw_backdrop_before_replace = false;
+    saw_backdrop_after_replace = false;
     captured_pages = 0;
     capture_live_ui = false;
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
@@ -212,6 +218,13 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         const uint32_t sample =
             display_buffers[index][500u*SCREEN_WIDTH+1190u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
+        if(test_cover_replacement) {
+            /* Before: 0xFF18A04D (local green icon). After: decoded PNG
+             * 0xFF194BB4. This background pixel is outside all panels. */
+            if(sample==0xFF0A342Fu) saw_backdrop_before_replace=true;
+            if(saw_backdrop_before_replace && sample==0xFF0A1F49u)
+                saw_backdrop_after_replace=true;
+        }
         if(mixed_title_probe) {
             /* Native framebuffer pixel checks: mixed LTR-leading titles
              * start near the left edge, RTL-leading titles at the right.
@@ -409,6 +422,19 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_cover_replacement) {
+        if(pad_reads==2) {
+            assert(saw_backdrop_before_replace);
+            /* Regression: updating the same selected CUSA through the PNG
+             * path must refresh the next drawn background, not just icon. */
+            assert(scanner_ui_offer_icon(
+                "CUSA02343",icon_png_sample,sizeof icon_png_sample)==0);
+            data->buttons=ORBIS_PAD_BUTTON_CROSS;
+        }
+        if(pad_reads==4)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        if(pad_reads==6)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_idle_without_redraw) {
         /* 120 mock input polls with no button or cover result. The native
          * renderer must not flip once per 33ms polling cycle. */
@@ -618,6 +644,23 @@ int main() {
     scanner_ui_set_cover_tick(nullptr);
     assert(lazy_cover_offered && lazy_cover_polls>=3);
     assert(saw_blurred_background);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* A PNG update for the SAME selected game ID must invalidate the
+     * blurred-background cache after successful decode. All source pixels
+     * are synthetic and the test runs only in Host VideoOut/Pad mocks. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    static uint32_t green_icon[UI_ICON_PIXELS];
+    for(size_t i=0;i<UI_ICON_PIXELS;++i)
+        green_icon[i]=0xFF18A04Du;
+    assert(scanner_ui_offer_thumbnail(
+        "CUSA02343",green_icon,UI_ICON_PIXELS)==0);
+    test_cover_replacement=true;
+    scanner_ui_results(entries,3,2,0,1,1);
+    assert(saw_backdrop_before_replace && saw_backdrop_after_replace);
+    assert(pad_reads>=6);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

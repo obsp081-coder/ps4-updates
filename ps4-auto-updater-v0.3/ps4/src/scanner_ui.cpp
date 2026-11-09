@@ -599,7 +599,12 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
     if(active) {
         panel(p,9,y,233,74,0xFF15589Du);
         rect(p,9,y+12,4,50,CYAN);
-        rect(p,25,y+8,199,2,0xFF2694EDu);
+        /* A bounded three-stroke electric-blue focus rim is closer to the
+         * approved mockup than a flat fill. At most ~650 extra pixels;
+         * no shadow bitmap, animation timer or GPU dependency. */
+        rect(p,18,y+3,215,2,CYAN);
+        rect(p,18,y+5,215,2,0xFF175CA5u);
+        rect(p,18,y+68,215,2,0xFF2694EDu);
     }
     const int x=28, cy=y+19;
     if(section==UI_PAGE_HOME) {
@@ -677,7 +682,11 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     panel(p,269,y,899,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) {
         rect(p,269,y+10,5,68,CYAN);
-        rect(p,287,y+5,855,2,0xFF268DD7u);
+        /* Thin two-tone focus rim; painting a whole-row gradient on CPU
+         * would cost considerably more than these three bounded strokes. */
+        rect(p,281,y+3,875,2,CYAN);
+        rect(p,281,y+5,875,2,0xFF1765ABu);
+        rect(p,281,y+81,875,2,0xFF268DD7u);
     }
     cover(p,285,y+11,68,66,g?g->cusa:nullptr);
     game_title(p,374,y+5,418,g,WHITE,2);
@@ -1202,7 +1211,14 @@ extern "C" int scanner_ui_preview_snapshot(
 extern "C" int scanner_ui_offer_icon(
     const char *cusa, const unsigned char *png, unsigned png_bytes
 ) {
-    return ui_icon_cache_offer(cusa,png,png_bytes);
+    /* Like offer_thumbnail(), this API must be called from the UI owner
+     * thread. An updated PNG with the SAME CUSA still changes the artwork:
+     * invalidate the cached blurred backdrop only after successful decode. */
+    const int result=ui_icon_cache_offer(cusa,png,png_bytes);
+    if(result==0 && cusa && blurred_for[0] &&
+       strcmp(blurred_for,cusa)==0)
+        blurred_for[0]=0;
+    return result;
 }
 
 extern "C" int scanner_ui_offer_thumbnail(

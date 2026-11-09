@@ -5,6 +5,15 @@
 **Verdict:** MODIFY — تكامل الواجهة **غير مكتمل**. هذا المستند ليس تقرير اختبار PS4.
 **سياسة التسليم:** لا إرسال PKG تجريبي للمستخدم إلى أن تكتمل الواجهة كما طلب؛ رغم أن CI يولد حزمة لأغراض فحص البنية محليًا.
 
+## 9 نوفمبر 2026 — Stage 6: Smooth selected-game background and bounded focus glow
+
+- **CODE:** [8cf2403b](https://github.com/obsp081-coder/ps4-updates/commit/8cf2403b2b09d09247ce4f90975ab22832914c00) replaces the hard 8x8 nearest-neighbor selected-icon backdrop with integer bilinear interpolation from the SAME already-darkened local 240×135 `blur_image`. Only one 240-pixel stack row is used (~960 bytes); no new heap, source file, network access, user game mutations, runtime font, shader or extra VideoOut buffers.
+- **FOCUS:** [d8ac86a2](https://github.com/obsp081-coder/ps4-updates/commit/d8ac86a24ea6804f4f5b858b01fb4bd9f7d71bdc) adds a tiny deterministic cyan halo to ONLY the selected library row's perimeter, respecting 3px outer gutter and leaving the center/content pixels unchanged. Python 1080p native framebuffer regression asserts the actual row's soft focus rim; C++ mock tests validate bilinear red/blue middle points, uniform colors and no channel crossover.
+- **VERIFICATION:** [CI #42644209000](https://github.com/obsp081-coder/ps4-updates/actions/runs/42644209000) finished successfully: **181/181 Host tests PASS, OpenOrbis Native Build PASS** at code SHA `d8ac86a24ea6804f4f5b858b01fb4bd9f7d71bdc`; associated [Auto Tests #42644209213](https://github.com/obsp081-coder/ps4-updates/actions/runs/42644209213) also PASS. Host instrument reports 16,777,216 bytes allocated for VideoOut framebuffers, unchanged.
+- **PERFORMANCE CAVEAT:** Host instrumentation has fluctuated (prior 2c6fb072 ~4.611 ms/submission; 8cf2403b ~5.864; d8ac86a2 ~8.121); CI runners differ, measurements include other mock/control operations and **are not comparable PS4 FPS benchmarks**. Extra bilinear per-pixel CPU work is real and needs actual FW14 hardware timing. If it causes missed UI responsiveness on a PS4, optimize or gate it rather than claiming cost-free quality.
+- **NOT ACHIEVED:** Visual parity with user-provided concept art (especially Nathan Drake full-screen photography) remains unproven; do not embed hardcoded copyrighted assets or invent update/download details. Hardware FW14 GoldHEN, real icon handling and the UI redraw latency on real PS4 remain **Needs real-hardware testing**. PKG for these changes was not published; PR remains Draft. The previous shadPS4 v01.14 package is obsolete.
+- **NEXT:** Audit current native screenshots side by side with three reference images at 1920×1080, then verify on shadPS4 and PS4 hardware, keeping the downloader/installer disabled.
+
 ## 9 نوفمبر 2026 — Stage 3: RTL Home Table + Header Match
 
 - **Status/Verdict: MODIFY (visual improvement, not 1:1 completion).** The user explicitly approved three PS4 Royal Blue visual reference screenshots; native Host captured `home.png`, `details.png`, `downloads.png` are generated from the exact C++ VideoOut framebuffer code, not a PS4 hardware session.

@@ -91,7 +91,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -333,6 +333,27 @@ class NativeUiSmokeTests(unittest.TestCase):
                         failed_cache.crop((300, 942, 880, 985))
                     ).getbbox(),
                     "Active-scan and failed-scan cache warnings are identical"
+                )
+
+            # In Details, a completed failed scan must say stale, never
+            # "checking". Inspect the actual read-only warning pixels.
+            with Image.open(preview / "scanning_details.ppm") as active, \
+                 Image.open(preview / "stale_details.ppm") as stale:
+                for frame in (active, stale):
+                    self.assertEqual(
+                        frame.getpixel((900, 954)), (16, 45, 80),
+                        "Details cache warning panel disappeared"
+                    )
+                    self.assertEqual(
+                        frame.getpixel((1500, 884)), (11, 33, 66),
+                        "Details layout was unexpectedly overwritten"
+                    )
+                self.assertIsNotNone(
+                    ImageChops.difference(
+                        active.crop((300, 940, 975, 986)),
+                        stale.crop((300, 940, 975, 986))
+                    ).getbbox(),
+                    "Details warning still says checking after FTP failure"
                 )
 
             # Both directions must visibly truncate rather than erase

@@ -1091,22 +1091,35 @@ static int fetch_local_icon(sock_t control,unsigned index,uint32_t *out) {
  * CUSA. It does not RETR pic1, write storage, or imply FW14 compatibility.
  * A listing hit is merely a candidate pending physical-console validation. */
 #ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
-static void probe_pic1_candidate(sock_t control) {
+static void probe_pic1_candidate(void) {
     if(!found || scan_should_abort())return;
     char cmd[96];
     if(!ui_art_probe_path(cmd,sizeof cmd,games[0].cusa)) {
         logmsg("WIDE_ART_INVALID_TITLE",1);
         return;
     }
+    /* A separate connection prevents an unsupported or oversized LIST
+     * response from desynchronizing the proven icon0 transfer session. */
+    sock_t diagnostic=connect_local(FTP_PORT);
+    if(diagnostic==NET_BAD) {
+        logmsg("WIDE_ART_CONNECT_FAILED",1);
+        return;
+    }
+    if(!login(diagnostic)) {
+        logmsg("WIDE_ART_GREETING_FAILED",1);
+        NET_CLOSE(diagnostic);
+        return;
+    }
     unsigned char listing[8192];
     size_t len=0;
-    const int rc=transfer(control,cmd,listing,sizeof listing,&len);
+    const int rc=transfer(diagnostic,cmd,listing,sizeof listing,&len);
     logmsg("WIDE_ART_LIST_RC",rc);
     if(rc==0)
         logmsg("WIDE_ART_PIC1_LISTED",
                ui_art_probe_mentions_pic1(listing,len));
-    /* Other failures are diagnostic only; icon0 worker remains independent.
-     * No assumptions about size or read permission follow from LIST. */
+    /* Always close the isolated diagnostic control channel, even if the
+     * FTP server sends unexpected replies. This never touches icon0 state. */
+    NET_CLOSE(diagnostic);
 }
 #endif
 
@@ -1129,7 +1142,7 @@ static void *cover_worker_entry(void *unused) {
      * already uses PASV first; the cover worker must do the same. */
     logmsg("ICON_FTP_PASV_FIRST",1);
 #ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
-    probe_pic1_candidate(control);
+    probe_pic1_candidate();
 #endif
     __atomic_store_n(&cover_online,1u,__ATOMIC_RELEASE);
     while(!scan_should_abort() &&

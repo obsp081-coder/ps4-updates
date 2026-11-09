@@ -39,6 +39,7 @@ static bool test_lazy_cover = false;
 static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
 static bool test_cover_scroll = false;
+static bool test_idle_without_redraw = false;
 static bool test_search_result_open = false;
 static bool test_search_restore_home = false;
 static bool saw_search_no_match = false;
@@ -148,6 +149,7 @@ static void reset() {
     test_async_scan = test_async_exit = saw_scan_details =
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
         test_cover_scroll = saw_cover_beyond_eight =
+        test_idle_without_redraw =
         test_capacity_screen = saw_capacity_sixth_row =
         saw_empty_library_panel =
         test_search_result_open = test_search_restore_home =
@@ -407,6 +409,12 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_idle_without_redraw) {
+        /* 120 mock input polls with no button or cover result. The native
+         * renderer must not flip once per 33ms polling cycle. */
+        if(pad_reads==120)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_search_restore_home) {
         if(pad_reads==2 || pad_reads==4)
             data->buttons=ORBIS_PAD_BUTTON_TRIANGLE;
@@ -555,6 +563,19 @@ int main() {
     assert(allocated == 0 && video_closed == 1 && pad_closed == 1);
     assert(unregister_count == 1 && trace_count >= 7 && shutdown_done == 1);
     assert(retained_warning == 0);
+
+    /* No idle redraws: the UI uses Pad polling but does not repaint
+     * the 1080p framebuffer 120 times with unchanged input/artwork. */
+    reset();
+    assert(scanner_ui_begin()==1);
+    test_idle_without_redraw=true;
+    const int prior_idle_flip=flip_count;
+    scanner_ui_results(entries,3,2,0,1,1);
+    assert(pad_reads>=120 && pad_reads<=122);
+    /* One initial result frame; no idle-frame submissions. */
+    assert(flip_count-prior_idle_flip==1);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
 
     /* End-to-end native 1080p framebuffer CPU baseline (Host ONLY).
      * Unlike screenshot fixtures, this session does not perform disk I/O,

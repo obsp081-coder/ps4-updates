@@ -91,7 +91,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "mixed_ltr", "mixed_rtl"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -236,6 +236,27 @@ class NativeUiSmokeTests(unittest.TestCase):
                         destination.mkdir(parents=True, exist_ok=True)
                         pixels.save(destination / (page + ".png"),
                                     optimize=True)
+
+            # Both directions must visibly truncate rather than erase
+            # their entire long title or overwrite the Version column.
+            for name in ("long_ltr", "long_rtl"):
+                with Image.open(preview / (name + ".ppm")) as frame:
+                    for left, right in ((377, 463), (701, 790)):
+                        patch = frame.crop((left, 368, right, 399))
+                        white = sum(
+                            1 for pixel in patch.getdata()
+                            if pixel == (234, 244, 255)
+                        )
+                        self.assertGreater(
+                            white, 8,
+                            name + " title lost its visible prefix or end"
+                        )
+                    gutter = frame.crop((792, 368, 824, 399))
+                    self.assertFalse(
+                        any(pixel == (234, 244, 255)
+                            for pixel in gutter.getdata()),
+                        name + " bled into the version column"
+                    )
 
             # Both images must contain the rendered game title, not two
             # identical frames captured before any game metadata arrived.

@@ -746,7 +746,10 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         arabic(p,529,469,UI_AR_EMPTY_LIBRARY_HELP,MUTED);
         arabic(p,529,526,UI_AR_DOWNLOAD_BLOCKED,MUTED);
     }
-    if(!saved)
+    /* An incomplete scan or a zero-record library does not prove a
+     * persistence error. Avoid the false "could not save" message.
+     * Only completed scans containing useful metadata may report it. */
+    if(!saved && complete && count>0)
         arabic(p,455,955,UI_AR_MISSING_INVENTORY,AMBER);
 
     /* Selected-game hero uses the EXISTING 128px local icon cache.

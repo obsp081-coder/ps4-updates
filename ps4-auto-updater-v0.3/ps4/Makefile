@@ -12,6 +12,9 @@ RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
 LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceSystemService -lSceVideoOut -lScePad -lSceUserService
 
+# Optional, UNVERIFIED FW14-only diagnostic; off for normal builds:
+# add -DPS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE to CFLAGS manually on an
+# isolated hardware-test build. Never enable this for the release package.
 CFLAGS      := -D__ORBIS__ -include stdbool.h -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf \
                -fPIC -funwind-tables -c \

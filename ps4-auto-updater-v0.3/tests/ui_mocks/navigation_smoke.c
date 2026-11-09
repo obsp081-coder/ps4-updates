@@ -1,4 +1,5 @@
 #include "../../ps4/src/ui_navigation.h"
+#include "../../ps4/src/ui_local_art_probe.h"
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -17,6 +18,25 @@ static void fill(unsigned n) {
     ui_nav_init(&nav,entries,n);
 }
 int main(void) {
+    /* The optional read-only FW14 listing probe has NO network in Host
+     * tests. Only strict CUSA path shaping and response parsing are tested. */
+    char art_cmd[96];
+    assert(ui_art_probe_path(art_cmd,sizeof art_cmd,"CUSA02343"));
+    assert(strcmp(art_cmd,"LIST /user/appmeta/CUSA02343")==0);
+    assert(!ui_art_probe_path(art_cmd,sizeof art_cmd,"CUSA02343/.."));
+    assert(!ui_art_probe_path(art_cmd,sizeof art_cmd,"cusa02343"));
+    assert(!ui_art_probe_path(art_cmd,sizeof art_cmd,"CUSA02\r\n"));
+    assert(!ui_art_probe_path(art_cmd,8,"CUSA02343"));
+    const unsigned char art_good[]=
+        "-rw-r--r-- 1 root wheel 48221 Nov 9 08:00 pic0.png\r\n"
+        "-rw-r--r-- 1 root wheel 82255 Nov 9 08:00 pic1.png\r\n";
+    const unsigned char art_bad[]=
+        "pic1.png.bak\r\nfakepic1.png\r\npic1.png.old\r\n";
+    const unsigned char art_partial[]="pic1.png";
+    assert(ui_art_probe_mentions_pic1(art_good,sizeof art_good-1u));
+    assert(!ui_art_probe_mentions_pic1(art_bad,sizeof art_bad-1u));
+    assert(!ui_art_probe_mentions_pic1(art_partial,sizeof art_partial-1u));
+    assert(!ui_art_probe_mentions_pic1(NULL,0u));
     fill(0);
     assert(nav.available==0 && nav.page==UI_PAGE_HOME);
     assert(ui_nav_resolve(&nav,0)==UI_MAX_TITLES);

@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "ui_local_art_probe.h"
 
 #ifdef __ORBIS__
 #include <orbis/Net.h>
@@ -1085,6 +1086,30 @@ static int fetch_local_icon(sock_t control,unsigned index,uint32_t *out) {
     return ui_image_thumbnail(png,bytes,out,UI_ICON_PIXELS);
 }
 
+/* Deliberately disabled in production. Enabling this compile-time opt-in
+ * performs exactly ONE read-only directory listing for a verified base-game
+ * CUSA. It does not RETR pic1, write storage, or imply FW14 compatibility.
+ * A listing hit is merely a candidate pending physical-console validation. */
+#ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
+static void probe_pic1_candidate(sock_t control) {
+    if(!found || scan_should_abort())return;
+    char cmd[96];
+    if(!ui_art_probe_path(cmd,sizeof cmd,games[0].cusa)) {
+        logmsg("WIDE_ART_INVALID_TITLE",1);
+        return;
+    }
+    unsigned char listing[8192];
+    size_t len=0;
+    const int rc=transfer(control,cmd,listing,sizeof listing,&len);
+    logmsg("WIDE_ART_LIST_RC",rc);
+    if(rc==0)
+        logmsg("WIDE_ART_PIC1_LISTED",
+               ui_art_probe_mentions_pic1(listing,len));
+    /* Other failures are diagnostic only; icon0 worker remains independent.
+     * No assumptions about size or read permission follow from LIST. */
+}
+#endif
+
 static void *cover_worker_entry(void *unused) {
     (void)unused;
     sock_t control=connect_local(FTP_PORT);
@@ -1103,6 +1128,9 @@ static void *cover_worker_entry(void *unused) {
      * and desynchronize subsequent PASV requests. The read-only scanner
      * already uses PASV first; the cover worker must do the same. */
     logmsg("ICON_FTP_PASV_FIRST",1);
+#ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
+    probe_pic1_candidate(control);
+#endif
     __atomic_store_n(&cover_online,1u,__ATOMIC_RELEASE);
     while(!scan_should_abort() &&
           !__atomic_load_n(&cover_stop,__ATOMIC_ACQUIRE)) {

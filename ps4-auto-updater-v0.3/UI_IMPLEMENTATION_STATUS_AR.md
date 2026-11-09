@@ -5,6 +5,14 @@
 **Verdict:** MODIFY — تكامل الواجهة **غير مكتمل**. هذا المستند ليس تقرير اختبار PS4.
 **سياسة التسليم:** لا إرسال PKG تجريبي للمستخدم إلى أن تكتمل الواجهة كما طلب؛ رغم أن CI يولد حزمة لأغراض فحص البنية محليًا.
 
+## تحديث 9 نوفمبر 2026 — تجربة المحاكي ومطابقة تصميم Royal Blue
+
+- شغّل المستخدم حزمة v01.14 على shadPS4 v0.21.0، وصوّر Home وDownloads وSettings وSearch عربي/إنجليزي. هذه تجربة Emulator فعلية، وليست اختبارًا على PS4 Firmware 14.00 مع GoldHEN. ظهرت مكتبة فارغة وخطأ Scan واحد في Emulator؛ لا تعني فقدان الألعاب على جهاز PS4.
+- أصلح [Commit 2ebba558](https://github.com/obsp081-coder/ps4-updates/commit/2ebba5589eda49f62d8a3c656d96438f91343b1a) مشكلة R1/L1: التدوير Home → Details → Downloads → Search → Settings → Home وبالعكس، حتى في مكتبة فارغة. R1/L1 لم يعودا يبدلان لوحة البحث؛ Triangle وحده يتولى تغيير اللغة. مغادرة Search تزيل الفلتر المؤقت، وفقدان CUSA أثناء Rescan لا يفتح لعبة بديلة بالخطأ.
+- أضافت تغييرات 12014ae6 وe90c5a18 و4474d046 و55289856 خلفية Royal Blue Gradient بدل الخطوط الأفقية، List أعرض مع Hero Rail أضيق، Hint حقيقي لـR1/L1، بانر الترحيب، وأربع بطاقات بمقاييس حقيقية: Base Games وUnknown Install وScan Errors وActive Downloads. ستة صفوف باقية على Home؛ لا Fake Progress.
+- [CI Run 42617470851](https://github.com/obsp081-coder/ps4-updates/actions/runs/42617470851): **181/181 Host Tests PASS وOpenOrbis Native Build PASS**. Host Previews هي Native framebuffer images وليست لقطات PS4.
+- **الفرق المتبقي الكبير:** التصميم المرجعي يحتوي 8 قوائم Sidebar (الرئيسية، الألعاب، التحديثات المتاحة، قائمة التنزيل، الانتظار، التحديثات المثبتة، الإعدادات، حول البرنامج) بينما الكود الحالي 5 صفحات فقط. طلب المستخدم Settings/R1 يعود Home؛ توسعة عدد صفحات R1/L1 تستوجب احترام هذا الشرط. صور Uncharted وأرقام التحديثات والتنزيلات في Concept Art لا تصلح بيانات حقيقية أو Assets تلقائية داخل التطبيق. لا تزعم تطابقًا 1:1 أو FW14 Verified أو Downloader Enabled.
+
 ## تحسين Focus في Royal Blue وإصلاح تحديث Blurred Cover — 9 نوفمبر 2026
 
 - **VISUAL:** تمت إضافة Cyan focus rims محدودة بالـRect على Sidebar النشطة وصف اللعبة المحدد، لتحسين Contrast نحو التصميم المعتمد، بدون Animation loop أو Shader أو تخصيصات Heap. فحص Pixel `(120,193)` و`(600,351)` يثبت إضاءة التحديد، و`(600,450)` يضمن بقاء الصف غير المحدد بدون Cyan.

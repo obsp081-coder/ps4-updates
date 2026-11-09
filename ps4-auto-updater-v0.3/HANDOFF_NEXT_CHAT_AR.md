@@ -16,14 +16,22 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `d40a02168210737ae1a5d1a8c51dfffc96694e16`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `552898562719f0821349447dbc8d96593cd82010`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit d40a02168210**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42608511066 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
+- CI الأخير الناجح **على كود Commit 552898562719**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42617470851 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
+
+## تحديث 9 نوفمبر 2026 — تجربة المحاكي ومطابقة تصميم Royal Blue
+
+- شغّل المستخدم حزمة v01.14 على shadPS4 v0.21.0، وصوّر Home وDownloads وSettings وSearch عربي/إنجليزي. هذه تجربة Emulator فعلية، وليست اختبارًا على PS4 Firmware 14.00 مع GoldHEN. ظهرت مكتبة فارغة وخطأ Scan واحد في Emulator؛ لا تعني فقدان الألعاب على جهاز PS4.
+- أصلح [Commit 2ebba558](https://github.com/obsp081-coder/ps4-updates/commit/2ebba5589eda49f62d8a3c656d96438f91343b1a) مشكلة R1/L1: التدوير Home → Details → Downloads → Search → Settings → Home وبالعكس، حتى في مكتبة فارغة. R1/L1 لم يعودا يبدلان لوحة البحث؛ Triangle وحده يتولى تغيير اللغة. مغادرة Search تزيل الفلتر المؤقت، وفقدان CUSA أثناء Rescan لا يفتح لعبة بديلة بالخطأ.
+- أضافت تغييرات 12014ae6 وe90c5a18 و4474d046 و55289856 خلفية Royal Blue Gradient بدل الخطوط الأفقية، List أعرض مع Hero Rail أضيق، Hint حقيقي لـR1/L1، بانر الترحيب، وأربع بطاقات بمقاييس حقيقية: Base Games وUnknown Install وScan Errors وActive Downloads. ستة صفوف باقية على Home؛ لا Fake Progress.
+- [CI Run 42617470851](https://github.com/obsp081-coder/ps4-updates/actions/runs/42617470851): **181/181 Host Tests PASS وOpenOrbis Native Build PASS**. Host Previews هي Native framebuffer images وليست لقطات PS4.
+- **الفرق المتبقي الكبير:** التصميم المرجعي يحتوي 8 قوائم Sidebar (الرئيسية، الألعاب، التحديثات المتاحة، قائمة التنزيل، الانتظار، التحديثات المثبتة، الإعدادات، حول البرنامج) بينما الكود الحالي 5 صفحات فقط. طلب المستخدم Settings/R1 يعود Home؛ توسعة عدد صفحات R1/L1 تستوجب احترام هذا الشرط. صور Uncharted وأرقام التحديثات والتنزيلات في Concept Art لا تصلح بيانات حقيقية أو Assets تلقائية داخل التطبيق. لا تزعم تطابقًا 1:1 أو FW14 Verified أو Downloader Enabled.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
 

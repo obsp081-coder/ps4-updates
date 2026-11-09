@@ -831,7 +831,7 @@ static uint32_t job_status_color(UiJobStatus status) {
     }
 }
 static void downloads(uint32_t *p) {
-    arabic(p,90,138,UI_AR_DOWNLOADS,WHITE);
+    arabic(p,285,138,UI_AR_DOWNLOADS,WHITE);
     const unsigned total=ui_model_download_count();
     unsigned running=0,queued=0,finished=0;
     for(unsigned i=0;i<total;++i) {
@@ -843,45 +843,45 @@ static void downloads(uint32_t *p) {
     }
     char n[24];
     (void)snprintf(n,sizeof n,"%u",running);
-    summary_at(p,90,183,540,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
+    summary_at(p,270,183,495,UI_AR_ACTIVE_DOWNLOADS,n,CYAN);
     (void)snprintf(n,sizeof n,"%u",queued);
-    summary_at(p,645,183,540,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
+    summary_at(p,787,183,495,UI_AR_QUEUED_DOWNLOADS,n,ACCENT);
     (void)snprintf(n,sizeof n,"%u",finished);
-    summary_at(p,1200,183,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
-    panel(p,90,310,1655,640,PANEL);
+    summary_at(p,1304,183,500,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
+    panel(p,268,310,1579,640,PANEL);
     if(!total) {
         /* Empty means genuinely zero active jobs. Render a deliberate
          * read-only empty state instead of synthetic progress/status.
          * No fake source, download speed, resume or completed PKG. */
-        panel(p,127,327,1560,209,0xFF102D50u);
-        rect(p,141,345,5,172,AMBER);
-        panel(p,173,352,147,153,0xFF123C74u);
+        panel(p,284,327,1540,209,0xFF102D50u);
+        rect(p,302,345,5,172,AMBER);
+        panel(p,336,352,147,153,0xFF123C74u);
         /* Compact geometric padlock, no external image or font runtime. */
-        rect(p,213,373,67,7,CYAN);
-        rect(p,213,380,8,42,CYAN);
-        rect(p,272,380,8,42,CYAN);
-        rect(p,202,421,89,64,0xFF14315Bu);
-        rect(p,202,421,89,4,AMBER);
-        rect(p,202,481,89,4,AMBER);
-        rect(p,242,442,8,24,AMBER);
-        arabic(p,360,350,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
-        arabic(p,360,405,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
-        arabic(p,360,468,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+        rect(p,376,373,67,7,CYAN);
+        rect(p,376,380,8,42,CYAN);
+        rect(p,435,380,8,42,CYAN);
+        rect(p,365,421,89,64,0xFF14315Bu);
+        rect(p,365,421,89,4,AMBER);
+        rect(p,365,481,89,4,AMBER);
+        rect(p,405,442,8,24,AMBER);
+        arabic(p,523,350,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
+        arabic(p,523,405,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
+        arabic(p,523,468,UI_AR_NO_TRUSTED_UPDATE,AMBER);
 
         /* Side-by-side capability gates, explicitly unconfigured. */
-        panel(p,128,555,756,279,0xFF102D50u);
-        rect(p,148,575,5,232,CYAN);
-        arabic(p,174,572,UI_AR_SOURCE,MUTED);
-        rect(p,171,632,670,2,0xFF22527Bu);
-        arabic(p,174,645,UI_AR_TRUSTED_SETTING,WHITE);
-        arabic(p,174,722,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+        panel(p,285,555,749,279,0xFF102D50u);
+        rect(p,304,575,5,232,CYAN);
+        arabic(p,330,572,UI_AR_SOURCE,MUTED);
+        rect(p,327,632,674,2,0xFF22527Bu);
+        arabic(p,330,645,UI_AR_TRUSTED_SETTING,WHITE);
+        arabic(p,330,722,UI_AR_RETAIL_FPKG_WARNING,MUTED);
 
-        panel(p,898,555,789,279,0xFF102D50u);
-        rect(p,919,575,5,232,AMBER);
-        arabic(p,944,572,UI_AR_INSTALL_SETTING,MUTED);
-        rect(p,940,632,700,2,0xFF22527Bu);
-        arabic(p,944,645,UI_AR_INSTALL_OFF_SETTING,AMBER);
-        arabic(p,944,722,UI_AR_DATA_NOT_PROOF,MUTED);
+        panel(p,1050,555,774,279,0xFF102D50u);
+        rect(p,1070,575,5,232,AMBER);
+        arabic(p,1095,572,UI_AR_INSTALL_SETTING,MUTED);
+        rect(p,1092,632,696,2,0xFF22527Bu);
+        arabic(p,1095,645,UI_AR_INSTALL_OFF_SETTING,AMBER);
+        arabic(p,1095,722,UI_AR_DATA_NOT_PROOF,MUTED);
         footer(p,UI_AR_FOOTER_DOWNLOADS);
         return;
     }
@@ -892,34 +892,34 @@ static void downloads(uint32_t *p) {
         const UiDownloadInfo *r=ui_model_download(idx);
         if(!r)continue;
         const int y=327+(int)i*120;
-        panel(p,118,y,1578,108,idx==job_selected?
+        panel(p,289,y,1522,108,idx==job_selected?
               0xFF164881u:0xFF102D50u);
-        if(idx==job_selected)rect(p,120,y+12,5,84,CYAN);
-        ui_title(p,158,y+7,678,r->title[0]?r->title:r->cusa,WHITE,2);
-        ascii(p,158,y+45,r->cusa,MUTED,2,12);
-        ascii(p,490,y+45,r->version,CYAN,2,15);
+        if(idx==job_selected)rect(p,290,y+12,5,84,CYAN);
+        ui_title(p,324,y+7,638,r->title[0]?r->title:r->cusa,WHITE,2);
+        ascii(p,324,y+45,r->cusa,MUTED,2,12);
+        ascii(p,600,y+45,r->version,CYAN,2,15);
         arabic(p,1230,y+12,job_status_label(r->status),
                job_status_color(r->status));
-        rect(p,158,y+82,1015,10,0xFF254465u);
+        rect(p,324,y+82,936,10,0xFF254465u);
         if(r->bytes_total>0u) {
             /* The size is bounded before multiplication to avoid
              * 64-bit overflow even for malformed provider metadata. */
             const double ratio=(double)r->bytes_done/(double)r->bytes_total;
-            unsigned width=(unsigned)(ratio*1015.0);
-            if(width>1015u)width=1015u;
-            if(width)rect(p,158,y+82,(int)width,10,CYAN);
+            unsigned width=(unsigned)(ratio*936.0);
+            if(width>936u)width=936u;
+            if(width)rect(p,324,y+82,(int)width,10,CYAN);
             const unsigned percent=(unsigned)(ratio*100.0);
             char pcent[16];
             (void)snprintf(pcent,sizeof pcent,"%u%%",percent>100u?100u:percent);
-            ascii(p,1190,y+77,pcent,WHITE,2,8);
+            ascii(p,1288,y+77,pcent,WHITE,2,8);
         } else {
-            ascii(p,1190,y+77,"--",MUTED,2,4);
+            ascii(p,1288,y+77,"--",MUTED,2,4);
         }
         char bytes[64];
         (void)snprintf(bytes,sizeof bytes,"%llu / %llu MB",
             (unsigned long long)(r->bytes_done/1048576u),
             (unsigned long long)(r->bytes_total/1048576u));
-        ascii(p,1380,y+75,bytes,MUTED,2,25);
+        ascii(p,1450,y+75,bytes,MUTED,2,25);
     }
     (void)snprintf(n,sizeof n,"%u / %u",job_selected+1,total);
     ascii(p,1490,922,n,MUTED,2,20);

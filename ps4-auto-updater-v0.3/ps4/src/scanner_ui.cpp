@@ -887,6 +887,22 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         game_item(p,&entries[resolved],380+(int)i*92,
                   navigation.selected==navigation.scroll+i);
     }
+    /* Maintain the reference's six-row grid rhythm when a real library
+     * contains fewer than six entries. These are visibly empty outlines,
+     * not loading animations, fabricated game records or fake patch rows. */
+    if(navigation.available && visible<ROWS) {
+        for(unsigned i=visible;i<ROWS;++i) {
+            const int y=380+(int)i*92;
+            panel(p,269,y,1109,88,0xFF081B35u);
+            rect(p,282,y+80,1074,1,0xFF17375Cu);
+            /* Unfilled square at the usual cover position, intentionally
+             * with NO 'PS4' badge, CUSA, fake title or update status. */
+            rect(p,1292,y+11,69,1,0xFF245079u);
+            rect(p,1292,y+75,69,1,0xFF245079u);
+            rect(p,1292,y+11,1,65,0xFF245079u);
+            rect(p,1360,y+11,1,65,0xFF245079u);
+        }
+    }
     if(!navigation.available) {
         /* The empty library is NOT an empty update catalog and does not
          * imply that there are no installed games. Show an explicit

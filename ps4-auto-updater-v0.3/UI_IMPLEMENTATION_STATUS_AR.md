@@ -12,7 +12,7 @@
 | ps4/src/scanner_ui.cpp | Royal Blue بــ252px Arabic Sidebar لكل الصفحات، Home تعرض ستة صفوف ثابتة ومعلومات CUSA، Hero Card، Details بست Metadata Tiles، Search Keyboard وتنزيلات وإعدادات Read-only؛ يحافظ على Snapshot وعمل Lazy Icon worker | Host framebuffer pixel assertions + OpenOrbis Native Build؛ **يحتاج PS4 hardware** |
 | ps4/src/ui_snapshot.c/h | Cache ثنائي للعبة الأساسية بحد 256 سجلًا وCRC؛ سياسة جديدة تمنع الفحص الجزئي من استبدال Snapshot صالح سابق. أول فحص داخلي جزئي يمكنه تكوين Snapshot فقط عند غياب Snapshot صالح؛ وحتى Snapshot فارغ صحيح لا يُستبدل بنتيجة ناقصة | اختبار Host للتلف والتكرار والحفظ الجزئي والسياسة + Native Build |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
-| ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع الاحتفاظ باختيار CUSA؛ ويمكن النزول من آخر صف بالكيبورد إلى النتيجة، التنقل بين CUSA المطابقة وفتح Details ثم العودة للبحث | اختبارات Navigation Host + Native Controller Smoke |
+| ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع اختيار CUSA؛ فتح نتائج Search والتفاصيل والعودة إليها؛ **الخروج من البحث يستعيد Home Library كاملة** ويحافظ على اختيار اللعبة، بما في ذلك No-match وOPTIONS | اختبارات Navigation Host + Native Controller Smoke |
 | ps4/src/ui_title_layout.c/h | تقسيم اسم اللعبة إلى LTR/RTL runs بحسب أول حرف واضح، مع حدود 191 codepoint وبدون Heap؛ معالجة الحركات وعلامات الترقيم كعناصر محايدة للاتجاه؛ **ليس UAX #9 الكامل** | اختبارات Host مستقلة + اختبارات Framebuffer |
 | ps4/tools/generate_ui_arabic.py | نصوص عربية ثابتة بخط Noto وRAQM وقت Build؛ عرض Dynamic Arabic Presentation Forms مع `advance` مستقل عن الهوامش الشفافة حتى لا تتباعد الحروف؛ لا شحن ملفات Font إلى PS4 | Host Preview + Native Build |
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
@@ -31,6 +31,14 @@
 - الشاشة الرئيسية/شاشة التفاصيل/قائمة التنزيلات لا تعتمد على WebView أو خادم PC.
 - Arabic shaping ثابتة في عناصر UI. العناوين المختلطة تستخدم LTR/RTL runs حسب أول حرف واضح؛ تظهر النتائج في `mixed_ltr.png`/`mixed_rtl.png`. صُحح انهيار عرض الأسماء الطويلة إلى خانة فارغة، وأضيف Visual Ellipsis مع `long_ltr.png`/`long_rtl.png`. تم ضبط اتصال Dynamic Arabic glyphs للكلمات مثل «لعبة». **لا ندعي UAX #9 كاملًا أو دعم CJK.**
 - لوحة مفاتيح داخلية بدل استدعاء PS4 IME غير مثبت على FW14. تعرض صفحة Search نتيجة لعبة حقيقية (اسم وCUSA وغلاف محلي إن توفر) أسفل لوحة المفاتيح، وليس عدد النتائج فقط. سهم أسفل من آخر صف يركز النتيجة، يمين/يسار لتغيير النتيجة، وإكس يفتح تفاصيلها مع العودة إلى البحث بالدائرة.
+
+## إصلاحات تنقل البحث وتحذير تفاصيل اللعبة — 9 نوفمبر 2026
+
+- **FIXED IN CODE:** الخروج من Search إلى Home لم يعد يترك المكتبة مفلترة عندما تكون نتائج البحث صفرًا؛ يعود العدد الكامل من سجلات Scan الحقيقية، مع الاحتفاظ باختيار CUSA عند وجود نتيجة. زر OPTIONS من Search أو من Details التي فُتحت عبر البحث ينهي الفلتر المؤقت أيضًا. لا يجري أي تحديث أو تثبيت.
+- **FIXED IN CODE:** صفحة Details تميّز بين حالة عرض Cache أثناء فحص FTP الجاري (`CACHE_PREVIEW`) وبيانات Cache بعد فشل أو عدم اكتمال الفحص (`CACHE_STALE`). لا تختلق حالة تحقق بعد انتهاء الفحص.
+- **HOST REGRESSION:** اختبارات `navigation_smoke.c` تغطي البحث الفارغ، الرجوع بنتيجة محددة، والخروج عبر OPTIONS. واختبار `ui_smoke.cpp` ينفذ Pad Flow كاملًا: Search ثم حرف عربي لا يطابق لعبة، Circle للعودة إلى Home ثم Cross لفتح Details من مكتبة صحيحة. الصور `search_restored_home.png` و`scanning_details.png` و`stale_details.png` من Framebuffer الأصلي على Host، وليست من PS4.
+- **HOST+BUILD EVIDENCE:** آخر Commit كود `a43c6785644b498da93ddbf9d88d7e57e6b2fac9`: **181/181 Host Tests ناجحة** و**OpenOrbis Native Build ناجح**، [GitHub Actions run 42593553873](https://github.com/obsp081-coder/ps4-updates/actions/runs/42593553873).
+- **الحدود:** بحث العربية لا يدعم Unicode normalization/case-fold الكامل، ولا نعتبر نتيجة نجاح Host إثباتًا على GoldHEN Firmware 14.00.
 
 ## حماية حالات Cache والمكتبة الفارغة — 9 نوفمبر 2026
 

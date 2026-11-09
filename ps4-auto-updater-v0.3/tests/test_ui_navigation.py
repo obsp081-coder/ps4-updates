@@ -23,5 +23,20 @@ class UiNavigationTests(unittest.TestCase):
                                 text=True,capture_output=True,timeout=15)
             self.assertEqual(test.returncode,0,test.stdout+test.stderr)
             self.assertIn("UI_NAVIGATION_HOST_OK",test.stdout)
+            # Keep the 256-record Arabic search baseline visible in CI.
+            # It is Host CPU time, NOT PS4 runtime or a pass/fail threshold.
+            import re
+            baseline = re.search(
+                r"UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: ([0-9]+\\.[0-9]+)",
+                test.stdout,
+            )
+            self.assertIsNotNone(
+                baseline, "Host search stress test did not report CPU time"
+            )
+            print(
+                "HOST_ONLY_SEARCH_256_TITLES_128_QUERIES_CPU_MS="
+                + baseline.group(1),
+                flush=True,
+            )
 if __name__=="__main__":
     unittest.main()

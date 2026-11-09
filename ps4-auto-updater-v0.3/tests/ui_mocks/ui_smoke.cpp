@@ -26,6 +26,8 @@ static bool saw_update_row = false;
 static bool capture_cached_preview = false;
 static bool saw_cached_sixth_row = false;
 static bool check_offline_cache = false;
+static bool saw_stale_details_warning = false;
+static bool saw_scanning_details_warning = false;
 static bool saw_offline_cache = false;
 static bool test_async_scan = false;
 static bool test_async_exit = false;
@@ -134,7 +136,8 @@ static void reset() {
     capture_live_ui = false;
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     capture_cached_preview = saw_cached_sixth_row = false;
-    check_offline_cache = saw_offline_cache = false;
+    check_offline_cache = saw_offline_cache =
+        saw_stale_details_warning = saw_scanning_details_warning = false;
     test_async_scan = test_async_exit = saw_scan_details =
         saw_scan_settings = test_lazy_cover = lazy_cover_offered =
         test_cover_scroll = saw_cover_beyond_eight =
@@ -283,6 +286,12 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
+            if(pad_reads>=2 &&
+               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du &&
+               frame[954u*SCREEN_WIDTH+900u]==0xFF102D50u) {
+                saw_stale_details_warning=true;
+                capture_ppm(frame,"stale_details",8192u);
+            }
             /* A failed FTP scan preserves all six rows, shows a cache
              * banner BELOW the list, and never overwrites the selected
              * game's read-only Details button at x=1500,y=884. */
@@ -323,8 +332,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(test_async_scan) {
             const uint32_t *frame=display_buffers[index];
-            if(pad_reads>=2 && frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
+            if(pad_reads>=2 &&
+               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du) {
                 saw_scan_details=true;
+                if(frame[954u*SCREEN_WIDTH+900u]==0xFF102D50u) {
+                    saw_scanning_details_warning=true;
+                    capture_ppm(frame,"scanning_details",16384u);
+                }
+            }
             if(pad_reads>=6 && frame[645u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_scan_settings=true;
         }
@@ -622,7 +637,7 @@ int main() {
     check_offline_cache=true;
     scanner_ui_results(nullptr,0,0,1,0,0);
     check_offline_cache=false;
-    assert(saw_offline_cache);
+    assert(saw_offline_cache && saw_stale_details_warning);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 
@@ -635,7 +650,7 @@ int main() {
     check_offline_cache=true;
     scanner_ui_results(entries,3,2,1,0,0);
     check_offline_cache=false;
-    assert(saw_offline_cache);
+    assert(saw_offline_cache && saw_stale_details_warning);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 
@@ -646,7 +661,8 @@ int main() {
     assert(scanner_ui_preview_snapshot(cache_entries,6)==1);
     test_async_scan=true;
     assert(scanner_ui_wait_for_scan(&mock_scan_status)==0);
-    assert(saw_scan_details && saw_scan_settings && pad_reads>=8);
+    assert(saw_scan_details && saw_scanning_details_warning &&
+           saw_scan_settings && pad_reads>=8);
     test_async_scan=false;
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);

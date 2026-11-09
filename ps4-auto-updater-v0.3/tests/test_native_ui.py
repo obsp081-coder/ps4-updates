@@ -485,10 +485,15 @@ class NativeUiSmokeTests(unittest.TestCase):
                         frame.getpixel((900, 954)), (16, 45, 80),
                         "Details cache warning panel disappeared"
                     )
-                    self.assertEqual(
-                        frame.getpixel((1500, 884)), (11, 33, 66),
-                        "Details layout was unexpectedly overwritten"
+                    # The lower right Details panel uses real
+                    # background-aware glass now, rather than a solid
+                    # (11,33,66) fill. Check its blue ordering and bounds.
+                    lower_right = frame.getpixel((1500, 884))
+                    self.assertGreater(
+                        lower_right[2], lower_right[1],
+                        "Details glass rail was unexpectedly overwritten"
                     )
+                    self.assertGreater(lower_right[1], lower_right[0])
                 self.assertIsNotNone(
                     ImageChops.difference(
                         active.crop((300, 940, 975, 986)),

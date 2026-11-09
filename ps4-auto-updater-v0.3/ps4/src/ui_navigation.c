@@ -97,13 +97,23 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
             }
         }
     }
-    state->page=(old_page==UI_PAGE_DETAILS && !selected_found)
-        ? UI_PAGE_HOME : old_page;
+    const int details_lost=old_page==UI_PAGE_DETAILS && !selected_found;
+    if(details_lost) {
+        /* An inventory refresh may remove the game opened from Search.
+         * Closing Details must ALSO clear the old temporary query;
+         * otherwise the Home library remains misleadingly empty or
+         * filtered despite having other valid scanned titles. */
+        ui_nav_filter(state,items,count,"");
+        state->page=UI_PAGE_HOME;
+    } else {
+        state->page=old_page;
+    }
     state->keyboard_index=keyboard_index;
     state->keyboard_arabic=keyboard_arabic;
-    state->search_result_focus=state->available?search_focus:0;
+    state->search_result_focus=
+        !details_lost && state->available?search_focus:0;
     state->details_from_search=
-        state->page==UI_PAGE_DETAILS?search_origin:0;
+        !details_lost && state->page==UI_PAGE_DETAILS?search_origin:0;
 }
 
 void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count) {
@@ -271,12 +281,20 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
     }
     if (action == UI_ACT_DOWNLOADS || action == UI_ACT_NEXT_TAB) {
         if (state->page == UI_PAGE_DOWNLOADS) return 0;
+        /* Square/R1 from a search-opened Details page leave Search;
+         * the temporary query must not survive the Downloads tab. */
+        if(state->page==UI_PAGE_DETAILS && state->details_from_search)
+            leave_search(state);
         state->page = UI_PAGE_DOWNLOADS;
         return 1;
     }
     if (action == UI_ACT_PREVIOUS_TAB) {
         if (state->page == UI_PAGE_HOME) return 0;
-        state->page = UI_PAGE_HOME;
+        /* L1 must not bypass the same restoration that Circle performs
+         * when exiting a search session. */
+        if(state->page==UI_PAGE_DETAILS && state->details_from_search)
+            leave_search(state);
+        else state->page = UI_PAGE_HOME;
         return 1;
     }
     if (action == UI_ACT_OPEN) {

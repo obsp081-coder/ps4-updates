@@ -174,6 +174,55 @@ int main(void) {
     assert(ui_nav_action(&nav,UI_ACT_BACK));
     assert(nav.page==UI_PAGE_HOME && nav.available==9);
 
+    /* R1/Square or L1 from Details opened through Search must discard
+     * the temporary query exactly like Circle does when leaving Search.
+     * The selected CUSA should remain selected in the full Home library. */
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Uncharted");
+    assert(nav.available==1 && ui_nav_resolve(&nav,0)==3);
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.page==UI_PAGE_DETAILS && nav.details_from_search);
+    assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
+    assert(nav.page==UI_PAGE_DOWNLOADS && nav.available==9);
+    assert(!nav.query[0] && !nav.details_from_search);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && nav.selected==3);
+    assert(ui_nav_resolve(&nav,nav.selected)==3);
+
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Uncharted");
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_HOME && nav.available==9);
+    assert(nav.selected==3 && nav.query[0]==0);
+    assert(!nav.details_from_search && !nav.search_result_focus);
+
+    /* A completed rescan can remove the selected CUSA while Details is
+     * open. The remaining eight games must not be hidden by the old
+     * search query when the now-invalid Details page closes. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Uncharted");
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    UiRecord without_game[8];
+    for(unsigned i=0,j=0;i<9;++i) {
+        if(i!=3)without_game[j++]=entries[i];
+    }
+    ui_nav_rebind(&nav,without_game,8,"CUSA00003");
+    assert(nav.page==UI_PAGE_HOME);
+    assert(nav.available==8 && nav.query[0]==0);
+    assert(nav.selected==0 && nav.scroll==0);
+    assert(!nav.details_from_search && !nav.search_result_focus);
+    assert(ui_nav_resolve(&nav,0)==0);
+    assert(strcmp(nav.items[ui_nav_resolve(&nav,0)].cusa,
+                  "CUSA00000")==0);
+
     fill(256);
     assert(nav.available==256);
     for(unsigned i=0;i<300;i++) (void)ui_nav_action(&nav,UI_ACT_DOWN);

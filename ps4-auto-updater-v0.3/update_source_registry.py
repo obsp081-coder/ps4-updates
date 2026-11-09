@@ -22,8 +22,13 @@ DISALLOWED = frozenset((
 
 
 def _must_no_actions(obj):
-    if any(k in obj for k in DISALLOWED):
-        raise ValueError("Untrusted metadata cannot carry actions")
+    # catalog_ingest explicitly emits auto_install=False as a negative
+    # safety assertion. Never reject that safe value, but reject any
+    # truthy/malformed permission or other action-bearing field.
+    for key in DISALLOWED:
+        if key in obj and not (key == "auto_install"
+                              and obj[key] is False):
+            raise ValueError("Untrusted metadata cannot carry actions")
 
 
 def _version(text):

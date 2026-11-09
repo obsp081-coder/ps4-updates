@@ -286,16 +286,24 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             if(long_title_probe==2 && left_ink>8 && right_ink>8)
                 capture_ppm(frame,"long_rtl",1024u);
         }
-        if(test_circular_tabs && pad_reads>=2 && pad_reads<=20 &&
+        if(test_circular_tabs && pad_reads>=2 && pad_reads<=32 &&
            pad_reads%2==0) {
-            /* Real native 1080p frame: ten shoulder transitions, including
-             * the empty-library Details state and both wrap directions. */
+            /* Native Pad + VideoOut: eight R1 steps then eight L1 steps,
+             * including Settings -> Home and Home -> Settings wrap. */
             const int idx=(pad_reads/2)-1;
-            const int sequence[]={1,2,3,4,0,4,3,2,1,0};
-            const unsigned y=(unsigned)(245+sequence[idx]*100);
+            const int sequence[]={
+                1,2,3,4,5,6,7,0,7,6,5,4,3,2,1,0
+            };
+            const unsigned y=(unsigned)(210+sequence[idx]*92);
             if(display_buffers[index][y*SCREEN_WIDTH+232u]==
                0xFF15589Du)
                 seen_circular_tabs|=1u<<idx;
+            const uint32_t *frame=display_buffers[index];
+            if(idx==0)capture_ppm(frame,"games",65536u);
+            if(idx==1)capture_ppm(frame,"available",131072u);
+            if(idx==3)capture_ppm(frame,"queue",262144u);
+            if(idx==4)capture_ppm(frame,"installed",524288u);
+            if(idx==5)capture_ppm(frame,"about",1048576u);
         }
         if(test_search_restore_home) {
             const uint32_t *frame=display_buffers[index];
@@ -303,7 +311,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
              * -> Back -> full library -> Details. Observe actual renderer
              * output rather than relying only on the pure nav model. */
             if(pad_reads==6 &&
-               frame[545u*SCREEN_WIDTH+232u]==0xFF15589Du)
+               frame[480u*SCREEN_WIDTH+300u]==0xFF116BCEu)
                 saw_search_no_match=true;
             if(pad_reads==8 &&
                frame[405u*SCREEN_WIDTH+600u]==0xFF164881u &&
@@ -312,7 +320,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 capture_ppm(frame,"search_restored_home",32768u);
             }
             if(pad_reads==10 &&
-               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
+               frame[210u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_restored_details=true;
         }
         if(test_search_result_open) {
@@ -324,7 +332,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             if(pad_reads==10 && result==0xFF164881u)
                 saw_search_focus=true;
             if(pad_reads==12 &&
-               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
+               frame[210u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_search_details=true;
             if(pad_reads==14 && result==0xFF164881u)
                 saw_search_return=true;
@@ -344,7 +352,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         if(check_offline_cache) {
             const uint32_t *frame=display_buffers[index];
             if(pad_reads>=2 &&
-               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du &&
+               frame[210u*SCREEN_WIDTH+232u]==0xFF15589Du &&
                frame[954u*SCREEN_WIDTH+900u]==0xFF102D50u) {
                 saw_stale_details_warning=true;
                 capture_ppm(frame,"stale_details",8192u);
@@ -390,14 +398,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         if(test_async_scan) {
             const uint32_t *frame=display_buffers[index];
             if(pad_reads>=2 &&
-               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du) {
+               frame[210u*SCREEN_WIDTH+232u]==0xFF15589Du) {
                 saw_scan_details=true;
                 if(frame[954u*SCREEN_WIDTH+900u]==0xFF102D50u) {
                     saw_scanning_details_warning=true;
                     capture_ppm(frame,"scanning_details",16384u);
                 }
             }
-            if(pad_reads>=6 && frame[645u*SCREEN_WIDTH+232u]==0xFF15589Du)
+            if(pad_reads>=6 && frame[854u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_scan_settings=true;
         }
         if(capture_live_ui) {
@@ -406,17 +414,17 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
              * Capture real screen states from its active highlight, not
              * removed duplicate top tabs. */
             const uint32_t active=0xFF15589Du;
-            const int home=frame[245u*SCREEN_WIDTH+232u]==active;
-            const int details=frame[345u*SCREEN_WIDTH+232u]==active;
-            const int downloads=frame[445u*SCREEN_WIDTH+232u]==active;
-            const int settings=frame[645u*SCREEN_WIDTH+232u]==active;
-            if(home) capture_ppm(frame,"home",1u);
-            else if(details) capture_ppm(frame,"details",2u);
-            else if(downloads) capture_ppm(frame,"downloads",4u);
-            else if(settings) capture_ppm(frame,"settings",16u);
-            else if(pad_reads>=16 && pad_reads<18)
-                capture_ppm(frame,"search_ar",32u);
-            else capture_ppm(frame,"search",8u);
+            /* Details and Search are not rail tabs in the approved eight-
+             * section design. Capture those auxiliary screens by the
+             * deterministic Pad sequence, not by stale tab y-positions. */
+            if(pad_reads==2)capture_ppm(frame,"details",2u);
+            else if(pad_reads==6)capture_ppm(frame,"downloads",4u);
+            else if(pad_reads==10)capture_ppm(frame,"search",8u);
+            else if(pad_reads==16)capture_ppm(frame,"search_ar",32u);
+            else if(pad_reads==20)capture_ppm(frame,"settings",16u);
+            else if(pad_reads==0 || pad_reads==4 || pad_reads==8 ||
+                    pad_reads==18 || pad_reads==22)
+                capture_ppm(frame,"home",1u);
         }
     }
     return 0;
@@ -457,10 +465,10 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
         return 0;
     }
     if(test_circular_tabs) {
-        if(pad_reads>=2 && pad_reads<=20 && pad_reads%2==0)
-            data->buttons=pad_reads<=10 ? ORBIS_PAD_BUTTON_R1 :
+        if(pad_reads>=2 && pad_reads<=32 && pad_reads%2==0)
+            data->buttons=pad_reads<=16 ? ORBIS_PAD_BUTTON_R1 :
                                          ORBIS_PAD_BUTTON_L1;
-        if(pad_reads==22)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        if(pad_reads==34)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
         return 0;
     }
     if(test_search_restore_home) {
@@ -749,7 +757,7 @@ int main() {
     test_circular_tabs=true;
     assert(scanner_ui_begin()==1);
     scanner_ui_results(nullptr,0,0,1,0,0);
-    assert(seen_circular_tabs==0x3FFu && pad_reads>=22);
+    assert(seen_circular_tabs==0xFFFFu && pad_reads>=34);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

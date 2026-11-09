@@ -115,7 +115,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "search_restored_home", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "games", "available", "downloads", "queue", "installed", "about", "details", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "search_restored_home", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -161,17 +161,17 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 count, 18,
                                 "Missing honest header badge: " + label
                             )
-                        # All five honest navigation destinations must be
+                        # All eight honest navigation destinations must be
                         # readable Arabic labels in the 252px rail. The old
                         # icon-only rail had no text in these areas.
                         self.assertEqual(
-                            pixels.getpixel((232, 245)), (21, 88, 157),
+                            pixels.getpixel((232, 210)), (21, 88, 157),
                             "Wide active navigation card missing"
                         )
                         # The mockup's bright focus is now a bounded
                         # two-tone rim, not a full-width CPU gradient.
                         self.assertEqual(
-                            pixels.getpixel((120, 193)), (55, 173, 255),
+                            pixels.getpixel((120, 158)), (55, 173, 255),
                             "Active sidebar highlight missing cyan rim"
                         )
                         self.assertEqual(
@@ -186,7 +186,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((210, 740)), (8, 29, 57),
                             "Sidebar should remain opaque and text-safe"
                         )
-                        for rail_y in (190, 290, 390, 490, 590):
+                        for rail_y in (155, 247, 339, 431, 523, 615, 707, 799):
                             rail_text = pixels.crop(
                                 (80, rail_y + 15, 231, rail_y + 69))
                             bright = sum(
@@ -242,9 +242,9 @@ class NativeUiSmokeTests(unittest.TestCase):
                         self.assertLess(max(abs(a-b) for a,b in
                                             zip(upper,nearby)), 3)
                     if page in ("home", "details"):
-                        # The Details rail caption must stay clear of the
-                        # sidebar divider in both active and inactive states.
-                        gutter = pixels.crop((232, 310, 249, 345))
+                        # The two long Arabic rail captions must not overlap
+                        # the 252px sidebar's right divider.
+                        gutter = pixels.crop((233, 357, 249, 403))
                         bright_gutter = sum(
                             1 for red, green, blue in gutter.getdata()
                             if red >= 143 and green >= 143 and blue >= 143

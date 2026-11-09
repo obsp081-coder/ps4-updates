@@ -1083,13 +1083,16 @@ static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
  * selected game's read-only Details control. The sixth game row ends at
  * y=931; this status strip lives only in the gap before the footer. */
 static void cache_notice(uint32_t *p,int scanning) {
+    /* One legible sentence, intentionally above the y=1000 footer.
+     * Two stacked 30px Arabic lines were clipped at 1080p and could
+     * falsely say "checking" after a definitive FTP failure. */
     panel(p,269,937,899,59,0xFF102D50u);
     rect(p,279,947,5,39,AMBER);
-    arabic(p,304,939,UI_AR_CACHE_PREVIEW,AMBER);
-    arabic(p,304,963,UI_AR_CACHE_ONLY,MUTED);
+    arabic(p,304,947,scanning?UI_AR_CACHE_PREVIEW:UI_AR_CACHE_STALE,
+           AMBER);
     if(scanning) {
         /* This is scanner progress, not a download progress bar. */
-        ascii(p,897,955,progress_line,CYAN,2,18);
+        ascii(p,924,953,progress_line,CYAN,2,16);
     }
 }
 static void draw(const ScannerUiEntry *entries,

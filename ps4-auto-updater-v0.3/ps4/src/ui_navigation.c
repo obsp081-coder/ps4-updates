@@ -196,6 +196,7 @@ void ui_nav_init(UiNavigation *state, const UiRecord *items, unsigned count) {
     if (!state) return;
     memset(state, 0, sizeof(*state));
     state->page = UI_PAGE_HOME;
+    state->details_origin=UI_PAGE_HOME;
     ui_nav_filter(state, items, count, "");
 }
 unsigned ui_nav_resolve(const UiNavigation *state, unsigned idx) {
@@ -245,19 +246,38 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
         state->page = UI_PAGE_SETTINGS;
         return 1;
     }
-    /* Real R1/L1 navigation follows all five Sidebar sections in a ring.
-     * Calculate target BEFORE leave_search(), which restores the unfiltered
-     * library and temporarily changes page to HOME. Triangle alone toggles
-     * the Search keyboard language. */
+    /* Sidebar exactly follows the eight labels rendered in the rail.
+     * About precedes Settings in the R1 ring, keeping the explicit
+     * user-requested Settings -> R1 -> Home wrap. Auxiliary Search/Details
+     * retain safe, predictable shoulder exits. No heap/side effects. */
     if(action==UI_ACT_NEXT_TAB || action==UI_ACT_PREVIOUS_TAB) {
-        const int page_count=(int)UI_PAGE_SETTINGS+1;
-        const int direction=action==UI_ACT_NEXT_TAB?1:-1;
-        const UiPage target=(UiPage)(((int)state->page+
-                                   direction+page_count)%page_count);
-        if(state->page==UI_PAGE_SEARCH ||
-           (state->page==UI_PAGE_DETAILS && state->details_from_search))
+        static const UiPage tabs[8]={
+            UI_PAGE_HOME,UI_PAGE_GAMES,UI_PAGE_AVAILABLE,UI_PAGE_DOWNLOADS,
+            UI_PAGE_QUEUE,UI_PAGE_INSTALLED,UI_PAGE_ABOUT,UI_PAGE_SETTINGS
+        };
+        UiPage current=state->page;
+        if(current==UI_PAGE_DETAILS) {
+            if(state->details_from_search) {
+                /* Preserve old direct exit behavior for Search's Details. */
+                leave_search(state);
+                state->page=action==UI_ACT_NEXT_TAB ?
+                    UI_PAGE_DOWNLOADS:UI_PAGE_HOME;
+                return 1;
+            }
+            current=state->details_origin;
+        } else if(current==UI_PAGE_SEARCH) {
+            /* Search remains a Triangle shortcut, not a Sidebar tab. */
             leave_search(state);
-        state->page=target;
+            state->page=action==UI_ACT_NEXT_TAB ?
+                UI_PAGE_SETTINGS:UI_PAGE_DOWNLOADS;
+            return 1;
+        }
+        unsigned current_index=0;
+        for(unsigned i=0;i<8u;++i)
+            if(tabs[i]==current) { current_index=i; break; }
+        const unsigned next=action==UI_ACT_NEXT_TAB ?
+            (current_index+1u)%8u:(current_index+7u)%8u;
+        state->page=tabs[next];
         return 1;
     }
     if (state->page == UI_PAGE_SEARCH) {
@@ -276,6 +296,7 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
         if(state->search_result_focus) {
             if(action==UI_ACT_OPEN && state->available) {
                 state->details_from_search=1;
+                state->details_origin=UI_PAGE_HOME;
                 state->page=UI_PAGE_DETAILS;
                 return 1;
             }
@@ -362,6 +383,8 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
             state->page=UI_PAGE_SEARCH;
             state->details_from_search=0;
             state->search_result_focus=state->available>0;
+        } else if (state->page == UI_PAGE_DETAILS) {
+            state->page=state->details_origin;
         } else if (state->page == UI_PAGE_HOME) {
             state->exit_requested = 1;
         } else {
@@ -380,11 +403,14 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
         return 1;
     }
     if (action == UI_ACT_OPEN) {
-        if (state->page != UI_PAGE_HOME || !state->available) return 0;
+        if ((state->page != UI_PAGE_HOME &&
+             state->page != UI_PAGE_GAMES) || !state->available) return 0;
+        state->details_origin=state->page;
         state->page = UI_PAGE_DETAILS;
         return 1;
     }
-    if (state->page != UI_PAGE_HOME) return 0;
+    if (state->page != UI_PAGE_HOME &&
+        state->page != UI_PAGE_GAMES) return 0;
     if (action == UI_ACT_DOWN && state->selected + 1 < state->available) {
         ++state->selected;
         if (state->selected >= state->scroll + UI_VISIBLE_ROWS)

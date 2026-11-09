@@ -12,7 +12,14 @@ typedef enum UiPage {
     UI_PAGE_DETAILS = 1,
     UI_PAGE_DOWNLOADS = 2,
     UI_PAGE_SEARCH = 3,
-    UI_PAGE_SETTINGS = 4
+    UI_PAGE_SETTINGS = 4,
+    /* Eight real Sidebar destinations. DETAILS and SEARCH are auxiliary
+     * screens reached through Cross / Triangle, not circular tabs. */
+    UI_PAGE_GAMES = 5,
+    UI_PAGE_AVAILABLE = 6,
+    UI_PAGE_QUEUE = 7,
+    UI_PAGE_INSTALLED = 8,
+    UI_PAGE_ABOUT = 9
 } UiPage;
 typedef enum UiAction {
     UI_ACT_UP = 0,
@@ -46,6 +53,7 @@ typedef struct UiNavigation {
     unsigned keyboard_arabic;
     unsigned search_result_focus; /* down from last keyboard row */
     unsigned details_from_search; /* Circle returns to search */
+    UiPage details_origin; /* Home or Games; never silently swap CUSA */
     const UiRecord *items; /* caller-owned; valid for visible UI lifetime */
     unsigned item_count;
 } UiNavigation;

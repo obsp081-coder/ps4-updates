@@ -27,27 +27,42 @@ int main(void) {
      * wrap-around, even when no game metadata exists. */
     fill(0);
     const UiPage next_pages[]={
-        UI_PAGE_DETAILS,UI_PAGE_DOWNLOADS,UI_PAGE_SEARCH,
+        UI_PAGE_GAMES,UI_PAGE_AVAILABLE,UI_PAGE_DOWNLOADS,
+        UI_PAGE_QUEUE,UI_PAGE_INSTALLED,UI_PAGE_ABOUT,
         UI_PAGE_SETTINGS,UI_PAGE_HOME
     };
-    for(unsigned i=0;i<5;++i) {
+    for(unsigned i=0;i<8;++i) {
         assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
         assert(nav.page==next_pages[i] && !nav.exit_requested);
     }
     const UiPage previous_pages[]={
-        UI_PAGE_SETTINGS,UI_PAGE_SEARCH,UI_PAGE_DOWNLOADS,
-        UI_PAGE_DETAILS,UI_PAGE_HOME
+        UI_PAGE_SETTINGS,UI_PAGE_ABOUT,UI_PAGE_INSTALLED,
+        UI_PAGE_QUEUE,UI_PAGE_DOWNLOADS,UI_PAGE_AVAILABLE,
+        UI_PAGE_GAMES,UI_PAGE_HOME
     };
-    for(unsigned i=0;i<5;++i) {
+    for(unsigned i=0;i<8;++i) {
         assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
         assert(nav.page==previous_pages[i] && !nav.exit_requested);
     }
     assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
-    assert(nav.page==UI_PAGE_DETAILS);
+    assert(nav.page==UI_PAGE_GAMES);
     ui_nav_rebind(&nav,NULL,0,NULL);
-    assert(nav.page==UI_PAGE_DETAILS);
+    assert(nav.page==UI_PAGE_GAMES);
     assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
     assert(nav.page==UI_PAGE_HOME);
+    /* Games shows the same genuine base metadata as Home, but has its
+     * own active Sidebar state; Details returns to its origin. */
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
+    assert(nav.page==UI_PAGE_GAMES);
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.page==UI_PAGE_DETAILS && nav.details_origin==UI_PAGE_GAMES);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_GAMES);
+    assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_HOME);
+    /* Auxiliary Details and Search are never counted as fake 9th tabs. */
 
     fill(9);
     assert(nav.available==9 && nav.selected==0 && nav.scroll==0);
@@ -66,7 +81,7 @@ int main(void) {
     assert(nav.page==UI_PAGE_DOWNLOADS);
     assert(!ui_nav_action(&nav,UI_ACT_OPEN));
     assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
-    assert(nav.page==UI_PAGE_DETAILS);
+    assert(nav.page==UI_PAGE_AVAILABLE);
     assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
     assert(nav.page==UI_PAGE_DOWNLOADS);
     assert(ui_nav_action(&nav,UI_ACT_BACK) && nav.page==UI_PAGE_HOME);

@@ -250,6 +250,41 @@ int main(void) {
     assert(strcmp(nav.items[ui_nav_resolve(&nav,0)].cusa,
                   "CUSA00000")==0);
 
+    /* While Search result focus is active, inventory reordering must
+     * preserve the focused CUSA. If that CUSA disappears, do not silently
+     * focus a different matching title, despite keeping the same query. */
+    fill(9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Sample");
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_RIGHT));
+    assert(nav.search_result_focus &&
+           !strcmp(nav.items[ui_nav_resolve(&nav,nav.selected)].cusa,
+                   "CUSA00002"));
+    UiRecord search_reordered[9];
+    for(unsigned i=0;i<9;++i)search_reordered[i]=entries[8-i];
+    ui_nav_rebind(&nav,search_reordered,9,"CUSA00002");
+    assert(nav.page==UI_PAGE_SEARCH && nav.search_result_focus);
+    assert(!strcmp(nav.items[ui_nav_resolve(&nav,nav.selected)].cusa,
+                   "CUSA00002"));
+    UiRecord search_removed[8];
+    for(unsigned i=0,j=0;i<9;++i)
+        if(i!=2)search_removed[j++]=entries[i];
+    ui_nav_rebind(&nav,search_removed,8,"CUSA00002");
+    assert(nav.page==UI_PAGE_SEARCH && nav.available==6);
+    assert(!strcmp(nav.query,"Sample"));
+    assert(!nav.search_result_focus && !nav.details_from_search);
+    assert(nav.keyboard_index==36);
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(nav.search_result_focus && nav.selected==0);
+    assert(strcmp(nav.items[ui_nav_resolve(&nav,0)].cusa,
+                  "CUSA00002")!=0);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && nav.available==8);
+    assert(!nav.query[0]);
+
     fill(256);
     assert(nav.available==256);
     /* Baseline only, not a PS4 performance assertion: exercise a full

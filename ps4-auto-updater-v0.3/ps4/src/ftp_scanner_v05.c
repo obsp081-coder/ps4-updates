@@ -1552,7 +1552,8 @@ static int scan_readonly(void) {
     logmsg("SFO invalid", (int)sfo_invalid);
     logmsg("Base-game records", (int)found);
     logmsg("SFO metadata verified", (int)metadata_found);
-    logmsg("Metadata records", (int)found);
+    /* Counts across base games, patches and DLC; not only games[]. */
+    logmsg("Metadata records", (int)metadata_found);
     logmsg("Installed confirmed", (int)confirmed);
     logmsg("Installation unknown", (int)unknown);
 

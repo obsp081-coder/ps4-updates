@@ -164,6 +164,12 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
         }
     }
     const int details_lost=old_page==UI_PAGE_DETAILS && !selected_found;
+    /* If a focused Search result vanishes on rescan, do not silently
+     * transfer focus to a different CUSA. Preserve the query and keyboard,
+     * but require the user to choose a new result intentionally. */
+    const int search_selection_lost=old_page==UI_PAGE_SEARCH &&
+        search_focus && selected_cusa && selected_cusa[0] &&
+        !selected_found;
     if(details_lost) {
         /* An inventory refresh may remove the game opened from Search.
          * Closing Details must ALSO clear the old temporary query;
@@ -177,7 +183,8 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
     state->keyboard_index=keyboard_index;
     state->keyboard_arabic=keyboard_arabic;
     state->search_result_focus=
-        !details_lost && state->available?search_focus:0;
+        !details_lost && !search_selection_lost && state->available?
+            search_focus:0;
     state->details_from_search=
         !details_lost && state->page==UI_PAGE_DETAILS?search_origin:0;
 }

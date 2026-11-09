@@ -307,7 +307,10 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertEqual(inventory["games"][0]["install_state"], "UNKNOWN")
         self.assertFalse(inventory["download_enabled"])
         self.assertFalse(inventory["install_enabled"])
-        self.assertIn("Metadata records: 2", diagnostic)
+        # Three SFO identities were verified: two base games and one DLC.
+        # The diagnostic must not mislabel the base-game count as all metadata.
+        self.assertIn("Metadata records: 3", diagnostic)
+        self.assertIn("Base-game records: 2", diagnostic)
         self.assertIn("FTP_GREETING_ACCEPTED: 1", diagnostic)
         self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
         self.assertIn("FTP_COMMAND_MODE (0=PASV-first, no TYPE): 0", diagnostic)

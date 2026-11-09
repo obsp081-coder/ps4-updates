@@ -1,3 +1,12 @@
+## تحديث المرحلة الثالثة — 9 نوفمبر 2026: Source Bridge داخل Native UI
+
+- ربطنا نموذج البيانات الأصلي بـ`UiSourceCandidate` محافظ لا يسمح بتحويل Retail HTTP أو FPKG submissions إلى تحديثات متوافقة، وأبقينا `Download/Install` مغلقَين. سجلات المصادر المختلفة لا تُدمَج إذا تساوى CUSA/Version لكن اختلف المصدر؛ المعلومات غير المتاحة تظهر فارغة.
+- ملفات المصدر: `ps4/src/ui_source_bridge.h/.c` و`ps4/src/ui_models.h/.c` و`ps4/src/scanner_ui.cpp`. Host Mock فقط يغذّي بيانات اصطناعية؛ لا يوجد اتصال Internet أو Sony أو FPKG Provider على PS4 حتى الآن.
+- كود المرحلة الرابعة ما زال PAUSED وغير مربوط. راجع `STAGE3_SOURCE_CONTRACT_AR.md` لبوابات ثقة المصدر وخطة العمل الآمنة.
+- اختبارات الدفعة الجديدة: [Host run](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699845536) و[Native build](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699837258) — لا تُعتبر ناجحة حتى اكتمال CI.
+
+---
+
 # المرحلة الثالثة — مصادر تحديثات PS4
 **الحالة:** ACTIVE / PARTIALLY VERIFIED (Offline only).
 **المرحلة الرابعة:** PAUSED بطلب المستخدم؛ ملفاتها محفوظة، ولم تُدمج في تطبيق PS4 أو تُختبر في هذا التغيير.

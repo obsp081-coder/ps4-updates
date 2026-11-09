@@ -97,6 +97,7 @@ LABELS = (
     ("NO_QUEUED_DOWNLOAD", "لا توجد مهام في الانتظار"),
     ("NO_INSTALL_JOB", "لا توجد عمليات تثبيت"),
     ("SEARCH_RESULTS", "نتائج البحث"),
+    ("SEARCH_MENU", "البحث"),
     ("SEARCH_HINT", "ابحث باسم اللعبة أو معرّفها"),
     ("KEYBOARD_ARABIC", "لوحة مفاتيح عربية"),
     ("KEYBOARD_ENGLISH", "لوحة مفاتيح إنجليزية"),

@@ -5,6 +5,13 @@
 **Verdict:** MODIFY — تكامل الواجهة **غير مكتمل**. هذا المستند ليس تقرير اختبار PS4.
 **سياسة التسليم:** لا إرسال PKG تجريبي للمستخدم إلى أن تكتمل الواجهة كما طلب؛ رغم أن CI يولد حزمة لأغراض فحص البنية محليًا.
 
+## تحسين Focus في Royal Blue وإصلاح تحديث Blurred Cover — 9 نوفمبر 2026
+
+- **VISUAL:** تمت إضافة Cyan focus rims محدودة بالـRect على Sidebar النشطة وصف اللعبة المحدد، لتحسين Contrast نحو التصميم المعتمد، بدون Animation loop أو Shader أو تخصيصات Heap. فحص Pixel `(120,193)` و`(600,351)` يثبت إضاءة التحديد، و`(600,450)` يضمن بقاء الصف غير المحدد بدون Cyan.
+- **ROOT CAUSE / FIX:** استبدال Icon PNG لنفس CUSA عبر `scanner_ui_offer_icon()` كان يترك `blurred_for` صالحًا ويعيد استخدام خلفية ضبابية قديمة. الإصلاح يلغي صلاحية Cache بعد Offer ناجح، ويعيد الحساب في أول Draw لاحق؛ Thumbnail worker كان صحيحًا أصلًا ولم يتغير.
+- **REGRESSION:** اختبر Host VideoOut/Pad استبدال Thumbnail أخضر بـPNG أزرق بعد الـInitial Draw، وتأكد من اختلاف الخلفية عند `(1190,500)` قبل وبعد، دون Network أو PS4 فعلي. صور Native Host من Run 42608511066 فُحصت بصريًا، مع 6,938 بكسل متغيرًا في Home ضمن Focus Areas.
+- **EVIDENCE:** [Commit d40a02168210](https://github.com/obsp081-coder/ps4-updates/commit/d40a02168210737ae1a5d1a8c51dfffc96694e16) و[CI Run 42608511066](https://github.com/obsp081-coder/ps4-updates/actions/runs/42608511066) — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**. لا اختبار PS4 Firmware 14.00 ولا دليل 30FPS على الجهاز.
+
 ## إصلاح ثبات اختيار Search وتصحيح Metadata diagnostics — 9 نوفمبر 2026
 
 - **ROOT CAUSE:** `ui_nav_rebind()` كان يعيد استعمال `search_result_focus` بعد زوال CUSA المحددة، فيمكن أن يصبح التركيز على أول نتيجة أخرى دون اختيار المستخدم. الجديد: يحتفظ بـQuery والـKeyboard، ولكنه يزيل Result Focus عند فقدان الهوية؛ إذا تغير ترتيب الصفوف وبقيت CUSA، يُحفظ الاختيار الصحيح.

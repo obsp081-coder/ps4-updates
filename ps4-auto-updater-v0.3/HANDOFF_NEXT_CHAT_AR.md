@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `abb6bfc43aad78427741b6cbdce9c01c03b35ae2`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `d40a02168210737ae1a5d1a8c51dfffc96694e16`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit abb6bfc43aad**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42605227571 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
+- CI الأخير الناجح **على كود Commit d40a02168210**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42608511066 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -35,6 +35,13 @@
 - `UI title layout` يحسّن العربية/Latin لكنه **ليس Unicode Bidi كاملًا**.
 - أحدث إصلاح بصري في `437fcdfde0b0`: عنوان «تفاصيل اللعبة» في Sidebar كان يصل إلى الفاصل (81 pixel ساطع في Home و119 في Details ضمن x=232..248)، وأُضيف Atlas label مستقل بحجم خط 26px بدل تغيير عناوين Details الأخرى؛ بعد الإصلاح العدد 0 في الصورتين. Regression Test ضمن 181 اختبارًا وNative Build ناجح؛ لم يُختبر على PS4 حقيقي.
 - آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وLong RTL/LTR Ellipsis؛ أُصلحت حالات Cached/Failed FTP وEmpty Library ومنع رسالة الحفظ الوهمية. **التحديث الأخير**: الخروج من Search لا يترك فلترًا مخفيًا في Home؛ يُستعاد عدد الألعاب ويُحفظ اختيار CUSA، كما تميز Details بين تحذير Cache أثناء الفحص والتحذير بعد فشل FTP. صور `search_restored_home.png` و`scanning_details.png` و`stale_details.png` اختُبرت بصريًا عبر Host. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
+
+### تشطيب 2026-11-09 — Royal Blue focus وselected-cover blur refresh
+
+- **Code:** `d40a02168210737ae1a5d1a8c51dfffc96694e16` ([CI](https://github.com/obsp081-coder/ps4-updates/actions/runs/42608511066)). Sidebar النشطة وصف اللعبة المحدد أصبح لهما Cyan focus rim من ضربات Rect صغيرة، بلا Animation/GPU/Runtime Allocations. فحوص `test_native_ui.py` تثبت مواضع التحديد وتمنع تمييز صف غير محدد.
+- **Fix:** `scanner_ui_offer_icon()` كان يستبدل PNG داخل Icon Cache دون إبطال `blurred_for` عند ثبات CUSA، فيُعاد رسم خلفية اللعبة القديمة. الآن يبطل Cache بعد `offer` ناجح فقط وعلى UI thread. يختبر `ui_smoke.cpp` إدراج Thumbnail أخضر، ثم استبداله بـPNG أزرق لنفس ID، ثم ظهور لوني Backdrop الصحيحين من Framebuffer الحقيقي الخاص باختبارات Host.
+- **Visual evidence:** صورة `home.png` من `ui-native-host-previews` في Run 42608511066؛ قياس محلي قبل/بعد 6,938 Pixel مختلفًا ضمن Focus Areas، والمرتكزات غير المعنية ثابتة. **هذا ليس اختبار شاشة PS4**.
+- **Pass:** 181/181 Host Tests + OpenOrbis Native Build PASS في Run 42608511066. No Download/Install/Provider activation.
 
 ### إصلاح 2026-11-09 — Search identity وMetadata diagnostics
 

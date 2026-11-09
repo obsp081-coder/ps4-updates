@@ -163,7 +163,10 @@ void ui_nav_rebind(UiNavigation *state, const UiRecord *items,
             }
         }
     }
-    const int details_lost=old_page==UI_PAGE_DETAILS && !selected_found;
+    /* A user-selected empty Details page is valid when there are no games.
+     * Only redirect Home if a REAL previously selected CUSA disappeared. */
+    const int details_lost=old_page==UI_PAGE_DETAILS &&
+        selected_cusa && selected_cusa[0] && !selected_found;
     /* If a focused Search result vanishes on rescan, do not silently
      * transfer focus to a different CUSA. Preserve the query and keyboard,
      * but require the user to choose a new result intentionally. */
@@ -242,6 +245,21 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
         state->page = UI_PAGE_SETTINGS;
         return 1;
     }
+    /* Real R1/L1 navigation follows all five Sidebar sections in a ring.
+     * Calculate target BEFORE leave_search(), which restores the unfiltered
+     * library and temporarily changes page to HOME. Triangle alone toggles
+     * the Search keyboard language. */
+    if(action==UI_ACT_NEXT_TAB || action==UI_ACT_PREVIOUS_TAB) {
+        const int page_count=(int)UI_PAGE_SETTINGS+1;
+        const int direction=action==UI_ACT_NEXT_TAB?1:-1;
+        const UiPage target=(UiPage)(((int)state->page+
+                                   direction+page_count)%page_count);
+        if(state->page==UI_PAGE_SEARCH ||
+           (state->page==UI_PAGE_DETAILS && state->details_from_search))
+            leave_search(state);
+        state->page=target;
+        return 1;
+    }
     if (state->page == UI_PAGE_SEARCH) {
         unsigned keys=ui_nav_keyboard_count(state);
         if (action == UI_ACT_BACK) {
@@ -277,8 +295,7 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
             if(action==UI_ACT_DOWN ||
                action==UI_ACT_LEFT || action==UI_ACT_RIGHT)return 0;
         }
-        if (action == UI_ACT_TOGGLE_KEYBOARD ||
-            action == UI_ACT_NEXT_TAB || action == UI_ACT_PREVIOUS_TAB) {
+        if (action == UI_ACT_TOGGLE_KEYBOARD) {
             state->keyboard_arabic=!state->keyboard_arabic;
             return 1;
         }
@@ -352,22 +369,14 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
         }
         return 1;
     }
-    if (action == UI_ACT_DOWNLOADS || action == UI_ACT_NEXT_TAB) {
+    if (action == UI_ACT_DOWNLOADS) {
         if (state->page == UI_PAGE_DOWNLOADS) return 0;
-        /* Square/R1 from a search-opened Details page leave Search;
-         * the temporary query must not survive the Downloads tab. */
-        if(state->page==UI_PAGE_DETAILS && state->details_from_search)
+        /* Square remains a direct Downloads shortcut. Clear temporary
+         * Search queries whenever leaving the Search session. */
+        if(state->page==UI_PAGE_SEARCH ||
+           (state->page==UI_PAGE_DETAILS && state->details_from_search))
             leave_search(state);
         state->page = UI_PAGE_DOWNLOADS;
-        return 1;
-    }
-    if (action == UI_ACT_PREVIOUS_TAB) {
-        if (state->page == UI_PAGE_HOME) return 0;
-        /* L1 must not bypass the same restoration that Circle performs
-         * when exiting a search session. */
-        if(state->page==UI_PAGE_DETAILS && state->details_from_search)
-            leave_search(state);
-        else state->page = UI_PAGE_HOME;
         return 1;
     }
     if (action == UI_ACT_OPEN) {

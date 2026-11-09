@@ -23,6 +23,32 @@ int main(void) {
     assert(!ui_nav_action(&nav,UI_ACT_OPEN));
     assert(ui_nav_action(&nav,UI_ACT_BACK) && nav.exit_requested);
 
+    /* User-reported regression: R1/L1 cycle all Sidebar sections with
+     * wrap-around, even when no game metadata exists. */
+    fill(0);
+    const UiPage next_pages[]={
+        UI_PAGE_DETAILS,UI_PAGE_DOWNLOADS,UI_PAGE_SEARCH,
+        UI_PAGE_SETTINGS,UI_PAGE_HOME
+    };
+    for(unsigned i=0;i<5;++i) {
+        assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
+        assert(nav.page==next_pages[i] && !nav.exit_requested);
+    }
+    const UiPage previous_pages[]={
+        UI_PAGE_SETTINGS,UI_PAGE_SEARCH,UI_PAGE_DOWNLOADS,
+        UI_PAGE_DETAILS,UI_PAGE_HOME
+    };
+    for(unsigned i=0;i<5;++i) {
+        assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+        assert(nav.page==previous_pages[i] && !nav.exit_requested);
+    }
+    assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
+    assert(nav.page==UI_PAGE_DETAILS);
+    ui_nav_rebind(&nav,NULL,0,NULL);
+    assert(nav.page==UI_PAGE_DETAILS);
+    assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_HOME);
+
     fill(9);
     assert(nav.available==9 && nav.selected==0 && nav.scroll==0);
     for(unsigned i=0;i<6;i++) assert(ui_nav_action(&nav,UI_ACT_DOWN));
@@ -40,7 +66,7 @@ int main(void) {
     assert(nav.page==UI_PAGE_DOWNLOADS);
     assert(!ui_nav_action(&nav,UI_ACT_OPEN));
     assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
-    assert(nav.page==UI_PAGE_HOME);
+    assert(nav.page==UI_PAGE_DETAILS);
     assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
     assert(nav.page==UI_PAGE_DOWNLOADS);
     assert(ui_nav_action(&nav,UI_ACT_BACK) && nav.page==UI_PAGE_HOME);
@@ -177,6 +203,21 @@ int main(void) {
     assert(ui_nav_action(&nav,UI_ACT_BACK));
     assert(nav.page==UI_PAGE_HOME && nav.available==9);
     assert(nav.query[0]==0 && !nav.search_result_focus);
+    /* R1 from Search enters Settings and clears temporary Search filters.
+     * L1 from Settings reopens Search, not the former filtered state. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"no-match");
+    nav.keyboard_arabic=1;
+    assert(ui_nav_action(&nav,UI_ACT_NEXT_TAB));
+    assert(nav.page==UI_PAGE_SETTINGS && nav.available==9 &&
+           nav.query[0]==0 && !nav.details_from_search);
+    assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_SEARCH && nav.available==9 &&
+           nav.keyboard_arabic==1);
+    assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_DOWNLOADS && nav.available==9);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME);
     assert(ui_nav_action(&nav,UI_ACT_OPEN));
     assert(nav.page==UI_PAGE_DETAILS); /* game still accessible */
     assert(ui_nav_action(&nav,UI_ACT_BACK));

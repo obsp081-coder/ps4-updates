@@ -25,6 +25,15 @@
 - CI الأخير الناجح **على كود Commit 552898562719**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42617470851 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، دون Hardware test. فحص Native Host Preview للـSidebar موثق في Run 42602304942. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
+## 9 نوفمبر 2026 — Stage 2: Layout Details وDownloads على مرجع Royal Blue
+
+- **Actual code HEAD at checkpoint:** `e5aaed508e2f6ea8d4280075875a9e99a1ab10ce` (آخر تغيير Code قبل هذا التوثيق). Stage 1 Sidebar 8 real sections + R1/L1 wrap محفوظة، مع تبويب Settings في نهاية الدورة حتى يرجع Home مع R1. Full design match **not yet achieved**, no real FW14 hardware testing.
+- **Details:** [9625eedc](https://github.com/obsp081-coder/ps4-updates/commit/9625eedcf91785fb7d5606e4f558548fbbec55cc) أعاد إنشاء ست بطاقات بيانات، شريط حالة التوافق **غير مؤكد**، صفوف النسخ المتاحة من UiUpdateInfo فقط، ثلاث أزرار رمادية **مقفلة**، وRight Panel محلية للعبة. [27b60140](https://github.com/obsp081-coder/ps4-updates/commit/27b60140b9dd9ca0217f01cd616cf18d4c3e4936) فصل تسمية المصدر عن قيمة «غير متوفر» وأُضيف Pixel Regression.
+- **Downloads:** [30ef5f12](https://github.com/obsp081-coder/ps4-updates/commit/30ef5f1237d82495faed21aa3b7e27e39d188012) أعاد التوزيع إلى 4 Real KPIs، قائمة 5 صفوف من Jobs الحقيقية (إن وجدت)، يمينها معلومات المهمة المختارة، وشاشة No jobs صريحة. Progress لا يأتي إلا من `bytes_done/bytes_total` الفعلية، **لا Pause/Cancel أو Download حقيقي**.
+- **Header:** [e5aaed50](https://github.com/obsp081-coder/ps4-updates/commit/e5aaed508e2f6ea8d4280075875a9e99a1ab10ce) استبدل 24px jagged line بقوس Quadratic 1px smooth، بدون Animation/Shader/Assets خارجية.
+- **Verification:** [CI #42623027998](https://github.com/obsp081-coder/ps4-updates/actions/runs/42623027998) على Commit `108d6efcb16606e26012d954000dac0a810a73c3` أثبت 181/181 Host Tests + OpenOrbis Native Build PASS، ويشمل Native Host Screenshots Home/Details/Downloads. **الـCI على Commit القوس e5aaed50 (#42623676076) يجب التحقق من حالته بعد كتابة التوثيق**؛ لا تنسب نجاح Build جديد قبل اكتماله.
+- **What remains:** مراجعة مطابقة التصميم 1:1 بمعيار ألوان وأحجام وخطوط مقارنة مرجع المستخدم (الواجهة ليست صورة Concept)، تحسين Full-screen background من Local icon0 فقط وفق المصادر المسموح بها، اختبار على shadPS4 بإصدار أحدث ثم جهاز GoldHEN FW14؛ لا تدّع أن Mocked Host screenshot تمثل PS4 hardware. Fake source/firmware/compatibility/download content forbidden. PR يبقى Draft، PKG لا يُرسل تلقائيًا.
+
 ## 9 نوفمبر 2026 — Stage 1: Sidebar ذات 8 أقسام + Royal Blue Glow
 
 - **User instruction:** تطابق واجهة Home / Details / Downloads مع ثلاث صور Concept Royal Blue المعتمدة. التنفيذ الحالي مرحلة أولى، **ليس تطابق 1:1**؛ لقطات Concept تتضمن Uncharted artwork وأرقام تحديثات وتنزيلات افتراضية لا نستخدمها كحقائق.

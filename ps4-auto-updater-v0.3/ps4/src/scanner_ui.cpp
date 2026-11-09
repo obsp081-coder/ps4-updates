@@ -424,8 +424,11 @@ static void header(uint32_t *p, UiPage page) {
     rect(p,0,112,WIDTH,3,ACCENT);
     panel(p,68,27,62,62,ACCENT);
     ascii(p,84,49,"PS4",WHITE,2,3);
-    arabic(p,154,29,UI_AR_APP_NAME,WHITE);
-    arabic(p,156,73,UI_AR_LOCAL_READ_ONLY,MUTED);
+    /* Royal-blue dual-language masthead. Never claim network access,
+     * installed status or verified firmware in preview-only mode. */
+    ascii(p,156,12,"PS4 GAME UPDATE MANAGER",CYAN,2,27);
+    arabic(p,154,36,UI_AR_APP_NAME,WHITE);
+    arabic(p,156,80,UI_AR_LOCAL_READ_ONLY,MUTED);
 
     const int positions[4]={920,1100,1335,1580};
     const int widths[4]={165,215,230,240};
@@ -631,29 +634,47 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     if(!saved)
         arabic(p,112,925,UI_AR_MISSING_INVENTORY,AMBER);
 
+    /* Selected-game hero uses the EXISTING 128px local icon cache.
+     * No fabricated cover, update version or compatibility status.
+     * The dark royal-blue frame remains useful when icon0.png is absent. */
     panel(p,1193,145,658,814,0xFF0B2142u);
-    arabic(p,1230,158,UI_AR_SELECTED_GAME,CYAN);
+    rect(p,1197,162,4,776,0xFF1664B3u);
+    arabic(p,1230,157,UI_AR_SELECTED_GAME,CYAN);
+    panel(p,1227,205,588,326,0xFF112C50u);
+    rect(p,1244,218,554,2,0xFF2C77C0u);
+    rect(p,1244,514,554,2,0xFF205A91u);
     if(navigation.available && entries) {
         unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
-            cover(p,1232,240,208,231,g->cusa);
-            game_title(p,1472,252,340,g,WHITE,2);
-            ascii(p,1472,309,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
-            arabic(p,1472,337,UI_AR_VERSION,MUTED);
-            ascii(p,1472,377,fallback_version(g),WHITE,3,14);
-            arabic(p,1235,490,UI_AR_CATEGORY,MUTED);
-            arabic(p,1235,535,category_label(g),WHITE);
-            rect(p,1234,598,568,2,0xFF244769u);
-            arabic(p,1235,613,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-            arabic(p,1235,653,UI_AR_DOWNLOAD_BLOCKED,MUTED);
-            panel(p,1231,764,562,71,0xFF15589Du);
-            arabic(p,1270,775,UI_AR_FULL_DETAILS,WHITE);
+            /* A square icon displayed without distorting its aspect ratio. */
+            panel(p,1350,223,346,286,0xFF0C244Au);
+            cover(p,1389,236,266,266,g->cusa);
+            /* Small classification on the image frame is always based on
+             * metadata category, never proof of installed package type. */
+            panel(p,1250,427,139,60,0xFF123C74u);
+            ascii(p,1271,440,"PS4",WHITE,3,3);
+            game_title(p,1240,543,558,g,WHITE,3);
+            ascii(p,1241,607,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
+            rect(p,1241,646,553,2,0xFF275980u);
+            arabic(p,1240,657,UI_AR_VERSION,MUTED);
+            ascii(p,1594,668,fallback_version(g),WHITE,3,14);
+            rect(p,1241,707,553,1,0xFF204568u);
+            arabic(p,1240,720,UI_AR_CATEGORY,MUTED);
+            arabic(p,1469,719,category_label(g),
+                   g->metadata_verified?WHITE:AMBER);
+            rect(p,1241,773,553,1,0xFF204568u);
+            arabic(p,1240,782,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+            arabic(p,1240,825,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+            /* Navigates to read-only details; this is NOT a download button. */
+            panel(p,1241,866,553,57,0xFF15589Du);
+            rect(p,1256,873,5,42,CYAN);
+            arabic(p,1293,873,UI_AR_FULL_DETAILS,WHITE);
         }
     } else {
         arabic(p,1240,362,UI_AR_NO_SELECTED_GAME,MUTED);
     }
-    arabic(p,1240,875,UI_AR_DATA_NOT_PROOF,MUTED);
+    arabic(p,1237,939,UI_AR_DATA_NOT_PROOF,MUTED);
     snprintf(number,sizeof(number),"%u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);

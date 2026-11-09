@@ -77,12 +77,12 @@ UiCompatAssessment ui_compat_assess(const UiCompatFacts *f) {
     if(f->installed==UI_COMPAT_INSTALL_NO)
         a.blockers|=UI_COMPAT_NOT_INSTALLED;
     else if(f->installed!=UI_COMPAT_INSTALL_YES)
-        a.unknowns|=UI_COMPAT_INSTALL_UNKNOWN;
+        a.unknowns|=UI_COMPAT_INSTALL_UNCONFIRMED;
     const int bk=(f->base_kind==UI_COMPAT_RETAIL||
                   f->base_kind==UI_COMPAT_FPKG);
     const int pk=(f->patch_kind==UI_COMPAT_RETAIL||
                   f->patch_kind==UI_COMPAT_FPKG);
-    if(!bk||!pk)a.unknowns|=UI_COMPAT_KIND_UNKNOWN;
+    if(!bk||!pk)a.unknowns|=UI_COMPAT_KIND_UNCONFIRMED;
     if(bk&&pk&&f->base_kind!=f->patch_kind)
         a.blockers|=UI_COMPAT_KIND_MISMATCH;
 
@@ -126,8 +126,8 @@ const char *ui_compat_reason_key(uint32_t bit) {
     case UI_COMPAT_BASE_MISMATCH:return "BASE_VERSION_MISMATCH";
     case UI_COMPAT_FIRMWARE_TOO_LOW:return "FIRMWARE_TOO_LOW";
     case UI_COMPAT_CID_UNKNOWN:return "CONTENT_ID_UNKNOWN";
-    case UI_COMPAT_INSTALL_UNKNOWN:return "INSTALL_UNCONFIRMED";
-    case UI_COMPAT_KIND_UNKNOWN:return "KIND_UNCONFIRMED";
+    case UI_COMPAT_INSTALL_UNCONFIRMED:return "INSTALL_UNCONFIRMED";
+    case UI_COMPAT_KIND_UNCONFIRMED:return "KIND_UNCONFIRMED";
     case UI_COMPAT_VERSION_UNKNOWN:return "VERSION_UNCONFIRMED";
     case UI_COMPAT_FIRMWARE_UNKNOWN:return "FIRMWARE_UNCONFIRMED";
     case UI_COMPAT_BASE_REQUIRED_UNKNOWN:return "REQUIRED_BASE_UNKNOWN";

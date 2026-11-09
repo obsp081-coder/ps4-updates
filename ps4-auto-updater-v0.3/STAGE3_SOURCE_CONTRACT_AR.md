@@ -21,7 +21,7 @@
 - [مرحلة Source Registry](https://github.com/obsp081-coder/ps4-updates/commit/3564073cc44abf218716357d6e9a7fc87395c36b) تستخدم Python للتطوير وOffline فقط.
 - [Native source bridge](https://github.com/obsp081-coder/ps4-updates/commit/c814d74190b0e383deadeced60c5104230686189) فصل الهوية ونوع المصدر، وأضاف اختبار C مستقل.
 - [Native Details metadata tag](https://github.com/obsp081-coder/ps4-updates/commit/c6c3c9a31c8a88917c924bca4f6e0bfbab262e48) باستخدام Mock فقط، ثم [إصلاح تهيئة Host C++](https://github.com/obsp081-coder/ps4-updates/commit/cb6240852dc3d6b9e982836f3ba2d239bc5e2dd0).
-- [CI Host](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699845536) و[Native Build](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699837258). **تُراجع الحالة النهائية قبل الادعاء بالنجاح**.
+- [CI Host](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699845536) و[Native Build](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699837258). **تم التحقق من النتيجة: 199/199 Host Tests PASS وOpenOrbis PS4 Package Build PASS** على Code SHA `cb624085`. هذه اختبارات بناء وHost فقط، وليست تشغيل Sony Provider على PS4.
 - مصدر تاريخي للمسار `HTTP`: https://www.psdevwiki.com/ps4/Online_Connections
 - مرجع OSS لوظيفة Metadata والقيود والترخيص MIT: https://github.com/andshrew/PS4-Updates-Python
 

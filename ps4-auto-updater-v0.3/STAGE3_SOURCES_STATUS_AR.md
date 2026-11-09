@@ -3,7 +3,7 @@
 - ربطنا نموذج البيانات الأصلي بـ`UiSourceCandidate` محافظ لا يسمح بتحويل Retail HTTP أو FPKG submissions إلى تحديثات متوافقة، وأبقينا `Download/Install` مغلقَين. سجلات المصادر المختلفة لا تُدمَج إذا تساوى CUSA/Version لكن اختلف المصدر؛ المعلومات غير المتاحة تظهر فارغة.
 - ملفات المصدر: `ps4/src/ui_source_bridge.h/.c` و`ps4/src/ui_models.h/.c` و`ps4/src/scanner_ui.cpp`. Host Mock فقط يغذّي بيانات اصطناعية؛ لا يوجد اتصال Internet أو Sony أو FPKG Provider على PS4 حتى الآن.
 - كود المرحلة الرابعة ما زال PAUSED وغير مربوط. راجع `STAGE3_SOURCE_CONTRACT_AR.md` لبوابات ثقة المصدر وخطة العمل الآمنة.
-- اختبارات الدفعة الجديدة: [Host run](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699845536) و[Native build](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699837258) — لا تُعتبر ناجحة حتى اكتمال CI.
+- اختبارات الدفعة الجديدة: [Host run](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699845536) و[Native build](https://github.com/obsp081-coder/ps4-updates/actions/runs/42699837258) — **اكتملت بنجاح:** 199/199 Host Tests وOpenOrbis Native Package Build، على Code SHA `cb624085`.
 
 ---
 

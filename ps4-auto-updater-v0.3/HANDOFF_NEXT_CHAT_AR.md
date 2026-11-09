@@ -3,7 +3,7 @@
 - المرحلة الرابعة **PAUSED**، ولم يتم ربط `ui_compatibility.c` أو تشغيلها.
 - مصدر بيانات التحديثات الحالي **Offline فقط**؛ الجديد جسر Native مؤلف من `ui_source_bridge.c/.h` مع تحقّق Strict CUSA/Content ID/Version، وفصل مصدر Retail HTTP عن FPKG submitted حتى لو تطابقت النسخة. `UiUpdateInfo` يرفض حالة VERIFIED، والجسر ينشر UNKNOWN فقط، بدون Size/Firmware غير مثبتين.
 - Native Details يعرض مصدر الترشيح بأحرف مختصرة `RETAIL` أو `FPKG?` ضمن Mock محدد؛ لا يفتح تلقائيًا جلب بيانات الإنترنت ولا يدّعي تثبيتًا أو توافقًا.
-- المصدر وحقوقه وHTTPS ونتائج Live على PS4 **NOT TESTED**؛ راجع `STAGE3_SOURCE_CONTRACT_AR.md`. راجع CI للـSHA `cb624085` قبل اعتبار أي بناء ناجح.
+- المصدر وحقوقه وHTTPS ونتائج Live على PS4 **NOT TESTED**؛ راجع `STAGE3_SOURCE_CONTRACT_AR.md`. **CI على SHA `cb624085`: 199/199 Host Tests PASS + OpenOrbis Package Build PASS**. لا يوجد اختبار مصدر تحديثات حي على PS4.
 
 ---
 

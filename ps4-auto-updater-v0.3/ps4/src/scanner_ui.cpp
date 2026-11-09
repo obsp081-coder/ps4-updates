@@ -730,34 +730,62 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       unsigned count,unsigned good,unsigned errors,
                       int complete,int saved) {
+
     char number[64];
-    snprintf(number,sizeof(number),"%u",good);
-    summary(p,269,355,UI_AR_BASE_GAMES,number,CYAN);
+    /* The approved mockup has a welcome banner above four compact cards.
+     * Display only real read-only scanner and job data, no invented updates,
+     * network connection, installed packages or compatibility verdicts. */
+    panel(p,269,125,1109,75,0xFF0C2850u);
+    rect(p,279,143,5,39,CYAN);
+    panel(p,299,139,60,43,0xFF164881u);
+    rect(p,310,154,15,4,WHITE);
+    rect(p,315,149,5,14,WHITE);
+    rect(p,340,152,5,5,CYAN);
+    rect(p,347,159,5,5,CYAN);
+    arabic(p,375,129,UI_AR_WELCOME_TITLE,WHITE);
+    arabic(p,375,167,UI_AR_WELCOME_NOTE,MUTED);
+
+    const int metric_x[4]={269,548,827,1106};
+    const UiArabicLabel metric_labels[4]={
+        UI_AR_BASE_GAMES,UI_AR_INSTALL_UNKNOWN,UI_AR_SCAN_ERRORS,
+        UI_AR_ACTIVE_DOWNLOADS
+    };
+    const uint32_t metric_colors[4]={
+        CYAN,ACCENT,errors?AMBER:0xFF6CCFACu,CYAN
+    };
     unsigned install_unknown=0;
     for(unsigned i=0;i<count && entries;++i)
         if(entries[i].install_state<0)++install_unknown;
-    snprintf(number,sizeof(number),"%u",install_unknown);
-    summary(p,636,355,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
-    snprintf(number,sizeof(number),"%u",errors);
-    summary(p,1003,372,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
-
-    arabic(p,282,265,UI_AR_LIBRARY,WHITE);
-    arabic(p,858,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
-          complete?0xFF6CCFACu:AMBER);
-    /* A compact metadata table, deliberately omitting fictional columns
-     * for Update Version/Size or a fabricated compatibility verdict. */
-    panel(p,269,302,1109,39,0xFF102D50u);
-    arabic(p,373,306,UI_AR_GAME_COLUMN,MUTED);
-    arabic(p,1039,306,UI_AR_VERSION,MUTED);
-    arabic(p,1161,306,UI_AR_STATE_COLUMN,MUTED);
-    rect(p,286,340,1074,2,0xFF245D98u);
+    unsigned active_downloads=0;
+    for(unsigned i=0;i<ui_model_download_count();++i) {
+        const UiDownloadInfo *job=ui_model_download(i);
+        if(job && job->status==UI_JOB_DOWNLOADING)++active_downloads;
+    }
+    const unsigned metric_values[4]={
+        good,install_unknown,errors,active_downloads
+    };
+    for(unsigned i=0;i<4;++i) {
+        panel(p,metric_x[i],201,270,95,PANEL);
+        rect(p,metric_x[i]+15,213,4,71,metric_colors[i]);
+        arabic(p,metric_x[i]+28,205,metric_labels[i],MUTED);
+        snprintf(number,sizeof number,"%u",metric_values[i]);
+        ascii(p,metric_x[i]+34,257,number,WHITE,3,6);
+    }
+    arabic(p,282,301,UI_AR_LIBRARY,WHITE);
+    arabic(p,1035,301,complete?UI_AR_SCAN_COMPLETE:
+           UI_AR_SCAN_INCOMPLETE,complete?0xFF6CCFACu:AMBER);
+    panel(p,269,336,1109,39,0xFF102D50u);
+    arabic(p,373,340,UI_AR_GAME_COLUMN,MUTED);
+    arabic(p,1039,340,UI_AR_VERSION,MUTED);
+    arabic(p,1161,340,UI_AR_STATE_COLUMN,MUTED);
+    rect(p,286,374,1074,2,0xFF245D98u);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;
     if(visible>ROWS)visible=ROWS;
     for(unsigned i=0;i<visible;++i) {
         unsigned resolved=ui_nav_resolve(&navigation,navigation.scroll+i);
         if(resolved>=count)continue;
-        game_item(p,&entries[resolved],348+(int)i*99,
+        game_item(p,&entries[resolved],380+(int)i*92,
                   navigation.selected==navigation.scroll+i);
     }
     if(!navigation.available) {

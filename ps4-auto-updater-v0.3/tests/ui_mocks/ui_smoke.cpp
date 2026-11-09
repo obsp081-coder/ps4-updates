@@ -235,7 +235,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
              * The sampled row excludes CUSA/category/footer labels. */
             const uint32_t *frame=display_buffers[index];
             unsigned left_ink=0,right_ink=0;
-            for(unsigned yy=340;yy<382;++yy) {
+            for(unsigned yy=372;yy<414;++yy) {
                 for(unsigned xx=380;xx<469;++xx) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++left_ink;
@@ -267,7 +267,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
              * leaking into the Version column across x=792..823. */
             const uint32_t *frame=display_buffers[index];
             unsigned left_ink=0,right_ink=0,bleed=0;
-            for(unsigned yy=368; yy<399; ++yy) {
+            for(unsigned yy=400; yy<431; ++yy) {
                 for(unsigned xx=377; xx<463; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++left_ink;
@@ -306,7 +306,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                frame[545u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_search_no_match=true;
             if(pad_reads==8 &&
-               frame[365u*SCREEN_WIDTH+600u]==0xFF164881u &&
+               frame[405u*SCREEN_WIDTH+600u]==0xFF164881u &&
                frame[884u*SCREEN_WIDTH+1500u]==0xFF15589Du) {
                 saw_home_restored=true;
                 capture_ppm(frame,"search_restored_home",32768u);

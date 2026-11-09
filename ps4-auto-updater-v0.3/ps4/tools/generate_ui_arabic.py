@@ -109,6 +109,8 @@ LABELS = (
     ("FOOTER_SEARCH", "الأسهم: حروف ونتائج    إكس: كتابة أو تفاصيل    مربع: حذف    مثلث: لغة    دائرة: رجوع"),
     ("NEXT_MENU", "التالي"),
     ("PREV_MENU", "السابق"),
+    ("WELCOME_TITLE", "مرحباً بك في مدير تحديثات ألعاب بلايستيشن"),
+    ("WELCOME_NOTE", "افحص مكتبتك المحلية واستعرض المعلومات المتاحة بأمان"),
 )
 
 
@@ -129,6 +131,10 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     # Rasterize the long caption once at build time, not during frames.
     rail_font = ImageFont.truetype(str(font_path), 26,
                                    layout_engine=layout)
+    welcome_font = ImageFont.truetype(str(font_path), 29,
+                                      layout_engine=layout)
+    welcome_note_font = ImageFont.truetype(str(font_path), 21,
+                                           layout_engine=layout)
     header = [
         "/* GENERATED at build time: Arabic shaped RTL label masks, 2 bits/px.",
         " * Source NotoSansArabic-Regular (SIL Open Font License 1.1).",
@@ -150,7 +156,9 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     atlas = bytearray()
     entries = []
     for name, caption in LABELS:
-        label_font = rail_font if name == "RAIL_DETAILS" else font
+        label_font = (rail_font if name == "RAIL_DETAILS" else
+                      welcome_font if name == "WELCOME_TITLE" else
+                      welcome_note_font if name == "WELCOME_NOTE" else font)
         bbox = label_font.getbbox(caption, direction="rtl", language="ar")
         width = bbox[2] - bbox[0] + 4
         height = bbox[3] - bbox[1] + 4

@@ -128,6 +128,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # design. These are true native CPU framebuffer pixels,
                     # not a browser mock or actual PS4 screenshot.
                     if page == "home":
+                        # Welcome and four truthful compact status tiles:
+                        # no false update or source claims.
+                        self.assertEqual(
+                            pixels.getpixel((275, 155)), (12, 40, 80))
+                        banner = pixels.crop((375, 127, 1220, 198))
+                        self.assertGreater(sum(
+                            1 for r,g,b in banner.getdata()
+                            if r>155 and g>155 and b>155), 25)
+                        for x in (269, 548, 827, 1106):
+                            self.assertEqual(
+                                pixels.getpixel((x+8, 242)), (12,36,74),
+                                "Home status tile missing")
                         # The approved interface uses ONE wide Arabic
                         # sidebar, not four duplicate navigation tabs in
                         # the header. Two small read-only status cards
@@ -163,7 +175,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             "Active sidebar highlight missing cyan rim"
                         )
                         self.assertEqual(
-                            pixels.getpixel((600, 351)), (55, 173, 255),
+                            pixels.getpixel((600, 383)), (55, 173, 255),
                             "Selected game row missing cyan rim"
                         )
                         self.assertNotEqual(
@@ -195,7 +207,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             ("version", 1039, 1155),
                             ("state", 1161, 1366),
                         ):
-                            area = pixels.crop((left, 305, right, 339))
+                            area = pixels.crop((left, 339, right, 375))
                             bright = sum(
                                 1 for red, green, blue in area.getdata()
                                 if red >= 145 and green >= 145
@@ -246,7 +258,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # query and exited Search; three real game records
                         # must be visible again on the Home screen.
                         self.assertEqual(
-                            pixels.getpixel((600, 365)), (22, 72, 129),
+                            pixels.getpixel((600, 405)), (22, 72, 129),
                             "Search left an empty or unselected Home library"
                         )
                         self.assertEqual(
@@ -439,7 +451,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             for name in ("long_ltr", "long_rtl"):
                 with Image.open(preview / (name + ".ppm")) as frame:
                     for left, right in ((377, 463), (899, 986)):
-                        patch = frame.crop((left, 368, right, 399))
+                        patch = frame.crop((left, 400, right, 431))
                         white = sum(
                             1 for pixel in patch.getdata()
                             if pixel == (234, 244, 255)
@@ -448,7 +460,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             white, 8,
                             name + " title lost its visible prefix or end"
                         )
-                    gutter = frame.crop((994, 368, 1037, 399))
+                    gutter = frame.crop((994, 400, 1037, 431))
                     self.assertFalse(
                         any(pixel == (234, 244, 255)
                             for pixel in gutter.getdata()),

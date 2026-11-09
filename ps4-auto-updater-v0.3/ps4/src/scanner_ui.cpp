@@ -926,11 +926,11 @@ static void downloads(uint32_t *p) {
     footer(p,UI_AR_FOOTER_JOBS);
 }
 static void settings_screen(uint32_t *p) {
-    arabic(p,100,143,UI_AR_SETTINGS_HEADER,WHITE);
-    panel(p,90,222,1655,690,PANEL);
+    arabic(p,281,143,UI_AR_SETTINGS_HEADER,WHITE);
+    panel(p,270,222,1579,690,PANEL);
     /* Static read-only configuration preview. Never present a toggle as
      * writable until settings have a verified, reversible implementation. */
-    rect(p,130,247,1110,2,0xFF2C77C0u);
+    rect(p,305,247,1060,2,0xFF2C77C0u);
     panel(p,1398,232,286,47,0xFF123C74u);
     ascii(p,1435,239,"READ ONLY",CYAN,2,12);
     const UiArabicLabel labels[5]={
@@ -945,23 +945,23 @@ static void settings_screen(uint32_t *p) {
     };
     for(int i=0;i<5;++i) {
         const int y=268+i*112;
-        panel(p,132,y,1558,91,0xFF123158u);
-        rect(p,155,y+16,4,55,i==4?AMBER:CYAN);
-        arabic(p,185,y+20,labels[i],MUTED);
-        arabic(p,620,y+20,values[i],i==4?AMBER:WHITE);
+        panel(p,305,y,1510,91,0xFF123158u);
+        rect(p,328,y+16,4,55,i==4?AMBER:CYAN);
+        arabic(p,355,y+20,labels[i],MUTED);
+        arabic(p,810,y+20,values[i],i==4?AMBER:WHITE);
     }
-    arabic(p,159,860,UI_AR_SETTINGS_NOTE,MUTED);
+    arabic(p,328,860,UI_AR_SETTINGS_NOTE,MUTED);
     footer(p,UI_AR_FOOTER_SETTINGS);
 }
 static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
                           unsigned count) {
-    arabic(p,92,143,UI_AR_SEARCH_HINT,WHITE);
-    panel(p,90,230,1655,104,0xFF0E2A51u);
+    arabic(p,285,143,UI_AR_SEARCH_HINT,WHITE);
+    panel(p,270,230,1579,104,0xFF0E2A51u);
     if(navigation.query[0])
-        ui_title(p,130,240,1550,navigation.query,CYAN,3);
+        ui_title(p,305,240,1470,navigation.query,CYAN,3);
     else
-        arabic(p,130,243,UI_AR_SEARCH_BY_NAME,MUTED);
-    arabic(p,109,353,navigation.keyboard_arabic ?
+        arabic(p,305,243,UI_AR_SEARCH_BY_NAME,MUTED);
+    arabic(p,300,353,navigation.keyboard_arabic ?
            UI_AR_KEYBOARD_ARABIC:UI_AR_KEYBOARD_ENGLISH,CYAN);
     char line[64];
     snprintf(line,sizeof(line),"%u",navigation.available);
@@ -971,7 +971,7 @@ static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
     const unsigned max=ui_nav_keyboard_count(&navigation);
     for(unsigned i=0;i<max;++i) {
         int col=(int)(i%10), row=(int)(i/10);
-        int x=128+col*163, y=410+row*129;
+        int x=290+col*152, y=410+row*129;
         panel(p,x,y,140,105,
               !navigation.search_result_focus &&
               i==navigation.keyboard_index?ACCENT:0xFF112E51u);
@@ -990,24 +990,24 @@ static void search_screen(uint32_t *p,const ScannerUiEntry *entries,
     /* One read-only match preview fits below the four keyboard rows.
      * Down from the last keyboard row focuses this preview; Left/Right
      * cycles matches, Cross opens real game metadata in Details. */
-    panel(p,90,910,1655,83,navigation.search_result_focus ?
+    panel(p,270,910,1579,83,navigation.search_result_focus ?
           0xFF164881u:0xFF102D50u);
     if(navigation.available && entries) {
         const unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
-            cover(p,111,925,57,55,g->cusa);
-            game_title(p,193,917,930,g,WHITE,2);
-            ascii(p,194,957,g->cusa?g->cusa:"NO CUSA",CYAN,2,13);
+            cover(p,291,925,57,55,g->cusa);
+            game_title(p,360,917,847,g,WHITE,2);
+            ascii(p,361,957,g->cusa?g->cusa:"NO CUSA",CYAN,2,13);
             char selection[48];
             (void)snprintf(selection,sizeof selection,"%u / %u",
                 navigation.selected+1,navigation.available);
             ascii(p,1450,945,selection,MUTED,3,12);
             if(navigation.search_result_focus)
-                rect(p,90,918,5,66,CYAN);
+                rect(p,270,918,5,66,CYAN);
         }
     } else {
-        arabic(p,144,933,UI_AR_NO_MATCHING_GAME,AMBER);
+        arabic(p,303,933,UI_AR_NO_MATCHING_GAME,AMBER);
     }
     footer(p,UI_AR_FOOTER_SEARCH);
 }
@@ -1037,10 +1037,10 @@ static void draw(const ScannerUiEntry *entries,
         arabic(p,1223,872,UI_AR_CACHE_ONLY,MUTED);
         ascii(p,1238,928,progress_line,CYAN,2,28);
     }else if(scanning && navigation.page==UI_PAGE_HOME) {
-        arabic(p,118,218,UI_AR_READING_METADATA,WHITE);
-        panel(p,108,328,1700,344,PANEL);
-        ascii(p,150,408,progress_line,CYAN,4,75);
-        arabic(p,150,525,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+        arabic(p,293,218,UI_AR_READING_METADATA,WHITE);
+        panel(p,280,328,1540,344,PANEL);
+        ascii(p,315,408,progress_line,CYAN,4,70);
+        arabic(p,315,525,UI_AR_DOWNLOAD_BLOCKED,MUTED);
         footer(p,UI_AR_FOOTER_SCANNING);
     }else if(navigation.page==UI_PAGE_SEARCH) {
         search_screen(p,entries,count);
@@ -1049,8 +1049,8 @@ static void draw(const ScannerUiEntry *entries,
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
         if(final_view_is_stale || scanning) {
-            panel(p,90,937,1730,67,0xFF102D50u);
-            arabic(p,128,943,UI_AR_CACHE_PREVIEW,AMBER);
+            panel(p,270,937,1548,62,0xFF102D50u);
+            arabic(p,300,943,UI_AR_CACHE_PREVIEW,AMBER);
         }
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
         downloads(p);

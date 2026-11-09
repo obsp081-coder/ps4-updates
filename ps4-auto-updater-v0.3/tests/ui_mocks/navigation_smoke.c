@@ -33,8 +33,11 @@ int main(void) {
     const unsigned char art_bad[]=
         "pic1.png.bak\r\nfakepic1.png\r\npic1.png.old\r\n";
     const unsigned char art_partial[]="pic1.png";
+    const unsigned char art_nested[]=
+        "-rw-r--r-- 1 root wheel 9 Nov 9 08:00 other/pic1.png\r\n";
     assert(ui_art_probe_mentions_pic1(art_good,sizeof art_good-1u));
     assert(!ui_art_probe_mentions_pic1(art_bad,sizeof art_bad-1u));
+    assert(!ui_art_probe_mentions_pic1(art_nested,sizeof art_nested-1u));
     assert(!ui_art_probe_mentions_pic1(art_partial,sizeof art_partial-1u));
     assert(!ui_art_probe_mentions_pic1(NULL,0u));
     fill(0);

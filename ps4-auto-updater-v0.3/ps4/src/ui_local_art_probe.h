@@ -32,8 +32,10 @@ static inline int ui_art_probe_mentions_pic1(const unsigned char *data,
         while(last>start && (data[last-1]=='\r' ||
               data[last-1]==' ' || data[last-1]=='\t'))--last;
         size_t base=last;
+        /* FTP LIST may include a path rather than a basename. A nested
+         * path must not imply that pic1.png is directly in this folder. */
         while(base>start && data[base-1]!=' ' &&
-              data[base-1]!='\t' && data[base-1]!='/')--base;
+              data[base-1]!='\t')--base;
         static const char name[]="pic1.png";
         if(last-base==sizeof(name)-1u &&
            memcmp(data+base,name,sizeof(name)-1u)==0)return 1;

@@ -741,8 +741,9 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         rect(p,350,552,125,4,0xFF245F9Bu);
         ascii(p,361,472,"PS4",WHITE,3,3);
         arabic(p,529,411,UI_AR_NO_GAME_METADATA,AMBER);
-        arabic(p,529,469,complete?UI_AR_EMPTY_LIBRARY_HELP:
-               UI_AR_SCAN_INCOMPLETE,complete?MUTED:AMBER);
+        /* The scan status is already shown above the table.
+         * Offer useful FTP guidance in both complete/partial states. */
+        arabic(p,529,469,UI_AR_EMPTY_LIBRARY_HELP,MUTED);
         arabic(p,529,526,UI_AR_DOWNLOAD_BLOCKED,MUTED);
     }
     if(!saved)

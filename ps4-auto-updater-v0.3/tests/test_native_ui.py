@@ -199,13 +199,15 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 "Missing Arabic navigation caption at y="
                                 + str(rail_y)
                             )
-                        # Native table labels are independent of the
-                        # three mocked game rows; no invented update data
-                        # is required to draw Name / Version / State.
+                        # Approved screenshot uses the right-to-left game
+                        # table. Only optional model-backed update metadata
+                        # is rendered; empty provider fields stay unknown.
                         for label, left, right in (
-                            ("game", 375, 570),
-                            ("version", 1039, 1155),
-                            ("state", 1161, 1366),
+                            ("game", 1177, 1281),
+                            ("sfo version", 789, 947),
+                            ("observed update", 632, 782),
+                            ("size", 508, 608),
+                            ("state", 296, 427),
                         ):
                             area = pixels.crop((left, 339, right, 375))
                             bright = sum(
@@ -217,6 +219,17 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 bright, 15,
                                 "Missing table column heading: " + label
                             )
+                        # A real local square icon is now at the right
+                        # of each row, not at x285. No synthetic game art.
+                        self.assertEqual(
+                            pixels.getpixel((300, 430)), (22, 72, 129),
+                            "The game row reverted to left-side icon"
+                        )
+                        self.assertNotEqual(
+                            pixels.getpixel((1325, 425)),
+                            pixels.getpixel((300, 430)),
+                            "Right-side local icon is missing"
+                        )
                         self.assertEqual(
                             pixels.getpixel((1440, 300)), (17, 44, 80),
                             "Selected cover hero frame changed"

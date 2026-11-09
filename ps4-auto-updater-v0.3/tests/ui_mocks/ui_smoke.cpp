@@ -230,17 +230,18 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 saw_backdrop_after_replace=true;
         }
         if(mixed_title_probe) {
-            /* Native framebuffer pixel checks: mixed LTR-leading titles
-             * start near the left edge, RTL-leading titles at the right.
-             * The sampled row excludes CUSA/category/footer labels. */
+            /* Native framebuffer: RTL table title occupies x922..1273
+             * immediately left of native local cover x1292. LTR-leading
+             * starts at x922, RTL-leading starts at x1273. The sampled
+             * band excludes CUSA/version and cover pixels. */
             const uint32_t *frame=display_buffers[index];
             unsigned left_ink=0,right_ink=0;
             for(unsigned yy=372;yy<414;++yy) {
-                for(unsigned xx=380;xx<469;++xx) {
+                for(unsigned xx=929;xx<1006;++xx) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++left_ink;
                 }
-                for(unsigned xx=898;xx<991;++xx) {
+                for(unsigned xx=1180;xx<1267;++xx) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++right_ink;
                 }
@@ -260,21 +261,19 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             }
         }
         if(long_title_probe) {
-            /* The 418px title field on Home starts at x=374. A previous
-             * renderer dropped the WHOLE run of a long English or Arabic
-             * title, leaving an empty name. Confirm both the beginning and
-             * visual truncation end have painted glyphs, with no white ink
-             * leaking into the Version column across x=792..823. */
+            /* Home's title field is x922..1273, just left of cover
+             * x1292..1361. Ensure long LTR and Arabic RTL names paint at
+             * both ends and never bleed into the icon gutter. */
             const uint32_t *frame=display_buffers[index];
             unsigned left_ink=0,right_ink=0,bleed=0;
-            for(unsigned yy=400; yy<431; ++yy) {
-                for(unsigned xx=377; xx<463; ++xx)
+            for(unsigned yy=385; yy<421; ++yy) {
+                for(unsigned xx=928; xx<1005; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++left_ink;
-                for(unsigned xx=899; xx<986; ++xx)
+                for(unsigned xx=1175; xx<1267; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++right_ink;
-                for(unsigned xx=994; xx<1037; ++xx)
+                for(unsigned xx=1274; xx<1292; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++bleed;
             }
@@ -884,7 +883,7 @@ int main() {
     assert(allocated==0 && video_closed==1);
 
     /* Long game titles MUST remain visible and indicate truncation.
-     * Both directions exercise the actual 418px native title column.
+     * Both directions exercise the actual 351px native RTL table field.
      * The data below is synthetic host-only text, not retail game data. */
     ScannerUiEntry long_title={
         "CUSA22223",

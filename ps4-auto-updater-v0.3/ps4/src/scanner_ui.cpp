@@ -631,11 +631,11 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
         rect(p,287,y+5,855,2,0xFF268DD7u);
     }
     cover(p,285,y+11,68,66,g?g->cusa:nullptr);
-    game_title(p,374,y+5,440,g,WHITE,2);
+    game_title(p,374,y+5,418,g,WHITE,2);
     ascii(p,374,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     /* Only metadata-verified and unknown-install markers are shown.
      * Game presence in appmeta is never called proof of installation. */
-    ascii(p,929,y+16,fallback_version(g),CYAN,2,16);
+    ascii(p,826,y+30,fallback_version(g),CYAN,2,14);
     /* Short row status stays inside the narrowed 899px list without
      * misrepresenting SFO metadata as an installed package. */
     const int base_meta=g && g->category &&
@@ -644,7 +644,7 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     const UiArabicLabel row_status =
         base_meta && g->install_state<0 ? UI_AR_INSTALL_UNKNOWN :
         category_label(g);
-    arabic(p,928,y+37,row_status,
+    arabic(p,966,y+25,row_status,
            g->metadata_verified?MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
@@ -664,19 +664,26 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     arabic(p,282,265,UI_AR_LIBRARY,WHITE);
     arabic(p,858,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
           complete?0xFF6CCFACu:AMBER);
+    /* A compact metadata table, deliberately omitting fictional columns
+     * for Update Version/Size or a fabricated compatibility verdict. */
+    panel(p,269,302,899,39,0xFF102D50u);
+    arabic(p,373,306,UI_AR_GAME_COLUMN,MUTED);
+    arabic(p,824,306,UI_AR_VERSION,MUTED);
+    arabic(p,961,306,UI_AR_STATE_COLUMN,MUTED);
+    rect(p,286,340,864,2,0xFF245D98u);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;
     if(visible>ROWS)visible=ROWS;
     for(unsigned i=0;i<visible;++i) {
         unsigned resolved=ui_nav_resolve(&navigation,navigation.scroll+i);
         if(resolved>=count)continue;
-        game_item(p,&entries[resolved],332+(int)i*99,
+        game_item(p,&entries[resolved],348+(int)i*99,
                   navigation.selected==navigation.scroll+i);
     }
     if(!navigation.available)
         arabic(p,299,397,count?UI_AR_NO_MATCHING_GAME:UI_AR_NO_GAME_METADATA,AMBER);
     if(!saved)
-        arabic(p,290,925,UI_AR_MISSING_INVENTORY,AMBER);
+        arabic(p,455,955,UI_AR_MISSING_INVENTORY,AMBER);
 
     /* Selected-game hero uses the EXISTING 128px local icon cache.
      * No fabricated cover, update version or compatibility status.

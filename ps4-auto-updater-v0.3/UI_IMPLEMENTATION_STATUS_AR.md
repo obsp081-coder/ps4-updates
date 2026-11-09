@@ -32,6 +32,14 @@
 - Arabic shaping ثابتة في عناصر UI. العناوين المختلطة تستخدم LTR/RTL runs حسب أول حرف واضح؛ تظهر النتائج في `mixed_ltr.png`/`mixed_rtl.png`. صُحح انهيار عرض الأسماء الطويلة إلى خانة فارغة، وأضيف Visual Ellipsis مع `long_ltr.png`/`long_rtl.png`. تم ضبط اتصال Dynamic Arabic glyphs للكلمات مثل «لعبة». **لا ندعي UAX #9 كاملًا أو دعم CJK.**
 - لوحة مفاتيح داخلية بدل استدعاء PS4 IME غير مثبت على FW14. تعرض صفحة Search نتيجة لعبة حقيقية (اسم وCUSA وغلاف محلي إن توفر) أسفل لوحة المفاتيح، وليس عدد النتائج فقط. سهم أسفل من آخر صف يركز النتيجة، يمين/يسار لتغيير النتيجة، وإكس يفتح تفاصيلها مع العودة إلى البحث بالدائرة.
 
+## قياس native 1080p وIdle UI — 9 نوفمبر 2026
+
+- **HOST BENCHMARK ADDED:** في `tests/ui_mocks/ui_smoke.cpp` شغّلت واجهة Native نفسها بدقة 1920×1080 عبر `VideoOut/Pad` mocks دون كتابة الصور على القرص أثناء القياس. مثال من GitHub Actions `42598165602`: **25.728ms Host CPU إجمالًا عبر 12 Frame Submissions (2.144ms/submission)**. يشمل Pad mock والتنقل، لذلك **ليس Render-only time ولا Hardware PS4 FPS**، ولا يوضع حد زمن Pass/Fail مع اختلاف مواصفات GitHub Runners.
+- **MEMORY CHECK:** حجم Direct Memory المحجوز لاثنين من Framebuffers بدقة 1080p مع محاذاة 2 MiB هو **16,777,216 bytes = 16 MiB**. هذا حجز Framebuffers **فقط** وليس كامل استهلاك RAM؛ صور Cache وPNG Decoder وWorker stacks ونصوص الواجهة وغيرها إضافية.
+- **IDLE REGRESSION:** اختبار جديد يؤكد أن **120 Pad Polls دون أزرار أو وصول Cover جديدة تؤدي إلى Frame Submission واحدة فقط** (العرض الأول)، ولا يعيد رسم 1080p كل دورة Polling.
+- **VERIFIED:** آخر Commit كود `1ed079bf4bdf09350da4b503c1cc2fbfb4bfd85c` اجتاز **181 Host Tests** و**OpenOrbis Native Build** في [run 42598165602](https://github.com/obsp081-coder/ps4-updates/actions/runs/42598165602).
+- **ENGINEERING VERDICT: MODIFY:** تجنب تعديل Renderer منخفض المستوى لتسريع تخميني ما دام Baseline Host ليس عائقًا مثبتًا؛ الأولوية لمراجعة سلوك Flip/Memory teardown وLazy FTP cover worker على Hardware حقيقي، ثم مقارنة التصميم بالمرجع. لا إرسال PKG حتى استيفاء الشروط.
+
 ## توحيد فلاتر البحث وتحسين Arabic Search — 9 نوفمبر 2026
 
 - **FIXED IN CODE:** من صفحة Details المفتوحة عبر Search، الضغط على L1 للعودة إلى Home أو R1/Square للذهاب إلى Downloads لم يعد يترك Query قديمًا يخفي ألعاب Home. يحتفظ `ui_nav_action` بالـCUSA المحددة ويعيد المكتبة الكاملة. إذا أزال Rescan اللعبة أثناء Details، يغلق صفحة اللعبة ويزيل فلتر البحث القديم بدل إظهار مكتبة خالية كاذبة.

@@ -728,35 +728,66 @@ static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
     arabic(p,x+36,y+6,name,MUTED);
     ascii(p,x+36,y+63,value,WHITE,3,28);
 }
-static void game_item(uint32_t *p, const ScannerUiEntry *g,
+/* RTL game table matching the approved six-row visual hierarchy:
+ * cover/icon at the far right, local title and CUSA beside it, then
+ * observed metadata version, optional update metadata, and a cautious
+ * state at the far left. The UI never invents download sources or
+ * interprets an appmeta record as proof of installed game/patch. */
+static UiArabicLabel compact_state(const ScannerUiEntry *g) {
+    if(!g || !g->metadata_verified)
+        return UI_AR_TABLE_STATE_UNKNOWN;
+    if(!g->category)
+        return UI_AR_TABLE_STATE_OTHER;
+    if(!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
+       !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"))
+        return g->install_state<0 ? UI_AR_TABLE_STATE_UNKNOWN :
+               UI_AR_TABLE_STATE_BASE;
+    if(!strcmp(g->category,"gp") || !strcmp(g->category,"gdp"))
+        return UI_AR_TABLE_STATE_PATCH;
+    if(!strcmp(g->category,"ac"))
+        return UI_AR_TABLE_STATE_DLC;
+    return UI_AR_TABLE_STATE_OTHER;
+}
+static void game_item(uint32_t *p,const ScannerUiEntry *g,
                       int y,int is_selected) {
-    /* The approved composition gives the game list most of the width.
-     * Keep all six rows and enlarge only their horizontal layout. */
     panel(p,269,y,1109,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) {
         rect(p,269,y+10,5,68,CYAN);
-        /* Thin two-tone focus rim; painting a whole-row gradient on CPU
-         * would cost considerably more than these three bounded strokes. */
         rect(p,281,y+3,1067,2,CYAN);
         rect(p,281,y+5,1067,2,0xFF1765ABu);
         rect(p,281,y+81,1067,2,0xFF268DD7u);
+        /* A light right-hand focus tick frames the native game icon. */
+        rect(p,1371,y+12,3,64,CYAN);
     }
-    cover(p,285,y+11,68,66,g?g->cusa:nullptr);
-    game_title(p,374,y+5,615,g,WHITE,2);
-    ascii(p,374,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
-    /* Only metadata-verified and unknown-install markers are shown.
-     * Game presence in appmeta is never called proof of installation. */
-    ascii(p,1040,y+30,fallback_version(g),CYAN,2,14);
-    /* Short row status stays inside the expanded 1109px list without
-     * misrepresenting SFO metadata as an installed package. */
-    const int base_meta=g && g->category &&
-        (!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
-         !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"));
-    const UiArabicLabel row_status =
-        base_meta && g->install_state<0 ? UI_AR_INSTALL_UNKNOWN :
-        category_label(g);
-    arabic(p,1164,y+25,row_status,
-           g->metadata_verified?MUTED:AMBER);
+    if(!g)return;
+    /* icon0.png is a genuine square local game icon, not a stretched
+     * fictional 16:9 screenshot. Cached icon lookup is non-blocking. */
+    cover(p,1292,y+11,69,66,g->cusa);
+    game_title(p,922,y+3,351,g,WHITE,2);
+    ascii(p,989,y+54,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
+    ascii(p,793,y+30,fallback_version(g),CYAN,2,13);
+
+    const UiUpdateInfo *candidate=g->cusa ?
+        ui_model_update_for(g->cusa,0):nullptr;
+    if(candidate) {
+        ascii(p,644,y+30,candidate->version,WHITE,2,12);
+        if(candidate->size_bytes) {
+            char size[24];
+            (void)snprintf(size,sizeof size,"%llu MB",
+                           (unsigned long long)
+                           (candidate->size_bytes/1048576u));
+            ascii(p,500,y+30,size,MUTED,2,11);
+        } else {
+            ascii(p,531,y+30,"--",MUTED,2,2);
+        }
+    } else {
+        ascii(p,677,y+30,"--",MUTED,2,2);
+        ascii(p,531,y+30,"--",MUTED,2,2);
+    }
+    const UiArabicLabel state=compact_state(g);
+    arabic(p,292,y+24,state,
+           g->metadata_verified && g->install_state>=0 ?
+               MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       unsigned count,unsigned good,unsigned errors,
@@ -822,9 +853,13 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     arabic(p,1035,301,complete?UI_AR_SCAN_COMPLETE:
            UI_AR_SCAN_INCOMPLETE,complete?0xFF6CCFACu:AMBER);
     panel(p,269,336,1109,39,0xFF102D50u);
-    arabic(p,373,340,UI_AR_GAME_COLUMN,MUTED);
-    arabic(p,1039,340,UI_AR_VERSION,MUTED);
-    arabic(p,1161,340,UI_AR_STATE_COLUMN,MUTED);
+    /* Five native Arabic table headings right-to-left, like the
+     * approved reference, but never label SFO metadata as installed. */
+    arabic(p,1180,340,UI_AR_GAME_COLUMN,MUTED);
+    arabic(p,789,340,UI_AR_TABLE_META_VERSION,MUTED);
+    arabic(p,634,340,UI_AR_TABLE_UPDATE_VERSION,MUTED);
+    arabic(p,513,340,UI_AR_TABLE_UPDATE_SIZE,MUTED);
+    arabic(p,300,340,UI_AR_STATE_COLUMN,MUTED);
     rect(p,286,374,1074,2,0xFF245D98u);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;

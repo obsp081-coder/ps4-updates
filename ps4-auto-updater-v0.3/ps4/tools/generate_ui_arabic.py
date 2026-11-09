@@ -134,6 +134,14 @@ LABELS = (
     ("SELECTED_JOB", "تفاصيل المهمة المحددة"),
     ("NO_SELECTED_JOB", "لا توجد مهمة محددة"),
     ("DOWNLOAD_PREVIEW", "التنزيل متوقف حتى التحقق من المصادر والتوافق"),
+    ("TABLE_META_VERSION", "إصدار البيانات"),
+    ("TABLE_UPDATE_VERSION", "التحديث المرصود"),
+    ("TABLE_UPDATE_SIZE", "الحجم"),
+    ("TABLE_STATE_UNKNOWN", "غير مؤكد"),
+    ("TABLE_STATE_BASE", "بيانات لعبة"),
+    ("TABLE_STATE_PATCH", "بيانات تحديث"),
+    ("TABLE_STATE_DLC", "بيانات إضافة"),
+    ("TABLE_STATE_OTHER", "بيانات أخرى"),
 )
 
 
@@ -158,6 +166,8 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
                                          layout_engine=layout)
     metric_font = ImageFont.truetype(str(font_path), 22,
                                      layout_engine=layout)
+    table_font = ImageFont.truetype(str(font_path), 21,
+                                    layout_engine=layout)
     welcome_font = ImageFont.truetype(str(font_path), 29,
                                       layout_engine=layout)
     welcome_note_font = ImageFont.truetype(str(font_path), 21,
@@ -184,6 +194,7 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     entries = []
     for name, caption in LABELS:
         label_font = (
+            table_font if name.startswith("TABLE_") else
             metric_font if name.startswith("METRIC_") else
             rail_long_font if name in ("AVAILABLE_MENU", "INSTALLED_MENU")
             else rail_font if name in (

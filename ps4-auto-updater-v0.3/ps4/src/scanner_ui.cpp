@@ -426,7 +426,9 @@ static void header(uint32_t *p, UiPage page) {
     ascii(p,84,49,"PS4",WHITE,2,3);
     /* Royal-blue dual-language masthead. Never claim network access,
      * installed status or verified firmware in preview-only mode. */
-    ascii(p,156,12,"PS4 GAME UPDATE MANAGER",CYAN,2,27);
+    /* Bounds describe available pixel space, not only character count.
+      * The proportional Noto title is wider than the old bitmap cells. */
+    ascii(p,156,12,"PS4 GAME UPDATE MANAGER",CYAN,2,48);
     arabic(p,154,36,UI_AR_APP_NAME,WHITE);
     arabic(p,156,80,UI_AR_LOCAL_READ_ONLY,MUTED);
 
@@ -665,16 +667,17 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                    g->metadata_verified?WHITE:AMBER);
             rect(p,1241,773,553,1,0xFF204568u);
             arabic(p,1240,782,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-            arabic(p,1240,825,UI_AR_DOWNLOAD_BLOCKED,MUTED);
+            arabic(p,1240,807,UI_AR_DOWNLOAD_BLOCKED,MUTED);
             /* Navigates to read-only details; this is NOT a download button. */
-            panel(p,1241,866,553,57,0xFF15589Du);
-            rect(p,1256,873,5,42,CYAN);
-            arabic(p,1293,873,UI_AR_FULL_DETAILS,WHITE);
+            panel(p,1241,849,553,57,0xFF15589Du);
+            rect(p,1256,857,5,40,CYAN);
+            arabic(p,1293,856,UI_AR_FULL_DETAILS,WHITE);
         }
     } else {
         arabic(p,1240,362,UI_AR_NO_SELECTED_GAME,MUTED);
     }
-    arabic(p,1237,939,UI_AR_DATA_NOT_PROOF,MUTED);
+    /* Keep final warning INSIDE the card, not over its bottom border. */
+    arabic(p,1237,912,UI_AR_DATA_NOT_PROOF,MUTED);
     snprintf(number,sizeof(number),"%u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);

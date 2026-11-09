@@ -120,6 +120,25 @@ int main(void) {
     assert(nav.search_result_focus==0);
     assert(ui_nav_action(&nav,UI_ACT_BACK));
     assert(nav.page==UI_PAGE_HOME && !nav.exit_requested);
+    assert(nav.available==9 && nav.query[0]==0);
+
+    /* Search matches do not become an accidental permanent Home filter.
+     * The currently selected CUSA follows its original list index when
+     * leaving Search, including after switching results in the preview. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Sample");
+    assert(nav.available==7);
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_RIGHT));
+    assert(ui_nav_resolve(&nav,nav.selected)==2);
+    assert(ui_nav_action(&nav,UI_ACT_BACK)); /* leave result focus */
+    assert(ui_nav_action(&nav,UI_ACT_BACK)); /* exit Search */
+    assert(nav.page==UI_PAGE_HOME && nav.available==9);
+    assert(nav.query[0]==0 && nav.selected==2 && nav.scroll==0);
+    assert(!nav.search_result_focus && !nav.details_from_search);
+    assert(!strcmp(entries[ui_nav_resolve(&nav,nav.selected)].cusa,
+                   "CUSA00002"));
 
     /* An empty search must not focus or open fabricated results. */
     assert(ui_nav_action(&nav,UI_ACT_SEARCH));
@@ -129,7 +148,31 @@ int main(void) {
     assert(!nav.search_result_focus);
     assert(!ui_nav_action(&nav,UI_ACT_OPEN) || nav.page==UI_PAGE_SEARCH);
     assert(ui_nav_action(&nav,UI_ACT_BACK));
-    assert(nav.page==UI_PAGE_HOME);
+    assert(nav.page==UI_PAGE_HOME && nav.available==9);
+    assert(nav.query[0]==0 && !nav.search_result_focus);
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.page==UI_PAGE_DETAILS); /* game still accessible */
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+
+    /* OPTIONS while Search/Details is active must also clean up the
+     * temporary filter before returning to Home. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"no-match");
+    assert(nav.available==0);
+    assert(ui_nav_action(&nav,UI_ACT_SETTINGS));
+    assert(nav.page==UI_PAGE_SETTINGS && nav.query[0]==0);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && nav.available==9);
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
+    ui_nav_filter(&nav,entries,9,"Uncharted");
+    nav.keyboard_index=36;
+    assert(ui_nav_action(&nav,UI_ACT_DOWN));
+    assert(ui_nav_action(&nav,UI_ACT_OPEN));
+    assert(nav.page==UI_PAGE_DETAILS && nav.details_from_search);
+    assert(ui_nav_action(&nav,UI_ACT_SETTINGS));
+    assert(nav.page==UI_PAGE_SETTINGS && nav.query[0]==0);
+    assert(ui_nav_action(&nav,UI_ACT_BACK));
+    assert(nav.page==UI_PAGE_HOME && nav.available==9);
 
     fill(256);
     assert(nav.available==256);

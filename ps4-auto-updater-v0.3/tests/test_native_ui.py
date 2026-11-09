@@ -236,6 +236,21 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 bright, 15,
                                 "Missing table column heading: " + label
                             )
+                        # With exactly three model fixture records,
+                        # the remaining slots are purely visual, with no
+                        # fake CUSA, patch metadata or cover art.
+                        self.assertEqual(
+                            pixels.getpixel((325, 700)), (8, 27, 53),
+                            "Empty fourth game slot lost its muted fill"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1292, 667)), (36, 80, 121),
+                            "Unfilled icon outline in fourth slot missing"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1325, 687)), (8, 27, 53),
+                            "Empty icon slot contains false artwork"
+                        )
                         # A real local square icon is now at the right
                         # of each row, not at x285. No synthetic game art.
                         self.assertEqual(

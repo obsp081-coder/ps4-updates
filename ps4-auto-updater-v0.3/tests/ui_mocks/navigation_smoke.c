@@ -227,6 +227,10 @@ int main(void) {
     assert(nav.page==UI_PAGE_SETTINGS && nav.available==9 &&
            nav.query[0]==0 && !nav.details_from_search);
     assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));
+    assert(nav.page==UI_PAGE_ABOUT && nav.available==9);
+    /* Search is still available via Triangle, but no longer takes one of
+     * the eight Sidebar positions. Its Arabic keyboard choice survives. */
+    assert(ui_nav_action(&nav,UI_ACT_SEARCH));
     assert(nav.page==UI_PAGE_SEARCH && nav.available==9 &&
            nav.keyboard_arabic==1);
     assert(ui_nav_action(&nav,UI_ACT_PREVIOUS_TAB));

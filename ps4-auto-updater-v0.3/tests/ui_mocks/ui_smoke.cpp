@@ -413,7 +413,6 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             /* The left Arabic rail is now the ONLY navigation source.
              * Capture real screen states from its active highlight, not
              * removed duplicate top tabs. */
-            const uint32_t active=0xFF15589Du;
             /* Details and Search are not rail tabs in the approved eight-
              * section design. Capture those auxiliary screens by the
              * deterministic Pad sequence, not by stale tab y-positions. */

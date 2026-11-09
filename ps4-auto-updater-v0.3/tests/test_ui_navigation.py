@@ -27,7 +27,7 @@ class UiNavigationTests(unittest.TestCase):
             # It is Host CPU time, NOT PS4 runtime or a pass/fail threshold.
             import re
             baseline = re.search(
-                r"UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: ([0-9]+\\.[0-9]+)",
+                r"UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: ([0-9]+\.[0-9]+)",
                 test.stdout,
             )
             self.assertIsNotNone(

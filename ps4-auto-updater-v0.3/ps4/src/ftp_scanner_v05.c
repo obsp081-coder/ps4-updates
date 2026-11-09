@@ -1118,8 +1118,12 @@ static void probe_pic1_candidate(void) {
         logmsg("WIDE_ART_PIC1_LISTED",
                ui_art_probe_mentions_pic1(listing,len));
     /* Always close the isolated diagnostic control channel, even if the
-     * FTP server sends unexpected replies. This never touches icon0 state. */
+     * FTP server sends unexpected replies. The legacy anonymous-auth
+     * guard is process-global, not per socket: reset it so a USER attempt
+     * on this diagnostic socket cannot suppress the FIRST USER attempt
+     * on the still-unused normal icon0 socket. */
     NET_CLOSE(diagnostic);
+    ftp_auth_attempted=0;
 }
 #endif
 

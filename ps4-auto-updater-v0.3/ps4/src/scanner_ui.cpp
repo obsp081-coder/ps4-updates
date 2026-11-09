@@ -323,6 +323,17 @@ static int ui_title_advance(const uint32_t *cp,size_t n,size_t i,
     const char c[2]={ui_title_ascii(cp[i]),0};
     return latin_width(c,scale,1);
 }
+/* Measure actual build-time advances, never estimate from UTF-8 byte count.
+ * The max 191 codepoint title remains bounded and allocation-free. */
+static int ui_title_measure(const uint32_t *cp,size_t n,int scale) {
+    int width=0;
+    for(size_t i=0;i<n;++i) {
+        const int step=ui_title_advance(cp,n,i,scale);
+        if(step<0 || step>WIDTH-width)return WIDTH+1;
+        width+=step;
+    }
+    return width;
+}
 /* Caller ensures its measured run fits. We still clip the complete glyph
  * to the allocated title column to avoid painting neighbouring panels. */
 static void ui_title_paint(uint32_t *p,int pen,int y,int left,int right,
@@ -345,6 +356,11 @@ static void ui_title_paint(uint32_t *p,int pen,int y,int left,int right,
             ascii(p,pen,y+18,single,color,scale,1);
     }
 }
+/* Truncate by glyph advance, not UTF-8 bytes and not whole-direction
+ * runs. Previously a single long LTR or Arabic RTL run was silently
+ * discarded when its full width exceeded the title column. The logical
+ * prefix stays visible; a visual trailing "..." indicates omitted data.
+ * This is a bounded UI convention, not full Unicode bidi/line breaking. */
 static void ui_title(uint32_t *p,int x,int y,int width,
                       const char *string,uint32_t color,int ascii_scale) {
     if(!p || !string || width<=0 || ascii_scale<2 || ascii_scale>4 ||
@@ -352,16 +368,47 @@ static void ui_title(uint32_t *p,int x,int y,int width,
     if(width>WIDTH-x)width=WIDTH-x;
     uint32_t cp[192]={};
     const size_t n=utf8_title(string,cp);
+    if(!n)return;
+    UiTitleLayout full={};
+    if(ui_title_layout(cp,n,&full)!=0)return;
+
+    const int dots_width=latin_width("...",ascii_scale,3);
+    const int too_wide=ui_title_measure(cp,n,ascii_scale)>width;
+    size_t visible=n;
+    if(too_wide) {
+        const int budget=width-dots_width;
+        if(budget<0)return; /* Caller supplied too narrow a column. */
+        int consumed=0;
+        visible=0;
+        for(size_t i=0;i<n;++i) {
+            const int step=ui_title_advance(cp,n,i,ascii_scale);
+            if(step<0 || step>budget-consumed)break;
+            consumed+=step;
+            ++visible;
+        }
+        /* Contextual Arabic presentation forms can change advance when
+         * a truncated letter becomes the final connected glyph. */
+        while(visible &&
+              ui_title_measure(cp,visible,ascii_scale)>budget)
+            --visible;
+    }
+
     UiTitleLayout layout={};
-    if(ui_title_layout(cp,n,&layout)!=0)return;
+    if(ui_title_layout(cp,visible,&layout)!=0)return;
+    /* Keep original paragraph direction when a very narrow title budget
+     * contains only leading neutral punctuation. */
+    layout.paragraph=full.paragraph;
     const int right=x+width;
     int cursor=layout.paragraph==UI_TITLE_RTL?right:x;
     for(unsigned r=0;r<layout.count;++r) {
         const UiTitleRun run=layout.runs[r];
         int advance=0;
         for(unsigned j=run.start;j<run.start+run.length;++j) {
-            const int cell=ui_title_advance(cp,n,j,ascii_scale);
-            if(cell<0 || advance>width-cell) {advance=width+1;break;}
+            const int cell=ui_title_advance(cp,visible,j,ascii_scale);
+            if(cell<0 || advance>width-cell) {
+                advance=width+1;
+                break;
+            }
             advance+=cell;
         }
         if(advance>width)break;
@@ -370,13 +417,19 @@ static void ui_title(uint32_t *p,int x,int y,int width,
         if(left<x || left+advance>right)break;
         int pen=run.direction==UI_TITLE_RTL?left+advance:left;
         for(unsigned j=run.start;j<run.start+run.length;++j) {
-            const int step=ui_title_advance(cp,n,j,ascii_scale);
+            const int step=ui_title_advance(cp,visible,j,ascii_scale);
             if(run.direction==UI_TITLE_RTL)pen-=step;
-            ui_title_paint(p,pen,y,x,right,cp[j],cp,n,j,color,
+            ui_title_paint(p,pen,y,x,right,cp[j],cp,visible,j,color,
                            ascii_scale);
             if(run.direction==UI_TITLE_LTR)pen+=step;
         }
         cursor=layout.paragraph==UI_TITLE_RTL?left:left+advance;
+    }
+    if(too_wide && dots_width<=width) {
+        const int dots_x=layout.paragraph==UI_TITLE_RTL ?
+                         cursor-dots_width:cursor;
+        if(dots_x>=x && dots_x+dots_width<=right)
+            ascii(p,dots_x,y+18,"...",color,ascii_scale,3);
     }
 }
 static UiArabicLabel category_label(const ScannerUiEntry *g) {

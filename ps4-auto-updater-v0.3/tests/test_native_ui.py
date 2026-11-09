@@ -482,8 +482,8 @@ class NativeUiSmokeTests(unittest.TestCase):
             # their entire long title or overwrite the Version column.
             for name in ("long_ltr", "long_rtl"):
                 with Image.open(preview / (name + ".ppm")) as frame:
-                    for left, right in ((377, 463), (899, 986)):
-                        patch = frame.crop((left, 400, right, 431))
+                    for left, right in ((928, 1005), (1175, 1267)):
+                        patch = frame.crop((left, 385, right, 421))
                         white = sum(
                             1 for pixel in patch.getdata()
                             if pixel == (234, 244, 255)
@@ -492,11 +492,11 @@ class NativeUiSmokeTests(unittest.TestCase):
                             white, 8,
                             name + " title lost its visible prefix or end"
                         )
-                    gutter = frame.crop((994, 400, 1037, 431))
+                    gutter = frame.crop((1274, 385, 1292, 421))
                     self.assertFalse(
                         any(pixel == (234, 244, 255)
                             for pixel in gutter.getdata()),
-                        name + " bled into the version column"
+                        name + " bled into the right-side game icon gutter"
                     )
 
             # Both images must contain the rendered game title, not two

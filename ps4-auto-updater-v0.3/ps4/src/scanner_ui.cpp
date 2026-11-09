@@ -487,15 +487,26 @@ static void header(uint32_t *p) {
     }
     rect(p,0,112,WIDTH,3,ACCENT);
     rect(p,0,112,743,2,CYAN);
-    panel(p,68,27,62,62,ACCENT);
-    ascii(p,84,49,"PS4",WHITE,2,3);
+    /* Native cyan controller logo, only bounded rectangles. */
+    panel(p,60,21,75,72,0xFF07376Au);
+    rect(p,60,21,75,2,CYAN);
+    rect(p,60,91,75,2,CYAN);
+    rect(p,60,23,2,68,0xFF187ACAu);
+    rect(p,133,23,2,68,0xFF187ACAu);
+    panel(p,75,46,46,31,0xFF1476CBu);
+    rect(p,83,55,14,4,WHITE);
+    rect(p,88,50,4,14,WHITE);
+    rect(p,105,53,5,5,CYAN);
+    rect(p,113,60,5,5,WHITE);
     /* Royal-blue dual-language masthead. Never claim network access,
      * installed status or verified firmware in preview-only mode. */
     /* Bounds describe available pixel space, not only character count.
       * The proportional Noto title is wider than the old bitmap cells. */
-    ascii(p,156,12,"PS4 GAME UPDATE MANAGER",CYAN,2,48);
-    arabic(p,154,36,UI_AR_APP_NAME,WHITE);
-    arabic(p,156,80,UI_AR_LOCAL_READ_ONLY,MUTED);
+    /* White reference-weight headline, compact Arabic subtitle; neither
+     * an online indicator nor a falsely verified firmware status. */
+    ascii(p,157,4,"PS4 GAME UPDATE MANAGER",WHITE,3,48);
+    arabic(p,157,44,UI_AR_APP_NAME,WHITE);
+    arabic(p,158,82,UI_AR_LOCAL_READ_ONLY,MUTED);
 
     /* The 252px Arabic sidebar is the one navigation surface.
      * Repeating clickable-looking tabs in the header wasted space and

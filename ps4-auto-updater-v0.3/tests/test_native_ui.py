@@ -148,6 +148,16 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((950, 50)), (10, 30, 62),
                             "Removed top navigation tab returned"
                         )
+                        # Reference hierarchy uses a large white masthead
+                        # and still displays two honest non-clickable badges.
+                        masthead = pixels.crop((155, 4, 615, 44))
+                        white_ink = sum(
+                            1 for red,green,blue in masthead.getdata()
+                            if red>205 and green>205 and blue>205
+                        )
+                        self.assertGreater(
+                            white_ink, 60,
+                            "The white English masthead is missing")
                         for label, bounds in (
                             ("read only", (1333, 46, 1535, 80)),
                             ("fw target", (1595, 46, 1840, 80)),

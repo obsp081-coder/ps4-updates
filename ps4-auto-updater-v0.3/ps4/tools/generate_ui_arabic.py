@@ -168,6 +168,10 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
                                      layout_engine=layout)
     table_font = ImageFont.truetype(str(font_path), 21,
                                     layout_engine=layout)
+    header_font = ImageFont.truetype(str(font_path), 25,
+                                     layout_engine=layout)
+    header_note_font = ImageFont.truetype(str(font_path), 19,
+                                          layout_engine=layout)
     welcome_font = ImageFont.truetype(str(font_path), 29,
                                       layout_engine=layout)
     welcome_note_font = ImageFont.truetype(str(font_path), 21,
@@ -194,6 +198,8 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     entries = []
     for name, caption in LABELS:
         label_font = (
+            header_font if name == "APP_NAME" else
+            header_note_font if name == "LOCAL_READ_ONLY" else
             table_font if name.startswith("TABLE_") else
             metric_font if name.startswith("METRIC_") else
             rail_long_font if name in ("AVAILABLE_MENU", "INSTALLED_MENU")

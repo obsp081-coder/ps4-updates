@@ -581,19 +581,34 @@ static void background(uint32_t *p) {
          * immediately replaces. Header/footer still get a clean base. */
         rect(p,0,0,WIDTH,116,BG);
         rect(p,0,1000,WIDTH,HEIGHT-1000,BG);
-        /* The blurred pixels already include the dark text-safe tint. */
-        static_assert(WIDTH % BLUR_WIDTH == 0 &&
-                      HEIGHT % BLUR_HEIGHT == 0,
-                      "Backdrop must fit integer pixel blocks");
-        const int block_w=WIDTH/BLUR_WIDTH;
-        const int block_h=HEIGHT/BLUR_HEIGHT;
+        /* Upscale the already-darkened 240x135 image with an integer
+         * bilinear filter. Previously each source pixel occupied an
+         * obvious 8x8 block, unlike the approved cinematic reference.
+         * A single 240-element stack scanline replaces hard tile edges;
+         * framebuffer bytes, icon LRU and worker ownership are unchanged.
+         * No new textures, floating-point pixel loops or redraw timers. */
+        static_assert(WIDTH==BLUR_WIDTH*8 &&
+                      HEIGHT==BLUR_HEIGHT*8,
+                      "Bilinear 8x backdrop requires integral scaling");
+        uint32_t interpolated[BLUR_WIDTH];
         for(int y=116;y<1000;++y) {
+            const int sy=y/8;
+            const int sy_next=sy+1<BLUR_HEIGHT?sy+1:sy;
+            const unsigned wy=(unsigned)y&7u;
+            const uint32_t *top=blur_image+(size_t)sy*BLUR_WIDTH;
+            const uint32_t *bottom=blur_image+
+                                   (size_t)sy_next*BLUR_WIDTH;
+            for(int tile=0;tile<BLUR_WIDTH;++tile)
+                interpolated[tile]=ui_fx_lerp_rgb8(
+                    top[tile],bottom[tile],wy);
             uint32_t *line=p+(size_t)y*WIDTH;
-            const uint32_t *src=blur_image+(y/block_h)*BLUR_WIDTH;
             for(int tile=0;tile<BLUR_WIDTH;++tile) {
-                const uint32_t pixel=src[tile];
-                uint32_t *dst=line+tile*block_w;
-                for(int dx=0;dx<block_w;++dx) dst[dx]=pixel;
+                const uint32_t left=interpolated[tile];
+                const uint32_t right=interpolated[
+                    tile+1<BLUR_WIDTH?tile+1:tile];
+                uint32_t *dst=line+(size_t)tile*8u;
+                for(unsigned dx=0;dx<8u;++dx)
+                    dst[dx]=ui_fx_lerp_rgb8(left,right,dx);
             }
         }
     } else {

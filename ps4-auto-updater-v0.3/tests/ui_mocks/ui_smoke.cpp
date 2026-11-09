@@ -3,6 +3,7 @@
 #include "../../ps4/src/ui_models.h"
 #include "../../ps4/src/ui_icon_cache.h"
 #include "../../ps4/src/ui_navigation.h"
+#include "../../ps4/src/ui_visual_fx.h"
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -574,6 +575,18 @@ int32_t sceKernelUsleep(uint32_t) {
 } // extern "C"
 
 int main() {
+    /* Bilinear sampler: exact flat colors and predictable smooth steps.
+     * Prevent channel overflow or tint changes in the real C++ renderer. */
+    assert(ui_fx_lerp_rgb8(0xFF123456u,0xFF123456u,7u)==
+           0xFF123456u);
+    assert(ui_fx_lerp_rgb8(0xFF000000u,0xFFFFFFFFu,4u)==
+           0xFF808080u);
+    assert(ui_fx_lerp_rgb8(0xFFFF0000u,0xFF0000FFu,0u)==
+           0xFFFF0000u);
+    assert(ui_fx_lerp_rgb8(0xFFFF0000u,0xFF0000FFu,4u)==
+           0xFF800080u);
+    assert(ui_fx_lerp_rgb8(0xFFFF0000u,0xFF0000FFu,7u)==
+           0xFF2000DFu);
     ScannerUiEntry entries[] = {
         {"CUSA02343", "Verified Game", "01.07", 1, -1, "gd"},
         {"CUSA00411", "", "", 0, -1, nullptr},

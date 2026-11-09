@@ -44,6 +44,22 @@ static inline uint32_t ui_fx_gradient_rgb(uint32_t top,uint32_t bottom,
     return 0xFF000000u|(r<<16)|(g<<8)|b;
 }
 
+/* 8-step bilinear sampling used to upscale the already preblurred local
+ * icon. Caller provides weight 0..7; uniform colors round-trip exactly.
+ * Kept independent of GPU/runtime allocations, and channels never cross. */
+static inline uint32_t ui_fx_lerp_rgb8(uint32_t a,uint32_t b,
+                                        unsigned weight) {
+    if(weight>7u)weight=7u;
+    const unsigned inv=8u-weight;
+    const unsigned red=((((a>>16)&255u)*inv+
+                         ((b>>16)&255u)*weight+4u)>>3);
+    const unsigned green=((((a>>8)&255u)*inv+
+                           ((b>>8)&255u)*weight+4u)>>3);
+    const unsigned blue=(((a&255u)*inv+
+                          (b&255u)*weight+4u)>>3);
+    return 0xFF000000u|(red<<16)|(green<<8)|blue;
+}
+
 /* Rounded, background-aware tint, soft static drop shadow and lit rim.
    Complexity O(w*h) like the existing panel, but no full-screen effects.
    Caller guarantees non-overlap with static text/UI masks. */

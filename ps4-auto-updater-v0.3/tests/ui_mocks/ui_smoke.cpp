@@ -259,7 +259,9 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(verify_jobs) {
             const uint32_t *frame=display_buffers[index];
-            if(frame[394u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
+            /* Downloads KPIs moved down to make room for the page
+             * heading; the first REAL model job's bar is now y=409..419. */
+            if(frame[414u*SCREEN_WIDTH+200u]==0xFF37ADFFu)
                 saw_job_progress=true;
             if(pad_reads>=14 && pad_reads<=19 &&
                frame[810u*SCREEN_WIDTH+150u]==0xFF164881u)

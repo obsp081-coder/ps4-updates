@@ -1079,6 +1079,70 @@ static void downloads(uint32_t *p) {
     ascii(p,1490,922,n,MUTED,2,20);
     footer(p,UI_AR_FOOTER_JOBS);
 }
+
+/* Reference-section shells. Display state only; no install or downloader
+ * permission follows from SFO metadata, queue rows or provider hints. */
+static void readonly_section(uint32_t *p,UiPage page) {
+    UiArabicLabel heading=UI_AR_ABOUT_MENU;
+    UiArabicLabel message=UI_AR_ABOUT_NOTE;
+    if(page==UI_PAGE_AVAILABLE) {
+        heading=UI_AR_AVAILABLE_MENU;
+        message=UI_AR_NO_TRUSTED_UPDATE;
+    } else if(page==UI_PAGE_QUEUE) {
+        heading=UI_AR_QUEUE_MENU;
+        message=UI_AR_QUEUE_EMPTY;
+    } else if(page==UI_PAGE_INSTALLED) {
+        heading=UI_AR_INSTALLED_MENU;
+        message=UI_AR_INSTALLED_UNKNOWN;
+    }
+    arabic(p,281,143,heading,WHITE);
+    panel(p,269,222,1580,721,PANEL);
+    rect(p,289,242,5,80,CYAN);
+    panel(p,311,246,1503,132,0xFF102D50u);
+    rect(p,327,261,5,89,AMBER);
+    arabic(p,356,264,message,
+           page==UI_PAGE_ABOUT?WHITE:AMBER);
+    if(page==UI_PAGE_AVAILABLE) {
+        arabic(p,356,321,UI_AR_UPDATES_UNVERIFIED,MUTED);
+        panel(p,311,407,1503,137,0xFF112C50u);
+        arabic(p,341,421,UI_AR_SOURCE,MUTED);
+        arabic(p,341,478,UI_AR_TRUSTED_SETTING,WHITE);
+        panel(p,311,571,1503,190,0xFF112C50u);
+        arabic(p,341,593,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+        arabic(p,341,658,UI_AR_DOWNLOAD_BLOCKED,AMBER);
+    } else if(page==UI_PAGE_QUEUE) {
+        /* All entries are model-backed, not the console system queue. */
+        unsigned queued=0;
+        int y=429;
+        for(unsigned i=0;i<ui_model_download_count();++i) {
+            const UiDownloadInfo *job=ui_model_download(i);
+            if(!job || job->status!=UI_JOB_QUEUED)continue;
+            ++queued;
+            if(y>794)continue;
+            panel(p,311,y,1503,92,0xFF112C50u);
+            ui_title(p,340,y+6,950,
+                     job->title[0]?job->title:job->cusa,WHITE,2);
+            ascii(p,340,y+47,job->cusa,CYAN,2,12);
+            arabic(p,1430,y+20,UI_AR_JOB_QUEUED,MUTED);
+            y+=108;
+        }
+        if(!queued) {
+            panel(p,311,427,1503,134,0xFF112C50u);
+            arabic(p,341,446,UI_AR_NO_QUEUED_DOWNLOAD,MUTED);
+        }
+        arabic(p,341,865,UI_AR_NO_NETWORK_DOWNLOADS,AMBER);
+    } else if(page==UI_PAGE_INSTALLED) {
+        panel(p,311,424,1503,158,0xFF112C50u);
+        arabic(p,341,445,UI_AR_DATA_NOT_PROOF,MUTED);
+        arabic(p,341,506,UI_AR_INSTALL_OFF_SETTING,AMBER);
+    } else {
+        panel(p,311,423,1503,258,0xFF112C50u);
+        arabic(p,341,449,UI_AR_APP_NAME,WHITE);
+        arabic(p,341,508,UI_AR_ABOUT_SAFETY,MUTED);
+        arabic(p,341,573,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+    }
+    footer(p,UI_AR_FOOTER_SETTINGS);
+}
 static void settings_screen(uint32_t *p) {
     arabic(p,281,143,UI_AR_SETTINGS_HEADER,WHITE);
     panel(p,270,222,1579,690,PANEL);
@@ -1231,6 +1295,11 @@ static void draw(const ScannerUiEntry *entries,
         }
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
         downloads(p);
+    }else if(navigation.page==UI_PAGE_AVAILABLE ||
+             navigation.page==UI_PAGE_QUEUE ||
+             navigation.page==UI_PAGE_INSTALLED ||
+             navigation.page==UI_PAGE_ABOUT) {
+        readonly_section(p,navigation.page);
     }else {
         dashboard(p,entries,count,good,errors,complete,saved);
         if(final_view_is_stale)

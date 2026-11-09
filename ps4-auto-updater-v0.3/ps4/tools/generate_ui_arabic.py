@@ -121,6 +121,10 @@ LABELS = (
     ("UPDATES_UNVERIFIED", "لا يمكن اعتبار بيانات التحديث تحديثاً موثوقاً"),
     ("ABOUT_NOTE", "نسخة تجريبية للقراءة فقط دون تنزيل أو تثبيت"),
     ("ABOUT_SAFETY", "البيانات المحلية لا تؤكد تثبيت الألعاب"),
+    ("METRIC_GAMES", "إجمالي الألعاب"),
+    ("METRIC_UNKNOWN", "تثبيت غير مؤكد"),
+    ("METRIC_SCAN", "أخطاء الفحص"),
+    ("METRIC_ACTIVE", "قيد التنزيل"),
 )
 
 
@@ -143,6 +147,8 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
                                    layout_engine=layout)
     rail_long_font = ImageFont.truetype(str(font_path), 20,
                                          layout_engine=layout)
+    metric_font = ImageFont.truetype(str(font_path), 22,
+                                     layout_engine=layout)
     welcome_font = ImageFont.truetype(str(font_path), 29,
                                       layout_engine=layout)
     welcome_note_font = ImageFont.truetype(str(font_path), 21,
@@ -169,6 +175,7 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
     entries = []
     for name, caption in LABELS:
         label_font = (
+            metric_font if name.startswith("METRIC_") else
             rail_long_font if name in ("AVAILABLE_MENU", "INSTALLED_MENU")
             else rail_font if name in (
                 "RAIL_DETAILS", "GAMES_MENU", "QUEUE_MENU", "ABOUT_MENU",

@@ -474,7 +474,19 @@ static void cover(uint32_t *p,int x,int y,int w,int h,const char *cusa) {
 }
 static void header(uint32_t *p) {
     rect(p,0,0,WIDTH,115,0xFF0A1E3Eu);
+    /* Static cyan horizon arch like the approved mockup. A few dozen
+     * short strokes, never an animation or large per-frame texture. */
+    for(int i=0;i<45;++i) {
+        const int x=262+i*14;
+        const int rise=(i*i)/24;
+        const int y=112-rise;
+        if(y<8)break;
+        rect(p,x,y+3,24,3,0xFF0C3766u);
+        rect(p,x,y+1,24,2,0xFF145A9Fu);
+        rect(p,x,y,24,1,0xFF2698EAu);
+    }
     rect(p,0,112,WIDTH,3,ACCENT);
+    rect(p,0,112,743,2,CYAN);
     panel(p,68,27,62,62,ACCENT);
     ascii(p,84,49,"PS4",WHITE,2,3);
     /* Royal-blue dual-language masthead. Never claim network access,
@@ -622,6 +634,9 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
         rect(p,18,y+3,215,2,CYAN);
         rect(p,18,y+5,215,2,0xFF175CA5u);
         rect(p,18,y+68,215,2,0xFF2694EDu);
+        rect(p,10,y+1,231,1,0xFF4DBFFFu);
+        rect(p,10,y+72,231,1,0xFF4DBFFFu);
+        rect(p,5,y+8,3,58,0xFF1679D8u);
     }
     const int x=28, cy=y+19;
     if(section==UI_PAGE_HOME) {
@@ -763,8 +778,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
 
     const int metric_x[4]={269,548,827,1106};
     const UiArabicLabel metric_labels[4]={
-        UI_AR_BASE_GAMES,UI_AR_INSTALL_UNKNOWN,UI_AR_SCAN_ERRORS,
-        UI_AR_ACTIVE_DOWNLOADS
+        UI_AR_METRIC_GAMES,UI_AR_METRIC_UNKNOWN,UI_AR_METRIC_SCAN,
+        UI_AR_METRIC_ACTIVE
     };
     const uint32_t metric_colors[4]={
         CYAN,ACCENT,errors?AMBER:0xFF6CCFACu,CYAN
@@ -782,10 +797,26 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     };
     for(unsigned i=0;i<4;++i) {
         panel(p,metric_x[i],201,270,95,PANEL);
-        rect(p,metric_x[i]+15,213,4,71,metric_colors[i]);
-        arabic(p,metric_x[i]+28,205,metric_labels[i],MUTED);
+        /* Card icon on the left, RTL caption/value on the right. */
+        rect(p,metric_x[i]+19,215,4,64,metric_colors[i]);
+        panel(p,metric_x[i]+31,227,45,44,0xFF123C74u);
+        if(i==0u) {
+            rect(p,metric_x[i]+42,239,24,6,metric_colors[i]);
+            rect(p,metric_x[i]+42,249,24,6,metric_colors[i]);
+        } else if(i==1u) {
+            rect(p,metric_x[i]+43,238,22,24,metric_colors[i]);
+            rect(p,metric_x[i]+49,244,10,12,0xFF123C74u);
+        } else if(i==2u) {
+            rect(p,metric_x[i]+44,238,20,4,metric_colors[i]);
+            rect(p,metric_x[i]+51,245,6,15,metric_colors[i]);
+        } else {
+            rect(p,metric_x[i]+52,235,4,20,metric_colors[i]);
+            rect(p,metric_x[i]+45,250,18,5,metric_colors[i]);
+            rect(p,metric_x[i]+42,258,24,3,metric_colors[i]);
+        }
+        arabic(p,metric_x[i]+91,205,metric_labels[i],MUTED);
         snprintf(number,sizeof number,"%u",metric_values[i]);
-        ascii(p,metric_x[i]+34,257,number,WHITE,3,6);
+        ascii(p,metric_x[i]+192,247,number,WHITE,3,5);
     }
     arabic(p,282,301,UI_AR_LIBRARY,WHITE);
     arabic(p,1035,301,complete?UI_AR_SCAN_COMPLETE:

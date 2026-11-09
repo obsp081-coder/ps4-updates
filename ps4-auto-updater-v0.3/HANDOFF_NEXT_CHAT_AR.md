@@ -1,3 +1,12 @@
+## المرحلة الثالثة نشطة — 9 نوفمبر 2026 (المرحلة الرابعة معلّقة)
+
+- بطلب المستخدم أُوقفت أعمال `Compatibility Engine` مؤقتًا بعد Commit `a1837d20`، والملفات غير مدمجة بالـPS4؛ لا تشغيل ولا اكتمال لمرحلة 4.
+- بدأت مرحلة `Update Sources`: `official_patch_lookup.py` يحتفظ بالإصدارات الموجودة بالفعل في XML فقط (عبر HTTP غير موثق)، و`update_source_registry.py` يجمع فهارس Retail/FPKG كبيانات مراجعة غير موثوقة دون أي صلاحية تنزيل أو تثبيت.
+- **198/198 Host tests + OpenOrbis Native Build PASS** على code SHA `c212e49e`: https://github.com/obsp081-coder/ps4-updates/actions/runs/42688083093
+- لم يثبت بعد وجود Provider آمن ومصرح به ولا دمج Native أو Live Sony Metadata على PS4. راجع `STAGE3_SOURCES_STATUS_AR.md`.
+
+---
+
 ## 9 نوفمبر 2026 — Stage 8: 16:9 artwork presentation gate (READ ONLY)
 
 - **CODE** [c2e5f9c3](https://github.com/obsp081-coder/ps4-updates/commit/c2e5f9c308b0dd9957f1ffee1056d1135cfe2ddd): Added a UI-thread-only optional 240×135 widescreen artwork handoff (`scanner_ui_offer_wide_art`) with strict CUSA/length validation, one-title 127 KiB static buffer, aspect-preserving renderer, and a selected-title blurry darkened background. Existing square icon0 fallback remains unchanged when no wide artwork arrives. The production scanner **does not yet call the new API**.

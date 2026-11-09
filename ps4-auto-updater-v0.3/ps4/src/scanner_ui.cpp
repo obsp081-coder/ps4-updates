@@ -474,16 +474,16 @@ static void cover(uint32_t *p,int x,int y,int w,int h,const char *cusa) {
 }
 static void header(uint32_t *p) {
     rect(p,0,0,WIDTH,115,0xFF0A1E3Eu);
-    /* Static cyan horizon arch like the approved mockup. A few dozen
-     * short strokes, never an animation or large per-frame texture. */
-    for(int i=0;i<45;++i) {
-        const int x=262+i*14;
-        const int rise=(i*i)/24;
+    /* Pixel-width quadratic cyan header sweep, not the previously
+     * jagged 24px staircase. The native CPU renderer paints ~1,800
+     * bounded pixels once per UI redraw; no SVG, shader or timer. */
+    for(int x=252;x<=820;++x) {
+        const int t=x-252;
+        const int rise=(78*t*t)/(568*568);
         const int y=112-rise;
-        if(y<8)break;
-        rect(p,x,y+3,24,3,0xFF0C3766u);
-        rect(p,x,y+1,24,2,0xFF145A9Fu);
-        rect(p,x,y,24,1,0xFF2698EAu);
+        rect(p,x,y+3,1,3,0xFF0C3766u);
+        rect(p,x,y+1,1,2,0xFF145A9Fu);
+        rect(p,x,y,1,1,0xFF2698EAu);
     }
     rect(p,0,112,WIDTH,3,ACCENT);
     rect(p,0,112,743,2,CYAN);

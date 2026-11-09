@@ -51,6 +51,11 @@ $(INTDIR)/ui_snapshot.o: src/ui_snapshot.c src/ui_snapshot.h | $(INTDIR)
 $(INTDIR)/ui_source_bridge.o: src/ui_source_bridge.c src/ui_source_bridge.h src/ui_models.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
+# Offline, read-only compatibility reviewer. Linked but not activated
+# until real metadata/provenance and FW14 hardware gates are verified.
+$(INTDIR)/ui_compatibility.o: src/ui_compatibility.c src/ui_compatibility.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
 $(INTDIR)/ui_models.o: src/ui_models.c src/ui_models.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
@@ -78,8 +83,8 @@ $(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h 
 $(INTDIR)/ps4_shell_exit.o: src/ps4_shell_exit.c src/ps4_shell_exit.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
-	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
+eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
+	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
 	$(TOOLBIN)/create-fself -in=$(INTDIR)/scanner.elf -out=$(INTDIR)/scanner.oelf --eboot eboot.bin --paid 0x3800000000000011
 
 sce_sys/param.sfo: Makefile

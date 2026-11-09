@@ -38,7 +38,10 @@ static int version_ok(const char *s) {
 }
 int ui_source_publish_candidates(const UiSourceCandidate *rows,unsigned count) {
     if(count>UI_MODEL_MAX_UPDATES||(count&&!rows))return -1;
-    UiUpdateInfo stage[UI_MODEL_MAX_UPDATES]={0};
+    /* A native Host regression compiles this .c under C++17 as well.
+     * memset is portable across C and C++, including -Werror builds. */
+    UiUpdateInfo stage[UI_MODEL_MAX_UPDATES];
+    memset(stage,0,sizeof stage);
     for(unsigned i=0;i<count;++i) {
         const UiSourceCandidate *source=&rows[i];
         if(!cusa_ok(source->cusa) ||

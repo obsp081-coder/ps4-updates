@@ -270,7 +270,7 @@ int main(void) {
     const clock_t search_end=clock();
     if(search_start!=(clock_t)-1 && search_end!=(clock_t)-1 &&
        search_end>=search_start) {
-        printf("UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: %.3f\\n",
+        printf("UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: %.3f\n",
                (double)(search_end-search_start)*1000.0/CLOCKS_PER_SEC);
     }
     ui_nav_filter(&nav,entries,256,"");

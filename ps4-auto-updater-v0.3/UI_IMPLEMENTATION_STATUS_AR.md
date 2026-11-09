@@ -12,7 +12,7 @@
 | ps4/src/scanner_ui.cpp | Royal Blue بــ252px Arabic Sidebar لكل الصفحات، Home تعرض ستة صفوف ثابتة ومعلومات CUSA، Hero Card، Details بست Metadata Tiles، Search Keyboard وتنزيلات وإعدادات Read-only؛ يحافظ على Snapshot وعمل Lazy Icon worker | Host framebuffer pixel assertions + OpenOrbis Native Build؛ **يحتاج PS4 hardware** |
 | ps4/src/ui_snapshot.c/h | Cache ثنائي للعبة الأساسية بحد 256 سجلًا وCRC؛ سياسة جديدة تمنع الفحص الجزئي من استبدال Snapshot صالح سابق. أول فحص داخلي جزئي يمكنه تكوين Snapshot فقط عند غياب Snapshot صالح؛ وحتى Snapshot فارغ صحيح لا يُستبدل بنتيجة ناقصة | اختبار Host للتلف والتكرار والحفظ الجزئي والسياسة + Native Build |
 | ps4/src/ui_models.c/h | نماذج عرض محدودة للتحديثات وJobs، تعرض Progress من أرقام تُزوّد إليها دون صلاحية تنزيل أو تثبيت | اختبارات Host + بناء OpenOrbis |
-| ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع اختيار CUSA؛ فتح نتائج Search والتفاصيل والعودة إليها؛ **الخروج من البحث يستعيد Home Library كاملة** ويحافظ على اختيار اللعبة، بما في ذلك No-match وOPTIONS | اختبارات Navigation Host + Native Controller Smoke |
+| ps4/src/ui_navigation.c/h | تنقل وبحث وKeyboard عربية/English بحد 256 سجلًا؛ إعادة ربط Inventory مع اختيار CUSA؛ فتح نتائج Search والتفاصيل؛ تنظيف الفلتر عند الخروج عبر Circle/L1/R1/OPTIONS وحتى بعد إزالة CUSA بالـRescan؛ Arabic folding محدود لأشكال الألف والياء والتشكيل دون Heap | اختبارات Navigation Host + 256-game Host search stress + Native Controller Smoke |
 | ps4/src/ui_title_layout.c/h | تقسيم اسم اللعبة إلى LTR/RTL runs بحسب أول حرف واضح، مع حدود 191 codepoint وبدون Heap؛ معالجة الحركات وعلامات الترقيم كعناصر محايدة للاتجاه؛ **ليس UAX #9 الكامل** | اختبارات Host مستقلة + اختبارات Framebuffer |
 | ps4/tools/generate_ui_arabic.py | نصوص عربية ثابتة بخط Noto وRAQM وقت Build؛ عرض Dynamic Arabic Presentation Forms مع `advance` مستقل عن الهوامش الشفافة حتى لا تتباعد الحروف؛ لا شحن ملفات Font إلى PS4 | Host Preview + Native Build |
 | ps4/src/ui_image.c/h | PNG decoder مقيد بحجم الملف والأبعاد، 128×128 ARGB | اختبارات Host |
@@ -31,6 +31,14 @@
 - الشاشة الرئيسية/شاشة التفاصيل/قائمة التنزيلات لا تعتمد على WebView أو خادم PC.
 - Arabic shaping ثابتة في عناصر UI. العناوين المختلطة تستخدم LTR/RTL runs حسب أول حرف واضح؛ تظهر النتائج في `mixed_ltr.png`/`mixed_rtl.png`. صُحح انهيار عرض الأسماء الطويلة إلى خانة فارغة، وأضيف Visual Ellipsis مع `long_ltr.png`/`long_rtl.png`. تم ضبط اتصال Dynamic Arabic glyphs للكلمات مثل «لعبة». **لا ندعي UAX #9 كاملًا أو دعم CJK.**
 - لوحة مفاتيح داخلية بدل استدعاء PS4 IME غير مثبت على FW14. تعرض صفحة Search نتيجة لعبة حقيقية (اسم وCUSA وغلاف محلي إن توفر) أسفل لوحة المفاتيح، وليس عدد النتائج فقط. سهم أسفل من آخر صف يركز النتيجة، يمين/يسار لتغيير النتيجة، وإكس يفتح تفاصيلها مع العودة إلى البحث بالدائرة.
+
+## توحيد فلاتر البحث وتحسين Arabic Search — 9 نوفمبر 2026
+
+- **FIXED IN CODE:** من صفحة Details المفتوحة عبر Search، الضغط على L1 للعودة إلى Home أو R1/Square للذهاب إلى Downloads لم يعد يترك Query قديمًا يخفي ألعاب Home. يحتفظ `ui_nav_action` بالـCUSA المحددة ويعيد المكتبة الكاملة. إذا أزال Rescan اللعبة أثناء Details، يغلق صفحة اللعبة ويزيل فلتر البحث القديم بدل إظهار مكتبة خالية كاذبة.
+- **FIXED IN CODE:** `ui_navigation.c` يبحث باستخدام Limited Unicode Folding خفيف بلا Heap، للـASCII case-insensitive وبضع صيغ عربية: (أ/إ/آ/ٱ ↔ ا)، (ى ↔ ي)، مع تجاهل التشكيل والتطويل أثناء المطابقة فقط؛ أسماء الألعاب الأصلية لا تتغير. **لا ندعي Full Unicode Normalization/Casefold ولا بحثًا دلاليًا**.
+- **HOST TESTED:** `navigation_smoke.c` يغطي L1/R1 بعد Details-from-Search وغياب الـCUSA في Rebind وتطابق Arabic variants. اختبار ضغط 128 عملية بحث على 256 اسم لعبة عربي طويل من بيانات صناعية؛ سُجلت **50.669ms CPU إجماليًا (~0.396ms للعملية)** على Host GitHub Actions واحد. هذا ليس متوسطًا معتمدًا ولا أداء PS4، ولا تستخدم أزمنة CPU كبوابة Pass/Fail.
+- **EVIDENCE:** Commit الكود `54294a55a41c2454a1f82ceeaeb2ec512a20f577`: **181/181 Host Tests + OpenOrbis Native Build ناجحة** في GitHub Actions run `42596513513`.
+- **OPEN:** Hardware PS4 FW14/GoldHEN ما زال غير مختبر؛ تحديثات الألعاب الحقيقية وDownload/Install غير متاحة؛ يلزم اختبار ضغط UI والأغلفة ومراجعة التعارض البصري مع المرجع.
 
 ## إصلاحات تنقل البحث وتحذير تفاصيل اللعبة — 9 نوفمبر 2026
 

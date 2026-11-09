@@ -620,13 +620,20 @@ static void summary(uint32_t *p, int x, int w, UiArabicLabel name,
 }
 static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
-    panel(p,76,y,1090,88,is_selected?0xFF164881u:PANEL);
-    if(is_selected) rect(p,76,y+10,5,68,CYAN);
-    cover(p,92,y+11,68,66,g?g->cusa:nullptr);
-    game_title(p,187,y+5,630,g,WHITE,2);
-    ascii(p,187,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
-    ascii(p,877,y+16,fallback_version(g),CYAN,2,16);
-    arabic(p,877,y+37,category_label(g),
+    /* Six 88px rows remain intact: make room for the wide left rail by
+     * shrinking text width, never moving or hiding a game row. */
+    panel(p,269,y,899,88,is_selected?0xFF164881u:PANEL);
+    if(is_selected) {
+        rect(p,269,y+10,5,68,CYAN);
+        rect(p,287,y+5,855,2,0xFF268DD7u);
+    }
+    cover(p,285,y+11,68,66,g?g->cusa:nullptr);
+    game_title(p,374,y+5,440,g,WHITE,2);
+    ascii(p,374,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
+    /* Only metadata-verified and unknown-install markers are shown.
+     * Game presence in appmeta is never called proof of installation. */
+    ascii(p,929,y+16,fallback_version(g),CYAN,2,16);
+    arabic(p,928,y+37,category_label(g),
            g->metadata_verified?MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
@@ -634,17 +641,17 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       int complete,int saved) {
     char number[64];
     snprintf(number,sizeof(number),"%u",good);
-    summary(p,76,335,UI_AR_BASE_GAMES,number,CYAN);
+    summary(p,269,283,UI_AR_BASE_GAMES,number,CYAN);
     unsigned install_unknown=0;
     for(unsigned i=0;i<count && entries;++i)
         if(entries[i].install_state<0)++install_unknown;
     snprintf(number,sizeof(number),"%u",install_unknown);
-    summary(p,426,335,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
+    summary(p,566,283,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
     snprintf(number,sizeof(number),"%u",errors);
-    summary(p,776,390,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
+    summary(p,862,304,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
 
-    arabic(p,86,265,UI_AR_LIBRARY,WHITE);
-    arabic(p,854,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
+    arabic(p,282,265,UI_AR_LIBRARY,WHITE);
+    arabic(p,858,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
           complete?0xFF6CCFACu:AMBER);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;
@@ -656,9 +663,9 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                   navigation.selected==navigation.scroll+i);
     }
     if(!navigation.available)
-        arabic(p,124,397,count?UI_AR_NO_MATCHING_GAME:UI_AR_NO_GAME_METADATA,AMBER);
+        arabic(p,299,397,count?UI_AR_NO_MATCHING_GAME:UI_AR_NO_GAME_METADATA,AMBER);
     if(!saved)
-        arabic(p,112,925,UI_AR_MISSING_INVENTORY,AMBER);
+        arabic(p,290,925,UI_AR_MISSING_INVENTORY,AMBER);
 
     /* Selected-game hero uses the EXISTING 128px local icon cache.
      * No fabricated cover, update version or compatibility status.
@@ -705,7 +712,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     snprintf(number,sizeof(number),"%u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);
-    ascii(p,89,960,number,MUTED,2,28);
+    ascii(p,284,959,number,MUTED,2,28);
     footer(p,UI_AR_FOOTER_HOME);
 }
 static void details(uint32_t *p,const ScannerUiEntry *entries,

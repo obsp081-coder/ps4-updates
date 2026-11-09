@@ -91,7 +91,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -174,6 +174,24 @@ class NativeUiSmokeTests(unittest.TestCase):
                         self.assertEqual(
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
+                        )
+                    if page == "empty":
+                        self.assertEqual(
+                            pixels.getpixel((650, 620)), (16, 45, 80),
+                            "Empty library panel is missing"
+                        )
+                        self.assertNotEqual(
+                            pixels.getpixel((1500, 884)), (21, 88, 157),
+                            "An empty library must not show a Details CTA"
+                        )
+                        empty_label = pixels.crop((529, 411, 900, 453))
+                        amber = sum(
+                            1 for r, g, b in empty_label.getdata()
+                            if r > 200 and 130 < g < 230 and b < 200
+                        )
+                        self.assertGreater(
+                            amber, 18,
+                            "Zero-game state has no visible explanation"
                         )
                     if page in ("cached", "stale"):
                         # Cache warnings have one bounded line above the

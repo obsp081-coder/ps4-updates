@@ -171,9 +171,15 @@ jobs:
           PY
 
       - name: Upload PS4 Package
-        # Do not distribute unverified test packages from draft feature branches.
-        # A green CI only proves host tests/build, not PS4 firmware support.
-        if: github.ref == 'refs/heads/main' && vars.ENABLE_PS4_ARTIFACTS == 'true'
+        # Default remains gated to main; an explicit user-requested,
+        # single push on the PS4 UI review branch may produce an Actions-only
+        # test artifact. Never publish a Release from that branch. The special
+        # marker is consumed only from the triggering commit message.
+        if: >-
+          (github.ref == 'refs/heads/main' && vars.ENABLE_PS4_ARTIFACTS == 'true')
+          || (github.event_name == 'push'
+              && github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'
+              && contains(github.event.head_commit.message, '[one-time-ui-test-pkg]'))
         uses: actions/upload-artifact@v4
         with:
           name: ps4-scanner-experimental

@@ -38,6 +38,10 @@ static unsigned lazy_cover_polls = 0;
 static bool lazy_cover_offered = false;
 static bool test_cover_scroll = false;
 static bool test_search_result_open = false;
+static bool test_search_restore_home = false;
+static bool saw_search_no_match = false;
+static bool saw_home_restored = false;
+static bool saw_restored_details = false;
 static bool saw_search_focus = false;
 static bool saw_search_details = false;
 static bool saw_search_return = false;
@@ -143,7 +147,9 @@ static void reset() {
         test_cover_scroll = saw_cover_beyond_eight =
         test_capacity_screen = saw_capacity_sixth_row =
         saw_empty_library_panel =
-        test_search_result_open = saw_search_focus =
+        test_search_result_open = test_search_restore_home =
+        saw_search_no_match = saw_home_restored =
+        saw_restored_details = saw_search_focus =
         saw_search_details = saw_search_return = false;
     mixed_title_probe = long_title_probe = 0;
     saw_long_title_left = saw_long_title_right = false;
@@ -257,6 +263,24 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 capture_ppm(frame,"long_ltr",512u);
             if(long_title_probe==2 && left_ink>8 && right_ink>8)
                 capture_ppm(frame,"long_rtl",1024u);
+        }
+        if(test_search_restore_home) {
+            const uint32_t *frame=display_buffers[index];
+            /* Pad: search -> Arabic keyboard -> no-match Arabic letter
+             * -> Back -> full library -> Details. Observe actual renderer
+             * output rather than relying only on the pure nav model. */
+            if(pad_reads==6 &&
+               frame[545u*SCREEN_WIDTH+232u]==0xFF15589Du)
+                saw_search_no_match=true;
+            if(pad_reads==8 &&
+               frame[365u*SCREEN_WIDTH+600u]==0xFF164881u &&
+               frame[884u*SCREEN_WIDTH+1500u]==0xFF15589Du) {
+                saw_home_restored=true;
+                capture_ppm(frame,"search_restored_home",32768u);
+            }
+            if(pad_reads==10 &&
+               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
+                saw_restored_details=true;
         }
         if(test_search_result_open) {
             const uint32_t *frame=display_buffers[index];
@@ -380,6 +404,15 @@ int32_t scePadClose(int32_t) {
 int32_t scePadReadState(int32_t, OrbisPadData *data) {
     data->buttons = 0;
     ++pad_reads;
+    if(test_search_restore_home) {
+        if(pad_reads==2 || pad_reads==4)
+            data->buttons=ORBIS_PAD_BUTTON_TRIANGLE;
+        if(pad_reads==6 || pad_reads==10)
+            data->buttons=ORBIS_PAD_BUTTON_CROSS;
+        if(pad_reads==8 || pad_reads==12 || pad_reads==14)
+            data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
     if(test_search_result_open) {
         if(pad_reads==2)data->buttons=ORBIS_PAD_BUTTON_TRIANGLE;
         if(pad_reads==4 || pad_reads==6 || pad_reads==8 ||
@@ -599,6 +632,17 @@ int main() {
     scanner_ui_results(entries,3,3,0,1,1);
     assert(saw_search_focus && saw_search_details && saw_search_return);
     assert(pad_reads>=20);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Real Pad + native VideoOut regression: a no-match search must
+     * not permanently hide the main library on return to Home. */
+    reset();
+    test_search_restore_home=true;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(entries,3,3,0,1,1);
+    assert(saw_search_no_match && saw_home_restored &&
+           saw_restored_details && pad_reads>=14);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

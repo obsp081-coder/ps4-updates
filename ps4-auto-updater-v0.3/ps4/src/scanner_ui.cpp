@@ -819,11 +819,38 @@ static void downloads(uint32_t *p) {
     summary(p,1200,540,UI_AR_FINISHED_DOWNLOAD,n,0xFF6CCFACu);
     panel(p,90,288,1655,640,PANEL);
     if(!total) {
-        arabic(p,151,330,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
-        arabic(p,151,393,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
-        rect(p,150,475,1510,2,0xFF22527Bu);
-        arabic(p,151,529,UI_AR_INSTALL_BLOCKED,AMBER);
-        arabic(p,151,588,UI_AR_NO_TRUSTED_UPDATE,MUTED);
+        /* Empty means genuinely zero active jobs. Render a deliberate
+         * read-only empty state instead of synthetic progress/status.
+         * No fake source, download speed, resume or completed PKG. */
+        panel(p,127,327,1560,209,0xFF102D50u);
+        rect(p,141,345,5,172,AMBER);
+        panel(p,173,352,147,153,0xFF123C74u);
+        /* Compact geometric padlock, no external image or font runtime. */
+        rect(p,213,373,67,7,CYAN);
+        rect(p,213,380,8,42,CYAN);
+        rect(p,272,380,8,42,CYAN);
+        rect(p,202,421,89,64,0xFF14315Bu);
+        rect(p,202,421,89,4,AMBER);
+        rect(p,202,481,89,4,AMBER);
+        rect(p,242,442,8,24,AMBER);
+        arabic(p,360,350,UI_AR_NO_DOWNLOAD_TASKS,WHITE);
+        arabic(p,360,405,UI_AR_NO_NETWORK_DOWNLOADS,MUTED);
+        arabic(p,360,468,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+
+        /* Side-by-side capability gates, explicitly unconfigured. */
+        panel(p,128,555,756,279,0xFF102D50u);
+        rect(p,148,575,5,232,CYAN);
+        arabic(p,174,572,UI_AR_SOURCE,MUTED);
+        rect(p,171,632,670,2,0xFF22527Bu);
+        arabic(p,174,645,UI_AR_TRUSTED_SETTING,WHITE);
+        arabic(p,174,722,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+
+        panel(p,898,555,789,279,0xFF102D50u);
+        rect(p,919,575,5,232,AMBER);
+        arabic(p,944,572,UI_AR_INSTALL_SETTING,MUTED);
+        rect(p,940,632,700,2,0xFF22527Bu);
+        arabic(p,944,645,UI_AR_INSTALL_OFF_SETTING,AMBER);
+        arabic(p,944,722,UI_AR_DATA_NOT_PROOF,MUTED);
         footer(p,UI_AR_FOOTER_DOWNLOADS);
         return;
     }
@@ -870,6 +897,11 @@ static void downloads(uint32_t *p) {
 static void settings_screen(uint32_t *p) {
     arabic(p,100,143,UI_AR_SETTINGS_HEADER,WHITE);
     panel(p,90,222,1655,690,PANEL);
+    /* Static read-only configuration preview. Never present a toggle as
+     * writable until settings have a verified, reversible implementation. */
+    rect(p,130,247,1110,2,0xFF2C77C0u);
+    panel(p,1398,232,286,47,0xFF123C74u);
+    ascii(p,1435,239,"READ ONLY",CYAN,2,12);
     const UiArabicLabel labels[5]={
         UI_AR_LANGUAGE_SETTING, UI_AR_THEME_SETTING,
         UI_AR_STORAGE_SETTING, UI_AR_SOURCE_SETTING,

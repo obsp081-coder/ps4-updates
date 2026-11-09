@@ -600,10 +600,14 @@ static void background(uint32_t *p) {
 static UiArabicLabel rail_label(UiPage page) {
     switch(page) {
         case UI_PAGE_HOME: return UI_AR_HOME;
-        case UI_PAGE_DETAILS: return UI_AR_RAIL_DETAILS;
+        case UI_PAGE_GAMES: return UI_AR_GAMES_MENU;
+        case UI_PAGE_AVAILABLE: return UI_AR_AVAILABLE_MENU;
         case UI_PAGE_DOWNLOADS: return UI_AR_DOWNLOADS;
-        case UI_PAGE_SEARCH: return UI_AR_SEARCH_MENU;
-        default: return UI_AR_SETTINGS;
+        case UI_PAGE_QUEUE: return UI_AR_QUEUE_MENU;
+        case UI_PAGE_INSTALLED: return UI_AR_INSTALLED_MENU;
+        case UI_PAGE_ABOUT: return UI_AR_ABOUT_MENU;
+        case UI_PAGE_SETTINGS: return UI_AR_SETTINGS;
+        default: return UI_AR_GAMES_MENU;
     }
 }
 static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
@@ -626,23 +630,31 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
         rect(p,x+4,cy+10,24,5,ink);
         rect(p,x+8,cy+15,16,16,ink);
         rect(p,x+14,cy+21,4,10,0xFF081D39u);
-    } else if(section==UI_PAGE_DETAILS) {
+    } else if(section==UI_PAGE_GAMES) {
         rect(p,x+1,cy+7,30,23,ink);
         rect(p,x+4,cy+10,24,17,0xFF081D39u);
         rect(p,x+8,cy+13,4,11,ink);
         rect(p,x+5,cy+16,10,4,ink);
         rect(p,x+21,cy+15,4,4,ink);
         rect(p,x+25,cy+21,4,4,ink);
-    } else if(section==UI_PAGE_DOWNLOADS) {
+    } else if(section==UI_PAGE_AVAILABLE ||
+              section==UI_PAGE_DOWNLOADS) {
         rect(p,x+14,cy+1,4,19,ink);
         rect(p,x+9,cy+17,14,5,ink);
         rect(p,x+12,cy+22,8,5,ink);
         rect(p,x+4,cy+29,24,3,ink);
-    } else if(section==UI_PAGE_SEARCH) {
-        rect(p,x+4,cy+4,21,21,ink);
-        rect(p,x+8,cy+8,13,13,0xFF081D39u);
-        rect(p,x+23,cy+23,5,5,ink);
-        rect(p,x+27,cy+27,5,5,ink);
+        if(section==UI_PAGE_AVAILABLE)
+            rect(p,x+24,cy+3,6,6,CYAN);
+    } else if(section==UI_PAGE_QUEUE) {
+        for(int i=0;i<3;++i) {
+            rect(p,x+3,cy+6+i*10,4,4,ink);
+            rect(p,x+12,cy+6+i*10,19,3,ink);
+        }
+    } else if(section==UI_PAGE_INSTALLED) {
+        rect(p,x+4,cy+9,25,20,ink);
+        rect(p,x+8,cy+13,17,12,0xFF081D39u);
+        rect(p,x+8,cy+2,17,5,ink);
+        rect(p,x+14,cy+17,6,4,CYAN);
     } else if(section==UI_PAGE_SETTINGS) {
         rect(p,x+4,cy+6,24,24,ink);
         rect(p,x+8,cy+10,16,16,0xFF081D39u);
@@ -651,6 +663,11 @@ static void rail_item(uint32_t *p,int y,UiPage section,UiPage current) {
         rect(p,x+13,cy+30,6,5,ink);
         rect(p,x,cy+15,5,6,ink);
         rect(p,x+27,cy+15,5,6,ink);
+    } else if(section==UI_PAGE_ABOUT) {
+        rect(p,x+4,cy+4,24,28,ink);
+        rect(p,x+8,cy+8,16,20,0xFF081D39u);
+        rect(p,x+14,cy+11,4,4,ink);
+        rect(p,x+14,cy+18,4,8,ink);
     }
     arabic(p,78,y+20,rail_label(section),ink);
 }
@@ -658,11 +675,14 @@ static void rail(uint32_t *p,UiPage page) {
     rect(p,0,116,RAIL_W,884,0xFF081D39u);
     rect(p,RAIL_W-3,116,3,884,0xFF1A5189u);
     rect(p,16,145,219,2,0xFF1B518Au);
-    rail_item(p,190,UI_PAGE_HOME,page);
-    rail_item(p,290,UI_PAGE_DETAILS,page);
-    rail_item(p,390,UI_PAGE_DOWNLOADS,page);
-    rail_item(p,490,UI_PAGE_SEARCH,page);
-    rail_item(p,590,UI_PAGE_SETTINGS,page);
+    const UiPage sections[8]={
+        UI_PAGE_HOME,UI_PAGE_GAMES,UI_PAGE_AVAILABLE,UI_PAGE_DOWNLOADS,
+        UI_PAGE_QUEUE,UI_PAGE_INSTALLED,UI_PAGE_ABOUT,UI_PAGE_SETTINGS
+    };
+    /* All tabs visible without scroll; Settings + R1 always wraps Home. */
+    for(unsigned i=0;i<8;++i)
+        rail_item(p,155+(int)i*92,sections[i],
+                  page==UI_PAGE_DETAILS ? navigation.details_origin:page);
     /* Honest preview/read-only footer inside the native sidebar. */
     rect(p,24,906,204,2,0xFF245885u);
     panel(p,25,919,200,53,0xFF102D50u);
@@ -1168,13 +1188,16 @@ static void draw(const ScannerUiEntry *entries,
     (void)start;
     if(!usable) return;
     uint32_t *p=surface[next_buffer];
-    if(!scanning && navigation.page!=UI_PAGE_DOWNLOADS &&
-       navigation.page!=UI_PAGE_SEARCH)
+    if(!scanning &&
+       (navigation.page==UI_PAGE_HOME ||
+        navigation.page==UI_PAGE_GAMES ||
+        navigation.page==UI_PAGE_DETAILS))
         prepare_blurred_background(entries,count);
     background(p);
     rail(p,navigation.page);
     header(p);
-    if(scanning && previous_scan_count && navigation.page==UI_PAGE_HOME) {
+    if(scanning && previous_scan_count &&
+       (navigation.page==UI_PAGE_HOME || navigation.page==UI_PAGE_GAMES)) {
         /* Make the library visible immediately, but keep this strictly
          * non-interactive until the synchronous scanner finishes.
          * Cached names/versions are ALWAYS unverified and stale. */
@@ -1183,7 +1206,9 @@ static void draw(const ScannerUiEntry *entries,
         /* Do not paint over the selected game's Details control.
          * Cache warnings stay below the sixth library row. */
         cache_notice(p,1);
-    }else if(scanning && navigation.page==UI_PAGE_HOME) {
+    }else if(scanning &&
+             (navigation.page==UI_PAGE_HOME ||
+              navigation.page==UI_PAGE_GAMES)) {
         arabic(p,293,218,UI_AR_READING_METADATA,WHITE);
         panel(p,280,328,1540,344,PANEL);
         ascii(p,315,408,progress_line,CYAN,4,70);
@@ -1472,6 +1497,7 @@ extern "C" void scanner_ui_results(
         int cover_updated=0;
         if(cover_tick && entries &&
            (navigation.page==UI_PAGE_HOME ||
+            navigation.page==UI_PAGE_GAMES ||
             navigation.page==UI_PAGE_DETAILS ||
             (navigation.page==UI_PAGE_SEARCH &&
              navigation.search_result_focus))) {

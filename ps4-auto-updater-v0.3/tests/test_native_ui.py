@@ -86,6 +86,30 @@ class NativeUiSmokeTests(unittest.TestCase):
             )
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("UI_HOST_SMOKE_OK", run.stdout)
+            # Instrument the real 1920x1080 native CPU framebuffer code,
+            # while VideoOut and Pad are Host mocks. The timing includes
+            # mock navigation, so it is not PS4 frame time or a CI speed
+            # threshold. The direct-memory allocation is 2MiB-aligned.
+            import re
+            render = re.search(
+                r"HOST_ONLY_NATIVE_1080P_CPU_MS=([0-9]+\.[0-9]+) "
+                r"FRAMES=([0-9]+) "
+                r"CPU_MS_PER_SUBMISSION=([0-9]+\.[0-9]+) "
+                r"FRAMEBUFFER_BYTES=([0-9]+)",
+                run.stdout,
+            )
+            self.assertIsNotNone(
+                render, "Missing native Host render resource measurement"
+            )
+            self.assertGreaterEqual(int(render.group(2)), 8)
+            self.assertEqual(int(render.group(4)), 16 * 1024 * 1024)
+            print(
+                "HOST_ONLY_NATIVE_1080P_CPU_MS=" + render.group(1)
+                + " FRAMES=" + render.group(2)
+                + " MS_PER_SUBMISSION=" + render.group(3)
+                + " FRAMEBUFFER_BYTES=" + render.group(4),
+                flush=True,
+            )
 
             # These are captures of the native C++ framebuffer renderer,
             # NOT proof of how it appears on an actual PS4 television.

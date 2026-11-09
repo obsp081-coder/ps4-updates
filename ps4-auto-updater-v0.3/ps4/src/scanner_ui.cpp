@@ -733,13 +733,6 @@ static void footer(uint32_t *p, UiArabicLabel hint) {
     ascii(p,1690,1027,"L1",CYAN,2,2);
     arabic(p,1740,1015,UI_AR_PREV_MENU,CYAN);
 }
-static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
-                       const char *value,uint32_t color) {
-    panel(p,x,y,w,110,PANEL);
-    rect(p,x+16,y+21,4,66,color);
-    arabic(p,x+36,y+6,name,MUTED);
-    ascii(p,x+36,y+63,value,WHITE,3,28);
-}
 /* RTL game table matching the approved six-row visual hierarchy:
  * cover/icon at the far right, local title and CUSA beside it, then
  * observed metadata version, optional update metadata, and a cautious

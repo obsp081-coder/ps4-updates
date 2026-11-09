@@ -128,6 +128,24 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 "Missing Arabic navigation caption at y="
                                 + str(rail_y)
                             )
+                        # Native table labels are independent of the
+                        # three mocked game rows; no invented update data
+                        # is required to draw Name / Version / State.
+                        for label, left, right in (
+                            ("game", 375, 570),
+                            ("version", 826, 953),
+                            ("state", 965, 1155),
+                        ):
+                            area = pixels.crop((left, 305, right, 339))
+                            bright = sum(
+                                1 for red, green, blue in area.getdata()
+                                if red >= 145 and green >= 145
+                                and blue >= 145
+                            )
+                            self.assertGreater(
+                                bright, 15,
+                                "Missing table column heading: " + label
+                            )
                         self.assertEqual(
                             pixels.getpixel((1250, 300)), (17, 44, 80),
                             "Selected cover hero frame changed"

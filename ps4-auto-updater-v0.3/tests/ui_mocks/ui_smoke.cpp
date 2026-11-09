@@ -42,6 +42,10 @@ static bool saw_search_return = false;
 static bool test_capacity_screen = false;
 static bool saw_capacity_sixth_row = false;
 static int mixed_title_probe = 0;
+static int long_title_probe = 0;
+static bool saw_long_title_left = false;
+static bool saw_long_title_right = false;
+static bool long_title_no_bleed = true;
 static bool saw_ltr_title_left = false;
 static bool saw_rtl_title_right = false;
 static bool saw_rtl_title_clear_left = false;
@@ -136,7 +140,9 @@ static void reset() {
         test_capacity_screen = saw_capacity_sixth_row =
         test_search_result_open = saw_search_focus =
         saw_search_details = saw_search_return = false;
-    mixed_title_probe = 0;
+    mixed_title_probe = long_title_probe = 0;
+    saw_long_title_left = saw_long_title_right = false;
+    long_title_no_bleed = true;
     saw_ltr_title_left = saw_rtl_title_right =
         saw_rtl_title_clear_left = false;
     lazy_cover_polls = 0;
@@ -219,6 +225,33 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                     capture_ppm(frame,"mixed_rtl",256u);
                 }
             }
+        }
+        if(long_title_probe) {
+            /* The 418px title field on Home starts at x=374. A previous
+             * renderer dropped the WHOLE run of a long English or Arabic
+             * title, leaving an empty name. Confirm both the beginning and
+             * visual truncation end have painted glyphs, with no white ink
+             * leaking into the Version column across x=792..823. */
+            const uint32_t *frame=display_buffers[index];
+            unsigned left_ink=0,right_ink=0,bleed=0;
+            for(unsigned yy=368; yy<399; ++yy) {
+                for(unsigned xx=377; xx<463; ++xx)
+                    if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
+                        ++left_ink;
+                for(unsigned xx=701; xx<790; ++xx)
+                    if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
+                        ++right_ink;
+                for(unsigned xx=792; xx<824; ++xx)
+                    if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
+                        ++bleed;
+            }
+            if(left_ink>8)saw_long_title_left=true;
+            if(right_ink>8)saw_long_title_right=true;
+            if(bleed)long_title_no_bleed=false;
+            if(long_title_probe==1 && left_ink>8 && right_ink>8)
+                capture_ppm(frame,"long_ltr",512u);
+            if(long_title_probe==2 && left_ink>8 && right_ink>8)
+                capture_ppm(frame,"long_rtl",1024u);
         }
         if(test_search_result_open) {
             const uint32_t *frame=display_buffers[index];
@@ -631,6 +664,38 @@ int main() {
     assert(saw_rtl_title_right && saw_rtl_title_clear_left);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1);
+
+    /* Long game titles MUST remain visible and indicate truncation.
+     * Both directions exercise the actual 418px native title column.
+     * The data below is synthetic host-only text, not retail game data. */
+    ScannerUiEntry long_title={
+        "CUSA22223",
+        "WWW WIDE ENGLISH NAME WITH MANY CHAPTERS AND AN EXTRA "
+        "VERY LONG EDITION INCLUDING MULTIPLE SEASONS",
+        "01.00",1,-1,"gd"
+    };
+    reset();
+    test_capacity_screen=true; /* Circle on second Pad sample */
+    long_title_probe=1;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(&long_title,1,1,0,1,1);
+    assert(saw_long_title_left && saw_long_title_right);
+    assert(long_title_no_bleed);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    long_title.title=
+        "لعبة المغامرات الطويلة جدًا الجزء الأول والإصدار "
+        "الجديد مع مستويات إضافية وأسماء عربية طويلة للغاية";
+    reset();
+    test_capacity_screen=true;
+    long_title_probe=2;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(&long_title,1,1,0,1,1);
+    assert(saw_long_title_left && saw_long_title_right);
+    assert(long_title_no_bleed);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
 
     reset();
     fail_video = true;

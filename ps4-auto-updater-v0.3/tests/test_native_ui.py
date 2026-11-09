@@ -91,7 +91,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "scanning_details", "stale_details", "search_restored_home", "empty", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -174,6 +174,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                         self.assertEqual(
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
+                        )
+                    if page == "search_restored_home":
+                        # Actual Pad sequence typed an unmatched Arabic
+                        # query and exited Search; three real game records
+                        # must be visible again on the Home screen.
+                        self.assertEqual(
+                            pixels.getpixel((600, 365)), (22, 72, 129),
+                            "Search left an empty or unselected Home library"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1500, 884)), (21, 88, 157),
+                            "No Details button after exiting zero-match Search"
                         )
                     if page == "empty":
                         self.assertEqual(

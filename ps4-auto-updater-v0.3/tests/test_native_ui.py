@@ -123,16 +123,16 @@ class NativeUiSmokeTests(unittest.TestCase):
                         )
                     if page == "downloads":
                         self.assertEqual(
-                            pixels.getpixel((160, 370)), (16, 45, 80),
+                            pixels.getpixel((320, 370)), (16, 45, 80),
                             "Missing actual no-jobs explanation panel"
                         )
                         self.assertEqual(
-                            pixels.getpixel((1000, 700)), (16, 45, 80),
+                            pixels.getpixel((1150, 700)), (16, 45, 80),
                             "Installation-disabled safety gate is missing"
                         )
                         # The page heading must stay above the three
                         # summary tiles, not be overpainted by their fill.
-                        heading = pixels.crop((92, 135, 355, 178))
+                        heading = pixels.crop((280, 135, 650, 178))
                         heading_ink = sum(
                             1 for r, g, b in heading.getdata()
                             if r > 145 and g > 145 and b > 145
@@ -142,7 +142,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # Dynamic Arabic glyphs must be visible inside key
                         # rectangles rather than tofu squares or blank keys.
                         for col in range(10):
-                            x = 128 + col * 163
+                            x = 290 + col * 152
                             patch = pixels.crop((x + 10, 422, x + 130, 502))
                             bright = sum(1 for r, g, b in patch.getdata()
                                          if r >= 175 and g >= 175 and b >= 175)
@@ -154,7 +154,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # Search must show an actual matching title below
                         # the keyboard, not just its match count. This
                         # rectangle contains no keyboard key or footer text.
-                        result_patch = pixels.crop((193, 920, 650, 955))
+                        result_patch = pixels.crop((360, 920, 785, 955))
                         result_ink = sum(
                             1 for r, g, b in result_patch.getdata()
                             if r >= 175 and g >= 175 and b >= 175
@@ -168,7 +168,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # Noto glyph to a 24px legacy cell. Check its actual
                         # ink, not merely that some neighbouring title text
                         # survived.
-                        m_glyph = pixels.crop((326, 933, 349, 960))
+                        m_glyph = pixels.crop((493, 933, 516, 960))
                         m_ink = sum(
                             1 for r, g, b in m_glyph.getdata()
                             if r >= 175 and g >= 175 and b >= 175
@@ -181,7 +181,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # visible white glyphs; proportional fonts can be
                         # clipped if the old 5x7 fixed-cell width is reused.
                         for col in range(10):
-                            x = 128 + col * 163
+                            x = 290 + col * 152
                             patch = pixels.crop((x + 45, 434, x + 116, 501))
                             bright = sum(1 for r, g, b in patch.getdata()
                                          if r >= 175 and g >= 175 and b >= 175)

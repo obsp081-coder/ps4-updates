@@ -1147,8 +1147,13 @@ static void draw(const ScannerUiEntry *entries,
     }else if(navigation.page==UI_PAGE_DETAILS) {
         details(p,entries,count,complete);
         if(final_view_is_stale || scanning) {
+            /* Keep the Details warning accurate too: failed/partial FTP
+             * is NOT still "checking". The same one-line 1080p-safe copy
+             * is used on Home, and neither warning enables installation. */
             panel(p,270,937,1548,62,0xFF102D50u);
-            arabic(p,300,943,UI_AR_CACHE_PREVIEW,AMBER);
+            rect(p,280,947,5,39,AMBER);
+            arabic(p,304,947,scanning?UI_AR_CACHE_PREVIEW:
+                   UI_AR_CACHE_STALE,AMBER);
         }
     }else if(navigation.page==UI_PAGE_DOWNLOADS) {
         downloads(p);

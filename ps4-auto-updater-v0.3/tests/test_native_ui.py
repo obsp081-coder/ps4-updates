@@ -130,16 +130,23 @@ class NativeUiSmokeTests(unittest.TestCase):
                     if page == "home":
                         # Welcome and four truthful compact status tiles:
                         # no false update or source claims.
-                        self.assertEqual(
-                            pixels.getpixel((275, 155)), (12, 40, 80))
+                        # The new panel is translucent and vertically
+                        # graded; a fixed flat RGB assertion would reject
+                        # the intended change or any valid local backdrop.
+                        welcome_rgb = pixels.getpixel((275, 155))
+                        self.assertGreater(welcome_rgb[2], welcome_rgb[1])
+                        self.assertGreater(welcome_rgb[1], welcome_rgb[0]+15)
+                        self.assertNotEqual(welcome_rgb, (12, 40, 80))
                         banner = pixels.crop((375, 127, 1220, 198))
                         self.assertGreater(sum(
                             1 for r,g,b in banner.getdata()
                             if r>155 and g>155 and b>155), 25)
                         for x in (269, 548, 827, 1106):
-                            self.assertEqual(
-                                pixels.getpixel((x+8, 242)), (12,36,74),
-                                "Home status tile missing")
+                            blue = pixels.getpixel((x+8, 242))
+                            self.assertGreater(
+                                blue[2], blue[1],
+                                "Home glass status tile missing")
+                            self.assertGreater(blue[1],blue[0])
                         # The approved interface uses ONE wide Arabic
                         # sidebar, not four duplicate navigation tabs in
                         # the header. Two small read-only status cards
@@ -390,13 +397,15 @@ class NativeUiSmokeTests(unittest.TestCase):
                             if r > 145 and g > 145 and b > 145
                         )
                         self.assertGreater(heading_ink, 18)
-                        self.assertEqual(
-                            pixels.getpixel((1410, 250)), (11, 33, 66),
-                            "Selected-job right rail is missing")
+                        selected_rail = pixels.getpixel((1410, 250))
+                        self.assertGreater(
+                            selected_rail[2], selected_rail[1],
+                            "Selected-job translucent right rail is missing")
                         for x in (269, 548, 827, 1106):
-                            self.assertEqual(
-                                pixels.getpixel((x+8, 256)), (12, 36, 74),
-                                "Four genuine job counters are missing")
+                            blue = pixels.getpixel((x+8, 256))
+                            self.assertGreater(
+                                blue[2],blue[1],
+                                "Four real gradient job counters missing")
                     if page == "search_ar":
                         # Dynamic Arabic glyphs must be visible inside key
                         # rectangles rather than tofu squares or blank keys.

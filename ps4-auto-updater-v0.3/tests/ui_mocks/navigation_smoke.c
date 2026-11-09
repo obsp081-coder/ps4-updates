@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
+#include <time.h>
 static UiRecord entries[UI_MAX_TITLES];
 static char ids[UI_MAX_TITLES][10];
 static UiNavigation nav;
@@ -250,6 +251,29 @@ int main(void) {
                   "CUSA00000")==0);
 
     fill(256);
+    assert(nav.available==256);
+    /* Baseline only, not a PS4 performance assertion: exercise a full
+     * 256-title library with long Arabic metadata and long missing terms.
+     * Do not use timing as a CI pass/fail gate (runner CPU is variable).
+     * Search remains allocation-free and results stay bounded. */
+    static const char *long_title=
+        "لعبة المغامرات العربية الطويلة والإصدار الجديد مع مئات "
+        "الخيارات والأبطال وعوالم أخرى والنسخة المحسنة";
+    for(unsigned i=0;i<256;++i)entries[i].name=long_title;
+    const clock_t search_start=clock();
+    for(unsigned i=0;i<128;++i) {
+        ui_nav_filter(&nav,entries,256,
+            (i&1u)?"zzz-no-matching-title":"لعبة غير موجودة تمامًا");
+        assert(nav.available==0);
+        assert(nav.item_count==256);
+    }
+    const clock_t search_end=clock();
+    if(search_start!=(clock_t)-1 && search_end!=(clock_t)-1 &&
+       search_end>=search_start) {
+        printf("UI_SEARCH_256_ARABIC_HOST_CPU_MS_PER_128: %.3f\\n",
+               (double)(search_end-search_start)*1000.0/CLOCKS_PER_SEC);
+    }
+    ui_nav_filter(&nav,entries,256,"");
     assert(nav.available==256);
     for(unsigned i=0;i<300;i++) (void)ui_nav_action(&nav,UI_ACT_DOWN);
     assert(nav.selected==255 && nav.scroll==250);

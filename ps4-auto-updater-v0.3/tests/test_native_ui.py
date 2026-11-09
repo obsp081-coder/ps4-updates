@@ -338,6 +338,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((1450, 360)), (18, 49, 88),
                             "Dedicated right artwork panel is missing"
                         )
+                        # The "source" caption and "unavailable" value now
+                        # occupy separate Arabic baselines in the right card.
+                        # Previously they touched at x1613 on the same y.
+                        missing_value = pixels.crop((1430, 708, 1720, 744))
+                        amber = sum(
+                            1 for r,g,b in missing_value.getdata()
+                            if r>200 and 125<g<225 and b<195
+                        )
+                        self.assertGreater(
+                            amber, 12,
+                            "Right Details source value was clipped or lost"
+                        )
                     if page == "downloads":
                         self.assertEqual(
                             pixels.getpixel((320, 410)), (16, 45, 80),

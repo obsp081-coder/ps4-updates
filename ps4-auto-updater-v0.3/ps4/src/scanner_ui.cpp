@@ -719,77 +719,77 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
                     unsigned count,int complete) {
     const unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
     if(!entries || idx>=count) {
-        arabic(p,120,337,UI_AR_NO_SELECTED_GAME,AMBER);
+        arabic(p,298,337,UI_AR_NO_SELECTED_GAME,AMBER);
         footer(p,UI_AR_FOOTER_DETAILS);
         return;
     }
     const ScannerUiEntry *g=&entries[idx];
-    arabic(p,93,137,UI_AR_DETAILS,WHITE);
+    arabic(p,280,137,UI_AR_DETAILS,WHITE);
 
     /* Content side: a visually grouped read-only inspection page.
      * SFO metadata is NOT evidence of game installation, package type,
      * update compatibility, firmware requirements, or authorized source. */
-    panel(p,90,225,1285,705,0xFF0C244Au);
-    rect(p,111,242,4,111,CYAN);
-    game_title(p,137,251,1194,g,WHITE,4);
-    ascii(p,140,344,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
+    panel(p,266,225,1109,705,0xFF0C244Au);
+    rect(p,286,242,4,111,CYAN);
+    game_title(p,303,251,1047,g,WHITE,4);
+    ascii(p,303,344,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
 
-    panel(p,120,393,382,103,0xFF102D50u);
-    arabic(p,143,398,UI_AR_VERSION,MUTED);
-    ascii(p,147,445,fallback_version(g),WHITE,3,15);
+    panel(p,287,393,343,103,0xFF102D50u);
+    arabic(p,307,398,UI_AR_VERSION,MUTED);
+    ascii(p,307,445,fallback_version(g),WHITE,3,15);
 
-    panel(p,516,393,423,103,0xFF102D50u);
-    arabic(p,539,398,UI_AR_CATEGORY,MUTED);
-    arabic(p,539,439,category_label(g),
+    panel(p,643,393,344,103,0xFF102D50u);
+    arabic(p,664,398,UI_AR_CATEGORY,MUTED);
+    arabic(p,664,439,category_label(g),
            g->metadata_verified?WHITE:AMBER);
 
-    panel(p,951,393,399,103,0xFF102D50u);
-    arabic(p,972,398,UI_AR_REGION,MUTED);
-    arabic(p,973,439,UI_AR_UNAVAILABLE,AMBER);
+    panel(p,1000,393,350,103,0xFF102D50u);
+    arabic(p,1021,398,UI_AR_REGION,MUTED);
+    arabic(p,1021,439,UI_AR_UNAVAILABLE,AMBER);
 
-    panel(p,120,510,382,103,0xFF102D50u);
-    arabic(p,143,515,UI_AR_GAME_SIZE,MUTED);
-    arabic(p,144,554,UI_AR_UNAVAILABLE,AMBER);
+    panel(p,287,510,343,103,0xFF102D50u);
+    arabic(p,307,515,UI_AR_GAME_SIZE,MUTED);
+    arabic(p,307,554,UI_AR_UNAVAILABLE,AMBER);
 
-    panel(p,516,510,423,103,0xFF102D50u);
-    arabic(p,539,515,UI_AR_FIRMWARE,MUTED);
-    arabic(p,540,554,UI_AR_UNAVAILABLE,AMBER);
+    panel(p,643,510,344,103,0xFF102D50u);
+    arabic(p,664,515,UI_AR_FIRMWARE,MUTED);
+    arabic(p,664,554,UI_AR_UNAVAILABLE,AMBER);
 
-    panel(p,951,510,399,103,0xFF102D50u);
-    arabic(p,972,515,UI_AR_SOURCE,MUTED);
-    arabic(p,973,554,UI_AR_UNAVAILABLE,AMBER);
+    panel(p,1000,510,350,103,0xFF102D50u);
+    arabic(p,1021,515,UI_AR_SOURCE,MUTED);
+    arabic(p,1021,554,UI_AR_UNAVAILABLE,AMBER);
 
-    rect(p,130,640,1215,2,0xFF255B8Du);
-    arabic(p,143,654,UI_AR_AVAILABLE_UPDATES,CYAN);
+    rect(p,288,640,1063,2,0xFF255B8Du);
+    arabic(p,303,654,UI_AR_AVAILABLE_UPDATES,CYAN);
     /* Preview-only: a provider's displayed verdict never enables
      * download or install without separate authorization and PKG checks. */
     const UiUpdateInfo *first=ui_model_update_for(g->cusa,0);
     if(!first) {
-        panel(p,140,709,1209,122,0xFF102D50u);
-        rect(p,143,720,5,95,AMBER);
-        arabic(p,172,722,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-        arabic(p,172,772,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+        panel(p,289,709,1062,122,0xFF102D50u);
+        rect(p,290,720,5,95,AMBER);
+        arabic(p,309,722,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+        arabic(p,309,772,UI_AR_RETAIL_FPKG_WARNING,MUTED);
     } else {
         for(unsigned i=0;i<3u;++i) {
             const UiUpdateInfo *row=ui_model_update_for(g->cusa,i);
             if(!row)break;
             const int y=700+(int)i*52;
-            panel(p,140,y,1214,47,0xFF102D50u);
-            ascii(p,167,y+7,row->version,WHITE,2,15);
+            panel(p,289,y,1062,47,0xFF102D50u);
+            ascii(p,308,y+7,row->version,WHITE,2,15);
             if(row->minimum_fw[0])
-                ascii(p,430,y+7,row->minimum_fw,CYAN,2,15);
+                ascii(p,510,y+7,row->minimum_fw,CYAN,2,15);
             if(row->size_bytes) {
                 char size[40];
                 (void)snprintf(size,sizeof size,"%llu MB",
                     (unsigned long long)(row->size_bytes/1048576u));
-                ascii(p,680,y+7,size,MUTED,2,18);
+                ascii(p,745,y+7,size,MUTED,2,18);
             }
-            arabic(p,960,y+5,row->verdict==UI_UPDATE_BLOCKED ?
+            arabic(p,1040,y+5,row->verdict==UI_UPDATE_BLOCKED ?
                 UI_AR_UPDATE_BLOCKED:UI_AR_UPDATE_REVIEW,
                 row->verdict==UI_UPDATE_BLOCKED?AMBER:MUTED);
         }
     }
-    arabic(p,141,863,complete?UI_AR_DATA_NOT_PROOF:
+    arabic(p,304,863,complete?UI_AR_DATA_NOT_PROOF:
           UI_AR_SCAN_INCOMPLETE,MUTED);
 
     /* Right side mirrors the approved artwork-first detail panel, using

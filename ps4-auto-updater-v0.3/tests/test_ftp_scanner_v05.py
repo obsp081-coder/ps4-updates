@@ -617,7 +617,7 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertEqual([x["cusa"] for x in inventory["games"]],
                          ["CUSA02343"])
         self.assertEqual([x["metadata_kind"] for x in inventory["metadata_records"]],
-                         ["base_game", "other_metadata", "dlc_metadata"])
+                         ["base_game", "patch_metadata", "dlc_metadata"])
         self.assertEqual([x["metadata_verified"]
                           for x in inventory["directory_candidates"]],
                          [True, True, True])
@@ -636,23 +636,48 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertFalse(inventory["scan_complete"])
 
 
-    def test_ps4_playable_categories_are_accepted(self):
-        listing = (
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA08032\r\n"
+    def test_ps4_library_keeps_ps2_classics_but_not_system_or_video_apps(self):
+        # gdO = PS2 Classic; gda = system app; gde = non-game native app.
+        # All valid SFO records remain observable in metadata_records.
+        ids = ["CUSA02343", "CUSA00411", "CUSA08032", "CUSA99999"]
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 " + cusa + "\r\n").encode()
+            for cusa in ids
         )
-        inventory, diagnostic, _ = self.with_server(
+        inventory, diagnostic, commands = self.with_server(
             listing, {
-                "CUSA02343": sfo("CUSA02343", category="gda"),
-                "CUSA00411": sfo("CUSA00411", category="gdo"),
-                "CUSA08032": sfo("CUSA08032", category="gde"),
+                "CUSA02343": sfo("CUSA02343", category="gd"),
+                "CUSA00411": sfo("CUSA00411", category="gdO"),
+                "CUSA08032": sfo("CUSA08032", category="gda"),
+                "CUSA99999": sfo("CUSA99999", category="gde"),
             })
         self.assertEqual(
             [g["cusa"] for g in inventory["games"]],
-            ["CUSA02343", "CUSA00411", "CUSA08032"]
+            ["CUSA02343", "CUSA00411"]
         )
+        self.assertEqual(
+            [g["metadata_kind"] for g in inventory["metadata_records"]],
+            ["base_game", "base_game", "other_metadata", "other_metadata"]
+        )
+        self.assertEqual(
+            [g["category"] for g in inventory["metadata_records"]],
+            ["gd", "gdO", "gda", "gde"]
+        )
+        self.assertEqual(len(inventory["directory_candidates"]), 4)
         self.assertTrue(inventory["scan_complete"])
+        self.assertIn("Base-game records: 2", diagnostic)
+        self.assertIn("Metadata records: 4", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_lowercase_legacy_ps2_classic_category_is_not_lost(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
+        inventory, _, _ = self.with_server(
+            listing, {"CUSA00411": sfo("CUSA00411", category="gdo")}
+        )
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertEqual(
+            inventory["metadata_records"][0]["metadata_kind"], "base_game"
+        )
 
     def test_truncated_content_id_does_not_restore_missing_title_id(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

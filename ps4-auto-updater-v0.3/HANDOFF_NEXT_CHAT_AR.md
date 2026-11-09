@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `fb0d3c596bccb81a5b3494954a2ea61644e35680`؛ قد يكون توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `a43c6785644b498da93ddbf9d88d7e57e6b2fac9`؛ قد يكون توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit fb0d3c59**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42587102545 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. الصور الناتجة **Host Framebuffer** وليست PS4.
+- CI الأخير الناجح **على كود Commit a43c6785**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42593553873 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. الصور الناتجة **Host Framebuffer** وليست PS4.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -33,12 +33,12 @@
 - `metadata_verified` **لا تعني installed proof**. `Retail PKG` و`FPKG` ليست حزمًا قابلة للخلط تلقائيًا. لا يوجد Provider تحديثات مثبت الصلاحية أو Downloader/Installer آمن ومتحقق من عمله. **لا تفعّلها افتراضيًا**.
 - البحث يدعم اختيار نتيجة حقيقية والانتقال إلى Details والعودة إلى البحث، مع Host tests.
 - `UI title layout` يحسّن العربية/Latin لكنه **ليس Unicode Bidi كاملًا**.
-- آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وLong RTL/LTR Ellipsis، وأزالت تكرار الهيدر. أُصلحت حالات Cached/Failed FTP: التحذير أصبح أسفل الصف السادس ولا يحجب زر Details، ولكل حالة رسالة منفصلة وسطر واحد. أُضيفت Empty Library panel ورسالة إرشاد GoldHEN FTP، مع إزالة خطأ حفظ وهمي. اختبارات Pixel وصور `cached.png` و`stale.png` و`empty.png` تحققت على Host. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
+- آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وLong RTL/LTR Ellipsis؛ أُصلحت حالات Cached/Failed FTP وEmpty Library ومنع رسالة الحفظ الوهمية. **التحديث الأخير**: الخروج من Search لا يترك فلترًا مخفيًا في Home؛ يُستعاد عدد الألعاب ويُحفظ اختيار CUSA، كما تميز Details بين تحذير Cache أثناء الفحص والتحذير بعد فشل FTP. صور `search_restored_home.png` و`scanning_details.png` و`stale_details.png` اختُبرت بصريًا عبر Host. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
 
 ## 4. الأولويات التالية — بدون انتظار أسئلة للمستخدم
 
 1. **القائمة الجانبية العربية العريضة (DONE IN CODE + HOST TESTS):** 252px بديل Icon Rail القديم مع جميع أقسام الواجهة. **لم يُختبر على PS4 الحقيقي**؛ لا تعد بناءه من الصفر إلا عند وجود عيب موثق.
-2. **جدول الألعاب + RTL/LTR Title Ellipsis + Cache/Empty UI (DONE IN CODE + HOST TESTS):** ستة صفوف، عناوين أعمدة عربية، تحذير Snapshot غير حاجب لـDetails ومختلف حسب حالة FTP، Empty Library صريحة دون فشل حفظ وهمي. **أولوية P1 الحالية:** مقارنة تباعد الخطوط والأيقونات والتدرجات بالـMockup، معالجة ما يمكن إثباته بحالات Extreme Data، واستمرار ضبط UI Performance؛ دون اختلاق Provider/Compatibility.
+2. **جدول الألعاب + RTL/LTR Ellipsis + Cached/Stale/Empty + Search Restoration (DONE IN CODE + HOST TESTS):** ستة صفوف، عناوين عربية، تحذير Snapshot غير حاجب ولا مضلل، مكتبة فارغة واضحة، وعودة صحيحة من البحث إلى Home حتى عند No-match أو OPTIONS. **أولوية P1 الحالية:** تحسين Contrast/Spacing وأيقونات الفئات، ضبط حالات بيانات ناقصة أو طويلة، وقياس موارد UI على Host مع توضيح أنها ليست أرقام PS4. لا تعِد تنفيذ الإصلاحات الموثقة دون عيب مثبت.
 3. تحسين التركيز البصري وNavigation states للـSearch/Details/Downloads/Settings، ولا تضف أزرار Download/Install فعالة أو Progress وهمية.
 4. كل تغيير: اقرأ الملفات المعنية من GitHub، عدّل بحذر وبـCommit واضح، أضف Host Regression Tests، راجع صور `ui-native-host-previews` بصريًا، انتظر CI المكتمل على أحدث HEAD، وصحّح الفشل الفعلي قبل اعتماد التعديل.
 5. قياس الموارد والذاكرة/الأداء على الكمبيوتر عند الإمكان مع تمييز أنها ليست أرقام PS4. PS4 Hardware Tests، FTP على GoldHEN FW14، الأعطال والتثبيت تؤجل حتى الجهاز متاح.

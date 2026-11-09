@@ -45,6 +45,8 @@ static bool test_cover_scroll = false;
 static bool test_idle_without_redraw = false;
 static bool test_search_result_open = false;
 static bool test_search_restore_home = false;
+static bool test_circular_tabs = false;
+static unsigned seen_circular_tabs = 0;
 static bool saw_search_no_match = false;
 static bool saw_home_restored = false;
 static bool saw_restored_details = false;
@@ -147,6 +149,8 @@ static void reset() {
     saw_backdrop_before_replace = false;
     saw_backdrop_after_replace = false;
     captured_pages = 0;
+    seen_circular_tabs = 0;
+    test_circular_tabs = false;
     capture_live_ui = false;
     verify_jobs = saw_job_progress = saw_job_scroll = saw_update_row = false;
     capture_cached_preview = saw_cached_sixth_row = false;
@@ -216,7 +220,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         /* x=72 is outside the 69px sidebar rail and outside
          * content panels, so it genuinely measures the blurred art. */
         const uint32_t sample =
-            display_buffers[index][500u*SCREEN_WIDTH+1190u];
+            display_buffers[index][500u*SCREEN_WIDTH+1383u];
         if(sample == 0xFF0A1F49u) saw_blurred_background = true;
         if(test_cover_replacement) {
             /* Before: 0xFF18A04D (local green icon). After: decoded PNG
@@ -236,7 +240,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++left_ink;
                 }
-                for(unsigned xx=690;xx<815;++xx) {
+                for(unsigned xx=898;xx<991;++xx) {
                     const uint32_t c=frame[yy*SCREEN_WIDTH+xx];
                     if((c&0x00FFFFFFu)==0x00EAF4FFu)++right_ink;
                 }
@@ -267,10 +271,10 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 for(unsigned xx=377; xx<463; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++left_ink;
-                for(unsigned xx=701; xx<790; ++xx)
+                for(unsigned xx=899; xx<986; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++right_ink;
-                for(unsigned xx=792; xx<824; ++xx)
+                for(unsigned xx=994; xx<1037; ++xx)
                     if(frame[yy*SCREEN_WIDTH+xx]==0xFFEAF4FFu)
                         ++bleed;
             }
@@ -281,6 +285,17 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
                 capture_ppm(frame,"long_ltr",512u);
             if(long_title_probe==2 && left_ink>8 && right_ink>8)
                 capture_ppm(frame,"long_rtl",1024u);
+        }
+        if(test_circular_tabs && pad_reads>=2 && pad_reads<=20 &&
+           pad_reads%2==0) {
+            /* Real native 1080p frame: ten shoulder transitions, including
+             * the empty-library Details state and both wrap directions. */
+            const int idx=(pad_reads/2)-1;
+            const int sequence[]={1,2,3,4,0,4,3,2,1,0};
+            const unsigned y=(unsigned)(245+sequence[idx]*100);
+            if(display_buffers[index][y*SCREEN_WIDTH+232u]==
+               0xFF15589Du)
+                seen_circular_tabs|=1u<<idx;
         }
         if(test_search_restore_home) {
             const uint32_t *frame=display_buffers[index];
@@ -439,6 +454,13 @@ int32_t scePadReadState(int32_t, OrbisPadData *data) {
         /* 120 mock input polls with no button or cover result. The native
          * renderer must not flip once per 33ms polling cycle. */
         if(pad_reads==120)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
+        return 0;
+    }
+    if(test_circular_tabs) {
+        if(pad_reads>=2 && pad_reads<=20 && pad_reads%2==0)
+            data->buttons=pad_reads<=10 ? ORBIS_PAD_BUTTON_R1 :
+                                         ORBIS_PAD_BUTTON_L1;
+        if(pad_reads==22)data->buttons=ORBIS_PAD_BUTTON_CIRCLE;
         return 0;
     }
     if(test_search_restore_home) {
@@ -718,6 +740,16 @@ int main() {
     scanner_ui_results(capacity_entries,UI_MAX_TITLES+1u,
                        UI_MAX_TITLES+1u,0,1,1);
     assert(saw_capacity_sixth_row && pad_reads>=2);
+    scanner_ui_shutdown(trace);
+    assert(allocated==0 && video_closed==1 && pad_closed==1);
+
+    /* Actual native Pad-to-VideoOut mapping: R1/L1 must traverse every
+     * sidebar page with zero scanned games and never invent metadata. */
+    reset();
+    test_circular_tabs=true;
+    assert(scanner_ui_begin()==1);
+    scanner_ui_results(nullptr,0,0,1,0,0);
+    assert(seen_circular_tabs==0x3FFu && pad_reads>=22);
     scanner_ui_shutdown(trace);
     assert(allocated==0 && video_closed==1 && pad_closed==1);
 

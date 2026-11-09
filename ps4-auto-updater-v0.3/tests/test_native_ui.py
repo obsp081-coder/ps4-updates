@@ -192,8 +192,8 @@ class NativeUiSmokeTests(unittest.TestCase):
                         # is required to draw Name / Version / State.
                         for label, left, right in (
                             ("game", 375, 570),
-                            ("version", 826, 953),
-                            ("state", 965, 1155),
+                            ("version", 1039, 1155),
+                            ("state", 1161, 1366),
                         ):
                             area = pixels.crop((left, 305, right, 339))
                             bright = sum(
@@ -206,13 +206,29 @@ class NativeUiSmokeTests(unittest.TestCase):
                                 "Missing table column heading: " + label
                             )
                         self.assertEqual(
-                            pixels.getpixel((1250, 300)), (17, 44, 80),
+                            pixels.getpixel((1440, 300)), (17, 44, 80),
                             "Selected cover hero frame changed"
                         )
                         self.assertEqual(
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
                         )
+                    # A real native static bitmap hint now explains
+                    # R1/L1 navigation across every available page.
+                    shoulder = pixels.crop((1490, 1010, 1870, 1063))
+                    cyan = sum(1 for r,g,b in shoulder.getdata()
+                               if b>175 and g>90 and r<140)
+                    self.assertGreater(cyan, 15)
+                    if page == "empty":
+                        # The grid-like horizontal stripes visible in the
+                        # shadPS4 screenshot are replaced by a smooth
+                        # low-contrast Navy gradient (no fake cover art).
+                        upper = pixels.getpixel((1383, 540))
+                        lower = pixels.getpixel((1383, 650))
+                        nearby = pixels.getpixel((1383, 550))
+                        self.assertNotEqual(upper, lower)
+                        self.assertLess(max(abs(a-b) for a,b in
+                                            zip(upper,nearby)), 3)
                     if page in ("home", "details"):
                         # The Details rail caption must stay clear of the
                         # sidebar divider in both active and inactive states.
@@ -422,7 +438,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # their entire long title or overwrite the Version column.
             for name in ("long_ltr", "long_rtl"):
                 with Image.open(preview / (name + ".ppm")) as frame:
-                    for left, right in ((377, 463), (701, 790)):
+                    for left, right in ((377, 463), (899, 986)):
                         patch = frame.crop((left, 368, right, 399))
                         white = sum(
                             1 for pixel in patch.getdata()
@@ -432,7 +448,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                             white, 8,
                             name + " title lost its visible prefix or end"
                         )
-                    gutter = frame.crop((792, 368, 824, 399))
+                    gutter = frame.crop((994, 368, 1037, 399))
                     self.assertFalse(
                         any(pixel == (234, 244, 255)
                             for pixel in gutter.getdata()),

@@ -573,9 +573,22 @@ static void background(uint32_t *p) {
             }
         }
     } else {
-        rect(p,0,0,WIDTH,HEIGHT,BG);
-        for(int y=128;y<1030;y+=48)
-            rect(p,0,y,WIDTH,16,(y/48)%2 ? 0xFF07172Fu:0xFF081A35u);
+        /* Without a locally available game icon, the approved mockup's
+         * soft dark Royal Blue is more faithful than the old 48px debug-like
+         * horizontal stripes. A smooth scanline gradient costs only the
+         * same full-frame writes as the previous opaque fallback. */
+        rect(p,0,0,WIDTH,116,BG);
+        rect(p,0,1000,WIDTH,HEIGHT-1000,BG);
+        for(int y=116;y<1000;++y) {
+            const unsigned t=(unsigned)(y-116);
+            const unsigned rr=9u-(t*5u)/884u;
+            const unsigned gg=30u-(t*17u)/884u;
+            const unsigned bb=65u-(t*35u)/884u;
+            rect(p,0,y,WIDTH,1,0xFF000000u|
+                 (rr<<16)|(gg<<8)|bb);
+        }
+        rect(p,252,116,1125,2,0xFF1368C1u);
+        rect(p,252,118,1125,1,0xFF0D417Bu);
     }
 }
 /* Wide 252px Arabic navigation rail. Reuses existing geometrical icons
@@ -663,6 +676,9 @@ static void footer(uint32_t *p, UiArabicLabel hint) {
     rect(p,0,1000,WIDTH,80,0xFF081A35u);
     rect(p,0,1000,WIDTH,2,0xFF1F5C9Eu);
     arabic(p,85,1015,hint,MUTED);
+    /* Always describe the real shoulder-button behavior, even in Search
+     * and on an empty library. Rendered from a pre-shaped static atlas. */
+    arabic(p,1490,1015,UI_AR_SHOULDER_NAV,CYAN);
 }
 static void summary_at(uint32_t *p,int x,int y,int w,UiArabicLabel name,
                        const char *value,uint32_t color) {
@@ -677,24 +693,24 @@ static void summary(uint32_t *p, int x, int w, UiArabicLabel name,
 }
 static void game_item(uint32_t *p, const ScannerUiEntry *g,
                       int y,int is_selected) {
-    /* Six 88px rows remain intact: make room for the wide left rail by
-     * shrinking text width, never moving or hiding a game row. */
-    panel(p,269,y,899,88,is_selected?0xFF164881u:PANEL);
+    /* The approved composition gives the game list most of the width.
+     * Keep all six rows and enlarge only their horizontal layout. */
+    panel(p,269,y,1109,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) {
         rect(p,269,y+10,5,68,CYAN);
         /* Thin two-tone focus rim; painting a whole-row gradient on CPU
          * would cost considerably more than these three bounded strokes. */
-        rect(p,281,y+3,875,2,CYAN);
-        rect(p,281,y+5,875,2,0xFF1765ABu);
-        rect(p,281,y+81,875,2,0xFF268DD7u);
+        rect(p,281,y+3,1067,2,CYAN);
+        rect(p,281,y+5,1067,2,0xFF1765ABu);
+        rect(p,281,y+81,1067,2,0xFF268DD7u);
     }
     cover(p,285,y+11,68,66,g?g->cusa:nullptr);
-    game_title(p,374,y+5,418,g,WHITE,2);
+    game_title(p,374,y+5,615,g,WHITE,2);
     ascii(p,374,y+53,g->cusa?g->cusa:"NO CUSA",MUTED,2,12);
     /* Only metadata-verified and unknown-install markers are shown.
      * Game presence in appmeta is never called proof of installation. */
-    ascii(p,826,y+30,fallback_version(g),CYAN,2,14);
-    /* Short row status stays inside the narrowed 899px list without
+    ascii(p,1040,y+30,fallback_version(g),CYAN,2,14);
+    /* Short row status stays inside the expanded 1109px list without
      * misrepresenting SFO metadata as an installed package. */
     const int base_meta=g && g->category &&
         (!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
@@ -702,7 +718,7 @@ static void game_item(uint32_t *p, const ScannerUiEntry *g,
     const UiArabicLabel row_status =
         base_meta && g->install_state<0 ? UI_AR_INSTALL_UNKNOWN :
         category_label(g);
-    arabic(p,966,y+25,row_status,
+    arabic(p,1164,y+25,row_status,
            g->metadata_verified?MUTED:AMBER);
 }
 static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
@@ -710,25 +726,25 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
                       int complete,int saved) {
     char number[64];
     snprintf(number,sizeof(number),"%u",good);
-    summary(p,269,283,UI_AR_BASE_GAMES,number,CYAN);
+    summary(p,269,355,UI_AR_BASE_GAMES,number,CYAN);
     unsigned install_unknown=0;
     for(unsigned i=0;i<count && entries;++i)
         if(entries[i].install_state<0)++install_unknown;
     snprintf(number,sizeof(number),"%u",install_unknown);
-    summary(p,566,283,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
+    summary(p,636,355,UI_AR_INSTALL_UNKNOWN,number,ACCENT);
     snprintf(number,sizeof(number),"%u",errors);
-    summary(p,862,304,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
+    summary(p,1003,372,UI_AR_SCAN_ERRORS,number,errors?AMBER:0xFF6CCFACu);
 
     arabic(p,282,265,UI_AR_LIBRARY,WHITE);
     arabic(p,858,268,complete?UI_AR_SCAN_COMPLETE:UI_AR_SCAN_INCOMPLETE,
           complete?0xFF6CCFACu:AMBER);
     /* A compact metadata table, deliberately omitting fictional columns
      * for Update Version/Size or a fabricated compatibility verdict. */
-    panel(p,269,302,899,39,0xFF102D50u);
+    panel(p,269,302,1109,39,0xFF102D50u);
     arabic(p,373,306,UI_AR_GAME_COLUMN,MUTED);
-    arabic(p,824,306,UI_AR_VERSION,MUTED);
-    arabic(p,961,306,UI_AR_STATE_COLUMN,MUTED);
-    rect(p,286,340,864,2,0xFF245D98u);
+    arabic(p,1039,306,UI_AR_VERSION,MUTED);
+    arabic(p,1161,306,UI_AR_STATE_COLUMN,MUTED);
+    rect(p,286,340,1074,2,0xFF245D98u);
     unsigned visible=navigation.available>navigation.scroll?
                      navigation.available-navigation.scroll:0;
     if(visible>ROWS)visible=ROWS;
@@ -743,7 +759,7 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
          * imply that there are no installed games. Show an explicit
          * read-only diagnostic instead of a tiny label on a blank grid.
          * No external assets and no allocations in the renderer. */
-        panel(p,285,371,866,390,0xFF102D50u);
+        panel(p,285,371,1075,390,0xFF102D50u);
         rect(p,301,388,5,350,AMBER);
         panel(p,331,410,167,163,0xFF123C74u);
         rect(p,350,427,125,4,CYAN);
@@ -761,48 +777,42 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     if(!saved && complete && count>0)
         arabic(p,455,955,UI_AR_MISSING_INVENTORY,AMBER);
 
-    /* Selected-game hero uses the EXISTING 128px local icon cache.
-     * No fabricated cover, update version or compatibility status.
-     * The dark royal-blue frame remains useful when icon0.png is absent. */
-    panel(p,1193,145,658,814,0xFF0B2142u);
-    rect(p,1197,162,4,776,0xFF1664B3u);
-    arabic(p,1230,157,UI_AR_SELECTED_GAME,CYAN);
-    panel(p,1227,205,588,326,0xFF112C50u);
-    rect(p,1244,218,554,2,0xFF2C77C0u);
-    rect(p,1244,514,554,2,0xFF205A91u);
+    /* Main layout matches the approved mockup's wide library and narrow
+     * right artwork rail. No remote artwork or invented update status. */
+    panel(p,1390,145,460,814,0xFF0B2142u);
+    rect(p,1394,162,4,776,0xFF1664B3u);
+    arabic(p,1420,157,UI_AR_SELECTED_GAME,CYAN);
+    panel(p,1413,205,414,326,0xFF112C50u);
+    rect(p,1428,218,382,2,0xFF2C77C0u);
+    rect(p,1428,514,382,2,0xFF205A91u);
     if(navigation.available && entries) {
         unsigned idx=ui_nav_resolve(&navigation,navigation.selected);
         if(idx<count) {
             const ScannerUiEntry *g=&entries[idx];
-            /* A square icon displayed without distorting its aspect ratio. */
-            panel(p,1350,223,346,286,0xFF0C244Au);
-            cover(p,1389,236,266,266,g->cusa);
-            /* Small classification on the image frame is always based on
-             * metadata category, never proof of installed package type. */
-            panel(p,1250,427,139,60,0xFF123C74u);
-            ascii(p,1271,440,"PS4",WHITE,3,3);
-            game_title(p,1240,543,558,g,WHITE,3);
-            ascii(p,1241,607,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
-            rect(p,1241,646,553,2,0xFF275980u);
-            arabic(p,1240,657,UI_AR_VERSION,MUTED);
-            ascii(p,1594,668,fallback_version(g),WHITE,3,14);
-            rect(p,1241,707,553,1,0xFF204568u);
-            arabic(p,1240,720,UI_AR_CATEGORY,MUTED);
-            arabic(p,1469,719,category_label(g),
+            panel(p,1453,223,334,286,0xFF0C244Au);
+            cover(p,1473,236,266,266,g->cusa);
+            panel(p,1424,434,120,55,0xFF123C74u);
+            ascii(p,1448,441,"PS4",WHITE,3,3);
+            game_title(p,1423,542,400,g,WHITE,2);
+            ascii(p,1424,601,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
+            rect(p,1423,646,399,2,0xFF275980u);
+            arabic(p,1423,654,UI_AR_VERSION,MUTED);
+            ascii(p,1689,663,fallback_version(g),WHITE,2,12);
+            rect(p,1423,701,399,1,0xFF204568u);
+            arabic(p,1423,708,UI_AR_CATEGORY,MUTED);
+            /* Category can be long in Arabic. Give it its own line. */
+            arabic(p,1432,745,category_label(g),
                    g->metadata_verified?WHITE:AMBER);
-            rect(p,1241,773,553,1,0xFF204568u);
-            /* One legible warning, not two captions overlapping a CTA. */
-            arabic(p,1240,789,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-            /* Navigates to read-only details; this is NOT a download button. */
-            panel(p,1241,849,553,57,0xFF15589Du);
-            rect(p,1256,857,5,40,CYAN);
-            arabic(p,1293,856,UI_AR_FULL_DETAILS,WHITE);
+            rect(p,1423,786,399,1,0xFF204568u);
+            arabic(p,1423,794,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+            panel(p,1423,849,397,57,0xFF15589Du);
+            rect(p,1437,857,5,40,CYAN);
+            arabic(p,1460,856,UI_AR_FULL_DETAILS,WHITE);
         }
     } else {
-        arabic(p,1240,362,UI_AR_NO_SELECTED_GAME,MUTED);
+        arabic(p,1423,362,UI_AR_NO_SELECTED_GAME,MUTED);
     }
-    /* Keep final warning INSIDE the card, not over its bottom border. */
-    arabic(p,1237,912,UI_AR_DATA_NOT_PROOF,MUTED);
+    arabic(p,1421,912,UI_AR_DATA_NOT_PROOF,MUTED);
     snprintf(number,sizeof(number),"%u / %u",
              navigation.available?navigation.selected+1:0,
              navigation.available);
@@ -1113,7 +1123,7 @@ static void cache_notice(uint32_t *p,int scanning) {
     /* One legible sentence, intentionally above the y=1000 footer.
      * Two stacked 30px Arabic lines were clipped at 1080p and could
      * falsely say "checking" after a definitive FTP failure. */
-    panel(p,269,937,899,59,0xFF102D50u);
+    panel(p,269,937,1109,59,0xFF102D50u);
     rect(p,279,947,5,39,AMBER);
     arabic(p,304,947,scanning?UI_AR_CACHE_PREVIEW:UI_AR_CACHE_STALE,
            AMBER);

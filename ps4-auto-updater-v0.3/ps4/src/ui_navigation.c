@@ -124,12 +124,38 @@ static int update_query(UiNavigation *state,const char *value) {
     ui_nav_filter(state,state->items,state->item_count,tmp);
     return 1;
 }
+/* Search is a distinct screen, not a persistent filter on Home.
+ * Returning from a no-match search must not make the installed-metadata
+ * library look empty. Restore all actual records while keeping the
+ * selected game's identity when it still exists. Allocation-free. */
+static void leave_search(UiNavigation *state) {
+    const unsigned selected_record =
+        state->selected<state->available ?
+            state->matched[state->selected] : UI_MAX_TITLES;
+    const UiRecord *items=state->items;
+    const unsigned count=state->item_count;
+    ui_nav_filter(state,items,count,"");
+    if(selected_record<state->available) {
+        /* Empty query uses original index ordering, bounded by count. */
+        state->selected=selected_record;
+        if(state->selected>=UI_VISIBLE_ROWS)
+            state->scroll=state->selected-UI_VISIBLE_ROWS+1;
+    }
+    state->search_result_focus=0;
+    state->details_from_search=0;
+    state->page=UI_PAGE_HOME;
+}
 int ui_nav_action(UiNavigation *state, UiAction action) {
     if (!state || state->exit_requested) return 0;
     /* OPTIONS always opens the informational settings page. It must not
      * silently change download/install flags or save any preferences. */
     if (action == UI_ACT_SETTINGS) {
         if (state->page == UI_PAGE_SETTINGS) return 0;
+        /* OPTIONS from Search (or Details opened from Search) must not
+         * carry an old search filter into the Home library later. */
+        if(state->page==UI_PAGE_SEARCH ||
+           (state->page==UI_PAGE_DETAILS && state->details_from_search))
+            leave_search(state);
         state->page = UI_PAGE_SETTINGS;
         return 1;
     }
@@ -139,7 +165,7 @@ int ui_nav_action(UiNavigation *state, UiAction action) {
             if(state->search_result_focus) {
                 state->search_result_focus=0;
             } else {
-                state->page=UI_PAGE_HOME;
+                leave_search(state);
             }
             return 1;
         }

@@ -158,22 +158,18 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         layout = ImageFont.LAYOUT_RAQM
     font = ImageFont.truetype(str(font_path), font_size,
                               layout_engine=layout)
-    # Heading glyphs ship as bitmaps only. No font file or shape engine
-    # is needed on the console itself. Weight is part of the design tokens.
-    bold_path = font_path.parent / "NotoSansArabic-Bold.ttf"
-    semi_path = font_path.parent / "NotoSansArabic-SemiBold.ttf"
-    if not bold_path.is_file() or not semi_path.is_file():
-        raise FileNotFoundError(
-            "Noto Sans Arabic Bold/SemiBold missing (fonts-noto-core)"
-        )
+    # Our actual CI fonts-noto-core package only guarantees Regular.
+    # Keep visual output reproducible: rasterize heading weights by
+    # a second 1px-offset pass from that same OFL Regular face.
+    # No extra font file, system dependency or runtime text shaping.
     bold_font = ImageFont.truetype(
-        str(bold_path), 31, layout_engine=layout
+        str(font_path), 31, layout_engine=layout
     )
     bold_title_font = ImageFont.truetype(
-        str(bold_path), 33, layout_engine=layout
+        str(font_path), 33, layout_engine=layout
     )
     semibold_rail_font = ImageFont.truetype(
-        str(semi_path), 24, layout_engine=layout
+        str(font_path), 24, layout_engine=layout
     )
     # The 252px Sidebar has only 154px between its icon and right gutter.
     # Rasterize the long caption once at build time, not during frames.
@@ -248,6 +244,18 @@ def generate(output: Path, font_path: Path, font_size: int = 31):
         drawer = ImageDraw.Draw(image)
         drawer.text((2-bbox[0], 2-bbox[1]), caption, font=label_font,
                     direction="rtl", language="ar", fill=255)
+        # Deterministic build-time display weight. Only prominent headings
+        # and short Sidebar labels receive the extra horizontal ink pass.
+        heavy = name in (
+            "WELCOME_TITLE", "DOWNLOAD_LIST_TITLE", "AVAILABLE_UPDATES",
+            "SELECTED_GAME", "SELECTED_JOB", "LIBRARY",
+            "COMPATIBILITY_HEADING", "SETTINGS_HEADER", "DETAILS",
+            "NO_TRUSTED_UPDATE", "HOME", "GAMES_MENU", "QUEUE_MENU",
+            "ABOUT_MENU", "DOWNLOADS", "SETTINGS"
+        )
+        if heavy:
+            drawer.text((3-bbox[0], 2-bbox[1]), caption, font=label_font,
+                        direction="rtl", language="ar", fill=255)
         mask = list(image.getdata())
         packed = bytearray((len(mask) + 3)//4)
         for i, alpha in enumerate(mask):

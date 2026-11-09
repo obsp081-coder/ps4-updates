@@ -91,7 +91,7 @@ class NativeUiSmokeTests(unittest.TestCase):
             # NOT proof of how it appears on an actual PS4 television.
             from PIL import Image
             export = os.environ.get("UI_PREVIEW_EXPORT_DIR")
-            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
+            for page in ("home", "details", "downloads", "search", "search_ar", "settings", "cached", "stale", "mixed_ltr", "mixed_rtl", "long_ltr", "long_rtl"):
                 ppm = preview / (page + ".ppm")
                 self.assertTrue(ppm.is_file(), "Missing native UI page: " + page)
                 with Image.open(ppm) as pixels:
@@ -175,7 +175,19 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
                         )
-                    if page == "cached":
+                    if page in ("cached", "stale"):
+                        # Cache warnings have one bounded line above the
+                        # footer; two-line warnings previously disappeared
+                        # under the y=1000 native controller hints.
+                        text_overflow = pixels.crop((301, 987, 875, 997))
+                        bottom_ink = sum(
+                            1 for pixel in text_overflow.getdata()
+                            if pixel in ((255, 195, 125), (159, 184, 215))
+                        )
+                        self.assertEqual(
+                            bottom_ink, 0,
+                            "Cache warning text collides with footer"
+                        )
                         # A stale/partial FTP scan may not cover the user
                         # path to read-only game Details, even with a six-
                         # row library. Banner lives in the lower list gutter.
@@ -269,6 +281,19 @@ class NativeUiSmokeTests(unittest.TestCase):
                         destination.mkdir(parents=True, exist_ok=True)
                         pixels.save(destination / (page + ".png"),
                                     optimize=True)
+
+            # A scan that is still running and a failed scan must NOT
+            # show the same state text ("جاري التحقق" after failure).
+            from PIL import ImageChops
+            with Image.open(preview / "cached.ppm") as active_cache, \
+                 Image.open(preview / "stale.ppm") as failed_cache:
+                self.assertIsNotNone(
+                    ImageChops.difference(
+                        active_cache.crop((300, 942, 880, 985)),
+                        failed_cache.crop((300, 942, 880, 985))
+                    ).getbbox(),
+                    "Active-scan and failed-scan cache warnings are identical"
+                )
 
             # Both directions must visibly truncate rather than erase
             # their entire long title or overwrite the Version column.

@@ -5,6 +5,13 @@
 **Verdict:** MODIFY — تكامل الواجهة **غير مكتمل**. هذا المستند ليس تقرير اختبار PS4.
 **سياسة التسليم:** لا إرسال PKG تجريبي للمستخدم إلى أن تكتمل الواجهة كما طلب؛ رغم أن CI يولد حزمة لأغراض فحص البنية محليًا.
 
+## إصلاح تداخل تسمية Details مع Sidebar — 9 نوفمبر 2026
+
+- **FIXED / HOST VERIFIED:** في Native Host Preview قبل الإصلاح، وصلت تسمية «تفاصيل اللعبة» إلى الفاصل الأيمن من الـ252px Sidebar. قياس Pixel gutter `(232, 310, 249, 345)` على `home.png`/`details.png` أعطى **81/119 pixel ساطع** قبل التعديل، وصفرًا في الحالتين بعده.
+- **IMPLEMENTATION:** أضيفت `UI_AR_RAIL_DETAILS` بتوليد 26px وقت Build إلى `generate_ui_arabic.py` مع إبقاء تسمية عنوان Details الأصلية بحجمها. `rail_label()` يستعمل العنصر الجديد للعمود الجانبي فقط. لا Font runtime ولا عمليات Scale إضافية لكل Frame.
+- **REGRESSION:** `test_native_ui.py` يفحص عدم وجود نص داخل الفاصل على Home وDetails. Commit الكود [437fcdfde0b0](https://github.com/obsp081-coder/ps4-updates/commit/437fcdfde0b0a62422a9a170e44916b47c32d77b): **181/181 Host Tests ناجحة** و**OpenOrbis Native Build ناجح** على [GitHub Actions 42602304942](https://github.com/obsp081-coder/ps4-updates/actions/runs/42602304942).
+- **LIMIT:** لا توجد تجربة PS4 حقيقية لهذا التعديل؛ بقية عناصر الواجهة ومطابقة الـMockup ما زالت تحتاج مراجعة، ولا تُفعل تنزيلات أو تثبيت.
+
 ## أجزاء نُفذت بالكود في فرع GitHub (ليست كلها مثبتة على PS4)
 
 | الملف/الوحدة | ما تنفذه الآن | مستوى الدليل |

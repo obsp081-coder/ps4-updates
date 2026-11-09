@@ -16,13 +16,13 @@
 
 - Repo: https://github.com/obsp081-coder/ps4-updates
 - Branch التي نعمل عليها: `fix/scanner-cid-and-inventory-capacity`
-- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `1ed079bf4bdf09350da4b503c1cc2fbfb4bfd85c`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
+- **آخر Commit كود تم التحقق منه قبل تحديث هذا الملف:** `437fcdfde0b0a62422a9a170e44916b47c32d77b`؛ قد يوجد Commit توثيق أحدث منه. **استعلم عن HEAD الجديد قبل تعديل الملفات.**
 - مسار المشروع: `ps4-auto-updater-v0.3/`
 - وحدة الرسم الأساسية: `ps4/src/scanner_ui.cpp`، التنقل: `ps4/src/ui_navigation.c/h`، الفحص: `ps4/src/ftp_scanner_v05.c`، الأغلفة: `ps4/src/ui_icon_cache.c/h`، النص المختلط: `ps4/src/ui_title_layout.c/h`، SFO/Snapshot: `ps4/src/ui_snapshot.c/h`.
 - بناء Atlas Arabic وقت Build: `ps4/tools/generate_ui_arabic.py`.
 - حالة تقنية مفصلة يجب قراءتها: `ps4-auto-updater-v0.3/UI_IMPLEMENTATION_STATUS_AR.md`.
 - تستات UI وملاحظة Screenshot: `tests/test_native_ui.py` و`tests/ui_mocks/ui_smoke.cpp`.
-- CI الأخير الناجح **على كود Commit 1ed079bf**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42598165602 — **181 Host tests PASS** و**OpenOrbis Native Build PASS**. CPU Host-only لـ12 Native 1080p Submissions: **25.728ms إجمالًا (2.144ms/submission)**، وDirect Memory للـFramebuffers **16 MiB**؛ ليس إجمالي RAM أو أداء PS4. اختبار Idle لا يعيد رسم الواجهة خلال 120 Polls بلا تغيير.
+- CI الأخير الناجح **على كود Commit 437fcdfde0b0**: https://github.com/obsp081-coder/ps4-updates/actions/runs/42602304942 — **181/181 Host Tests PASS** و**OpenOrbis Native Build PASS**، وفحص 1080p Native Host Preview بعد الإصلاح. قياس الأداء السابق على Commit 1ed079bf/run 42598165602 بلغ **25.728ms إجمالًا لـ12 Host Submissions** و**16 MiB** حجز Framebuffers؛ لا ننسب الرقم بالضرورة للبناء الأحدث ولا نعدّه FPS أو Total RAM لجهاز PS4. لا يكرر Idle Poll redraw غير ضروري.
 - ابحث عن GitHub Action الأحدث لكل Commit بعد تسليم هذا المستند ولا تعتمد نتائج Commit أقدم على تغييرات أحدث.
 
 ## 3. ما هو موجود فعليًا (ليس كل الوظائف المطلوبة)
@@ -33,6 +33,7 @@
 - `metadata_verified` **لا تعني installed proof**. `Retail PKG` و`FPKG` ليست حزمًا قابلة للخلط تلقائيًا. لا يوجد Provider تحديثات مثبت الصلاحية أو Downloader/Installer آمن ومتحقق من عمله. **لا تفعّلها افتراضيًا**.
 - البحث يدعم اختيار نتيجة حقيقية والانتقال إلى Details والعودة إلى البحث؛ الخروج عبر Circle/L1/R1/OPTIONS لا يحمل الفلتر المؤقت إلى Home، وكذلك فقدان CUSA أثناء Rescan يغلق Details ويرجع إلى المكتبة الكاملة. البحث العربي يستخدم تطبيعًا **محدودًا** لأشكال الألف والياء والتشكيل والتطويل دون مكتبات Unicode ثقيلة، ولا يدعي Unicode casefold كاملًا.
 - `UI title layout` يحسّن العربية/Latin لكنه **ليس Unicode Bidi كاملًا**.
+- أحدث إصلاح بصري في `437fcdfde0b0`: عنوان «تفاصيل اللعبة» في Sidebar كان يصل إلى الفاصل (81 pixel ساطع في Home و119 في Details ضمن x=232..248)، وأُضيف Atlas label مستقل بحجم خط 26px بدل تغيير عناوين Details الأخرى؛ بعد الإصلاح العدد 0 في الصورتين. Regression Test ضمن 181 اختبارًا وNative Build ناجح؛ لم يُختبر على PS4 حقيقي.
 - آخر أعمال UI نفذت **Sidebar عربية 252px** و**جدول اللعبة / الإصدار / الحالة** بستة صفوف، وLong RTL/LTR Ellipsis؛ أُصلحت حالات Cached/Failed FTP وEmpty Library ومنع رسالة الحفظ الوهمية. **التحديث الأخير**: الخروج من Search لا يترك فلترًا مخفيًا في Home؛ يُستعاد عدد الألعاب ويُحفظ اختيار CUSA، كما تميز Details بين تحذير Cache أثناء الفحص والتحذير بعد فشل FTP. صور `search_restored_home.png` و`scanning_details.png` و`stale_details.png` اختُبرت بصريًا عبر Host. التصميم **غير مكتمل**؛ لا تكتب "UI finished".
 
 ## 4. الأولويات التالية — بدون انتظار أسئلة للمستخدم

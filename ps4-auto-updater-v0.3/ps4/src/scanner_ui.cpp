@@ -472,7 +472,7 @@ static void cover(uint32_t *p,int x,int y,int w,int h,const char *cusa) {
         }
     }
 }
-static void header(uint32_t *p, UiPage page) {
+static void header(uint32_t *p) {
     rect(p,0,0,WIDTH,115,0xFF0A1E3Eu);
     rect(p,0,112,WIDTH,3,ACCENT);
     panel(p,68,27,62,62,ACCENT);
@@ -485,20 +485,16 @@ static void header(uint32_t *p, UiPage page) {
     arabic(p,154,36,UI_AR_APP_NAME,WHITE);
     arabic(p,156,80,UI_AR_LOCAL_READ_ONLY,MUTED);
 
-    const int positions[4]={920,1100,1335,1580};
-    const int widths[4]={165,215,230,240};
-    const UiArabicLabel labels[4]={
-        UI_AR_HOME,UI_AR_DETAILS,UI_AR_DOWNLOADS,UI_AR_SETTINGS
-    };
-    const UiPage sections[4]={
-        UI_PAGE_HOME,UI_PAGE_DETAILS,UI_PAGE_DOWNLOADS,UI_PAGE_SETTINGS
-    };
-    for(int i=0;i<4;++i) {
-        const int highlighted=page==sections[i];
-        panel(p,positions[i],31,widths[i],58,
-              highlighted?ACCENT:0xFF102D50u);
-        arabic(p,positions[i]+18,40,labels[i],highlighted?WHITE:MUTED);
-    }
+    /* The 252px Arabic sidebar is the one navigation surface.
+     * Repeating clickable-looking tabs in the header wasted space and
+     * conflicted with the approved left-sidebar layout. Do NOT invent
+     * online status or claim firmware 14.00 has been hardware-tested. */
+    panel(p,1300,29,248,56,0xFF102D50u);
+    rect(p,1316,45,5,26,CYAN);
+    ascii(p,1334,44,"READ ONLY",WHITE,2,20);
+    panel(p,1564,29,294,56,0xFF102D50u);
+    rect(p,1578,45,5,26,AMBER);
+    ascii(p,1596,44,"FW14 TARGET",MUTED,2,23);
 }
 /* A blurred 96x54 background is computed ONLY when the selected local
  * icon changes. It uses the cached 128x128 thumbnail and 3x3 box sampling,
@@ -1094,7 +1090,7 @@ static void draw(const ScannerUiEntry *entries,
         prepare_blurred_background(entries,count);
     background(p);
     rail(p,navigation.page);
-    header(p,navigation.page);
+    header(p);
     if(scanning && previous_scan_count && navigation.page==UI_PAGE_HOME) {
         /* Make the library visible immediately, but keep this strictly
          * non-interactive until the synchronous scanner finishes.

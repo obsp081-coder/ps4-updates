@@ -104,6 +104,27 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # design. These are true native CPU framebuffer pixels,
                     # not a browser mock or actual PS4 screenshot.
                     if page == "home":
+                        # The approved interface uses ONE wide Arabic
+                        # sidebar, not four duplicate navigation tabs in
+                        # the header. Two small read-only status cards
+                        # replace those redundant top-page controls.
+                        self.assertEqual(
+                            pixels.getpixel((950, 50)), (10, 30, 62),
+                            "Removed top navigation tab returned"
+                        )
+                        for label, bounds in (
+                            ("read only", (1333, 46, 1535, 80)),
+                            ("fw target", (1595, 46, 1840, 80)),
+                        ):
+                            ink = pixels.crop(bounds)
+                            count = sum(
+                                1 for red, green, blue in ink.getdata()
+                                if red > 155 and green > 155 and blue > 155
+                            )
+                            self.assertGreater(
+                                count, 18,
+                                "Missing honest header badge: " + label
+                            )
                         # All five honest navigation destinations must be
                         # readable Arabic labels in the 252px rail. The old
                         # icon-only rail had no text in these areas.

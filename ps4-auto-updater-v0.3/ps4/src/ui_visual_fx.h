@@ -103,4 +103,37 @@ static inline void ui_fx_glass_panel(uint32_t *p,int sw,int sh,
         }
     }
 }
+
+/* Background-only static light pool. Approximate an atmospheric cyan halo
+ * while keeping the scene pixel source legitimate: a muted navy fallback
+ * or the user's installed-game icon, never a shipped copyrighted poster.
+ * A 1920-wide precomputed x-distance table avoids per-pixel divisions.
+ * No animation, timers, shader or runtime allocation. */
+static inline void ui_fx_radial_haze(uint32_t *p,int sw,int sh,
+                                      int cx,int cy,int rx,int ry,
+                                      uint32_t tint,unsigned max_alpha) {
+    if(!p || sw<1 || sw>1920 || sh<1 || rx<16 || ry<16)return;
+    int32_t dx2[1920];
+    int x0=cx-rx;if(x0<0)x0=0;
+    int x1=cx+rx;if(x1>sw)x1=sw;
+    int y0=cy-ry;if(y0<0)y0=0;
+    int y1=cy+ry;if(y1>sh)y1=sh;
+    for(int x=x0;x<x1;++x) {
+        const int dx=((x-cx)*256)/rx;
+        dx2[x]=dx*dx;
+    }
+    for(int y=y0;y<y1;++y) {
+        const int dy=((y-cy)*256)/ry;
+        const int dy2=dy*dy;
+        uint32_t *dst=p+(size_t)y*sw;
+        for(int x=x0;x<x1;++x) {
+            const int radius2=dx2[x]+dy2;
+            if(radius2>=65536)continue;
+            const unsigned alpha=
+                (max_alpha*(unsigned)(65536-radius2))>>16;
+            if(alpha)
+                dst[x]=ui_fx_blend8(dst[x],tint,alpha);
+        }
+    }
+}
 #endif /* UI_VISUAL_FX_H */

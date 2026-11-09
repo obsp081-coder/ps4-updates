@@ -614,6 +614,13 @@ static void background(uint32_t *p) {
         rect(p,252,116,1125,2,0xFF1368C1u);
         rect(p,252,118,1125,1,0xFF0D417Bu);
     }
+    /* Original blue light pools complement legitimate local game artwork.
+     * They do NOT represent or copy the screenshot's copyrighted character.
+     * They run only on state-driven VideoOut redraws, not as an animation. */
+    ui_fx_radial_haze(p,WIDTH,HEIGHT,566,135,520,245,
+                      0xFF176BDDu,81u);
+    ui_fx_radial_haze(p,WIDTH,HEIGHT,343,886,435,225,
+                      0xFF0757D9u,73u);
 }
 /* Wide 252px Arabic navigation rail. Reuses existing geometrical icons
  * and build-time shaped Arabic atlas: no runtime SVG/font or GPU textures.

@@ -1,6 +1,7 @@
 #include "scanner_ui_host_mock.h"
 #include "../../ps4/src/scanner_ui.h"
 #include "../../ps4/src/ui_models.h"
+#include "../../ps4/src/ui_source_bridge.h"
 #include "../../ps4/src/ui_icon_cache.h"
 #include "../../ps4/src/ui_navigation.h"
 #include "../../ps4/src/ui_visual_fx.h"
@@ -855,11 +856,17 @@ int main() {
         jobs[i].status=UI_JOB_DOWNLOADING;
     }
     assert(ui_model_set_downloads(jobs,7) == 0);
-    UiUpdateInfo update = {};
+    /* Host-only synthetic source metadata. No real console catalog. */
+    UiSourceCandidate update = {};
     std::strcpy(update.cusa,"CUSA02343");
+    std::strcpy(update.content_id,
+                "EP9000-CUSA02343_00-UNCHARTEDTRILOGY");
     std::strcpy(update.version,"01.09");
-    update.verdict=UI_UPDATE_UNKNOWN;
-    assert(ui_model_set_updates(&update,1) == 0);
+    update.source_kind=UI_SOURCE_RETAIL_HTTP;
+    assert(ui_source_publish_candidates(&update,1) == 0);
+    assert(ui_model_update(0)->verdict==UI_UPDATE_UNKNOWN);
+    assert(ui_model_update(0)->minimum_fw[0]==0);
+    assert(ui_model_update(0)->size_bytes==0);
     scanner_ui_results(entries,3,2,0,1,1);
     assert(saw_job_progress);
     assert(saw_job_scroll);

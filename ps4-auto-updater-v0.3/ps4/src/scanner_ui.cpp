@@ -1136,6 +1136,12 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
             const int y=691+(int)i*40;
             panel(p,289,y,1062,36,0xFF102D50u);
             ascii(p,307,y+4,row->version,WHITE,2,15);
+            /* An update SOURCE label is not an installation verdict.
+             * The renderer never changes any action button state here. */
+            if(row->source_kind==UI_SOURCE_RETAIL_HTTP)
+                ascii(p,415,y+8,"RETAIL",MUTED,2,6);
+            else if(row->source_kind==UI_SOURCE_FPKG_SUBMITTED)
+                ascii(p,415,y+8,"FPKG?",AMBER,2,5);
             if(row->minimum_fw[0])
                 ascii(p,511,y+4,row->minimum_fw,CYAN,2,15);
             if(row->size_bytes) {

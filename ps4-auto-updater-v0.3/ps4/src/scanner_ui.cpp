@@ -909,88 +909,112 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
         return;
     }
     const ScannerUiEntry *g=&entries[idx];
-    arabic(p,280,137,UI_AR_DETAILS,WHITE);
+    /* The approved artwork-first composition: six read-only metadata
+     * cards, a visible uncertainty/compatibility banner, candidate rows
+     * and three explicit disabled actions. Never infer installed status,
+     * authorized source or Retail-FPKG compatibility from appmeta. */
+    panel(p,266,129,1109,818,0xFF0C244Au);
+    rect(p,286,149,4,87,CYAN);
+    game_title(p,310,151,1030,g,WHITE,3);
+    ascii(p,311,218,g->cusa?g->cusa:"UNKNOWN",CYAN,2,15);
 
-    /* Content side: a visually grouped read-only inspection page.
-     * SFO metadata is NOT evidence of game installation, package type,
-     * update compatibility, firmware requirements, or authorized source. */
-    panel(p,266,225,1109,705,0xFF0C244Au);
-    rect(p,286,242,4,111,CYAN);
-    game_title(p,303,251,1047,g,WHITE,4);
-    ascii(p,303,344,g->cusa?g->cusa:"UNKNOWN",CYAN,3,18);
+    const int info_x[3]={287,643,1000};
+    const int info_w[3]={343,344,350};
+    const UiArabicLabel info_labels[6]={
+        UI_AR_VERSION,UI_AR_CATEGORY,UI_AR_REGION,
+        UI_AR_GAME_SIZE,UI_AR_FIRMWARE,UI_AR_SOURCE
+    };
+    for(unsigned i=0;i<6;++i) {
+        const int x=info_x[i%3u];
+        const int y=270+(int)(i/3u)*104;
+        panel(p,x,y,info_w[i%3u],92,0xFF102D50u);
+        rect(p,x+13,y+18,4,57,i==0u?CYAN:0xFF2865A5u);
+        arabic(p,x+24,y+6,info_labels[i],MUTED);
+        if(i==0u) {
+            ascii(p,x+24,y+49,fallback_version(g),WHITE,3,12);
+        } else if(i==1u) {
+            arabic(p,x+24,y+45,category_label(g),
+                   g->metadata_verified?WHITE:AMBER);
+        } else {
+            arabic(p,x+24,y+45,UI_AR_UNAVAILABLE,AMBER);
+        }
+    }
 
-    panel(p,287,393,343,103,0xFF102D50u);
-    arabic(p,307,398,UI_AR_VERSION,MUTED);
-    ascii(p,307,445,fallback_version(g),WHITE,3,15);
+    panel(p,287,486,1063,133,0xFF112C50u);
+    rect(p,288,486,1060,2,0xFF2E77BDu);
+    rect(p,302,502,5,97,AMBER);
+    arabic(p,329,493,UI_AR_COMPATIBILITY_HEADING,WHITE);
+    /* A safety verdict, not a guessed green 'compatible' label. */
+    panel(p,310,536,278,60,0xFF283648u);
+    rect(p,322,548,5,37,AMBER);
+    arabic(p,342,542,UI_AR_COMPATIBILITY_UNKNOWN,AMBER);
+    arabic(p,625,546,UI_AR_DATA_NOT_PROOF,MUTED);
 
-    panel(p,643,393,344,103,0xFF102D50u);
-    arabic(p,664,398,UI_AR_CATEGORY,MUTED);
-    arabic(p,664,439,category_label(g),
-           g->metadata_verified?WHITE:AMBER);
-
-    panel(p,1000,393,350,103,0xFF102D50u);
-    arabic(p,1021,398,UI_AR_REGION,MUTED);
-    arabic(p,1021,439,UI_AR_UNAVAILABLE,AMBER);
-
-    panel(p,287,510,343,103,0xFF102D50u);
-    arabic(p,307,515,UI_AR_GAME_SIZE,MUTED);
-    arabic(p,307,554,UI_AR_UNAVAILABLE,AMBER);
-
-    panel(p,643,510,344,103,0xFF102D50u);
-    arabic(p,664,515,UI_AR_FIRMWARE,MUTED);
-    arabic(p,664,554,UI_AR_UNAVAILABLE,AMBER);
-
-    panel(p,1000,510,350,103,0xFF102D50u);
-    arabic(p,1021,515,UI_AR_SOURCE,MUTED);
-    arabic(p,1021,554,UI_AR_UNAVAILABLE,AMBER);
-
-    rect(p,288,640,1063,2,0xFF255B8Du);
-    arabic(p,303,654,UI_AR_AVAILABLE_UPDATES,CYAN);
-    /* Preview-only: a provider's displayed verdict never enables
-     * download or install without separate authorization and PKG checks. */
+    arabic(p,303,632,UI_AR_AVAILABLE_UPDATES,CYAN);
+    rect(p,288,674,1063,2,0xFF255B8Du);
     const UiUpdateInfo *first=ui_model_update_for(g->cusa,0);
     if(!first) {
-        panel(p,289,709,1062,122,0xFF102D50u);
-        rect(p,290,720,5,95,AMBER);
-        arabic(p,309,722,UI_AR_NO_TRUSTED_UPDATE,AMBER);
-        arabic(p,309,772,UI_AR_RETAIL_FPKG_WARNING,MUTED);
+        panel(p,289,691,1062,118,0xFF102D50u);
+        rect(p,290,704,5,93,AMBER);
+        arabic(p,309,698,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+        arabic(p,309,754,UI_AR_RETAIL_FPKG_WARNING,MUTED);
     } else {
+        /* A displayed model row still does not authorize an action. */
         for(unsigned i=0;i<3u;++i) {
             const UiUpdateInfo *row=ui_model_update_for(g->cusa,i);
             if(!row)break;
-            const int y=700+(int)i*52;
-            panel(p,289,y,1062,47,0xFF102D50u);
-            ascii(p,308,y+7,row->version,WHITE,2,15);
+            const int y=691+(int)i*40;
+            panel(p,289,y,1062,36,0xFF102D50u);
+            ascii(p,307,y+4,row->version,WHITE,2,15);
             if(row->minimum_fw[0])
-                ascii(p,510,y+7,row->minimum_fw,CYAN,2,15);
+                ascii(p,511,y+4,row->minimum_fw,CYAN,2,15);
             if(row->size_bytes) {
                 char size[40];
                 (void)snprintf(size,sizeof size,"%llu MB",
                     (unsigned long long)(row->size_bytes/1048576u));
-                ascii(p,745,y+7,size,MUTED,2,18);
+                ascii(p,743,y+4,size,MUTED,2,18);
             }
-            arabic(p,1040,y+5,row->verdict==UI_UPDATE_BLOCKED ?
-                UI_AR_UPDATE_BLOCKED:UI_AR_UPDATE_REVIEW,
-                row->verdict==UI_UPDATE_BLOCKED?AMBER:MUTED);
+            arabic(p,1020,y, row->verdict==UI_UPDATE_BLOCKED ?
+                   UI_AR_UPDATE_BLOCKED:UI_AR_UPDATE_REVIEW,
+                   row->verdict==UI_UPDATE_BLOCKED?AMBER:MUTED);
         }
     }
-    arabic(p,304,863,complete?UI_AR_DATA_NOT_PROOF:
-          UI_AR_SCAN_INCOMPLETE,MUTED);
 
-    /* Right side mirrors the approved artwork-first detail panel, using
-     * only an icon read locally through GoldHEN FTP. Square icon0 assets
-     * retain their proportions; missing artwork shows an honest placeholder. */
-    panel(p,1390,225,460,705,0xFF0B2142u);
-    panel(p,1413,248,414,329,0xFF123158u);
-    rect(p,1428,256,382,2,CYAN);
-    cover(p,1473,270,290,290,g->cusa);
-    game_title(p,1422,595,403,g,WHITE,2);
-    ascii(p,1428,654,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
-    rect(p,1423,697,399,2,0xFF275980u);
-    panel(p,1421,718,399,79,0xFF283648u);
-    rect(p,1432,730,5,55,AMBER);
-    arabic(p,1445,737,UI_AR_INSTALL_BLOCKED,MUTED);
-    arabic(p,1435,831,UI_AR_NO_TRUSTED_UPDATE,AMBER);
+    /* Three disabled PS4-style controls to mirror the reference
+     * composition without making download/install appear enabled. */
+    const UiArabicLabel disabled[3]={
+        UI_AR_ACTION_INSTALL_DISABLED,
+        UI_AR_ACTION_QUEUE_DISABLED,
+        UI_AR_ACTION_DOWNLOAD_DISABLED
+    };
+    for(int i=0;i<3;++i) {
+        const int x=289+i*355;
+        panel(p,x,840,344,65,0xFF253348u);
+        rect(p,x+13,850,4,46,0xFF58718Au);
+        arabic(p,x+26,853,disabled[i],MUTED);
+    }
+    if(!complete)
+        arabic(p,303,909,UI_AR_SCAN_INCOMPLETE,AMBER);
+
+    /* Right-side local artwork only. icon0.png is square and remains
+     * square: stretching it into fictional licensed cover art is rejected. */
+    panel(p,1390,129,460,818,0xFF0B2142u);
+    arabic(p,1415,141,UI_AR_SELECTED_GAME,CYAN);
+    panel(p,1413,191,414,300,0xFF123158u);
+    rect(p,1428,201,382,2,CYAN);
+    cover(p,1479,211,272,272,g->cusa);
+    game_title(p,1422,512,401,g,WHITE,2);
+    ascii(p,1427,565,g->cusa?g->cusa:"NO CUSA",CYAN,2,15);
+    rect(p,1423,610,399,2,0xFF275980u);
+    arabic(p,1423,623,UI_AR_VERSION,MUTED);
+    ascii(p,1696,632,fallback_version(g),WHITE,2,12);
+    rect(p,1423,667,399,1,0xFF204568u);
+    arabic(p,1423,675,UI_AR_SOURCE,MUTED);
+    arabic(p,1613,675,UI_AR_UNAVAILABLE,AMBER);
+    rect(p,1423,729,399,1,0xFF204568u);
+    arabic(p,1423,745,UI_AR_COMPATIBILITY_HEADING,MUTED);
+    arabic(p,1440,795,UI_AR_COMPATIBILITY_UNKNOWN,AMBER);
+    /* Preserve the bottom of the right card as a quiet/unclickable area. */
     footer(p,UI_AR_FOOTER_DETAILS);
 }
 /* Render only status records supplied by a verified higher-level owner.

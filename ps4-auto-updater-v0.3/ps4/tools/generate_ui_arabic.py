@@ -125,6 +125,11 @@ LABELS = (
     ("METRIC_UNKNOWN", "تثبيت غير مؤكد"),
     ("METRIC_SCAN", "أخطاء الفحص"),
     ("METRIC_ACTIVE", "قيد التنزيل"),
+    ("COMPATIBILITY_HEADING", "حالة التوافق"),
+    ("COMPATIBILITY_UNKNOWN", "لا يوجد توافق مثبت لتحديث متاح"),
+    ("ACTION_DOWNLOAD_DISABLED", "التنزيل معطّل"),
+    ("ACTION_QUEUE_DISABLED", "الانتظار معطّل"),
+    ("ACTION_INSTALL_DISABLED", "التثبيت معطّل"),
 )
 
 

@@ -262,7 +262,7 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             if(pad_reads==10 && result==0xFF164881u)
                 saw_search_focus=true;
             if(pad_reads==12 &&
-               frame[50u*SCREEN_WIDTH+1112u]==0xFF116BCEu)
+               frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_search_details=true;
             if(pad_reads==14 && result==0xFF164881u)
                 saw_search_return=true;
@@ -305,19 +305,21 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
         }
         if(test_async_scan) {
             const uint32_t *frame=display_buffers[index];
-            if(pad_reads>=2 && frame[50u*SCREEN_WIDTH+1112u]==0xFF116BCEu)
+            if(pad_reads>=2 && frame[345u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_scan_details=true;
-            if(pad_reads>=6 && frame[50u*SCREEN_WIDTH+1592u]==0xFF116BCEu)
+            if(pad_reads>=6 && frame[645u*SCREEN_WIDTH+232u]==0xFF15589Du)
                 saw_scan_settings=true;
         }
         if(capture_live_ui) {
             const uint32_t *frame=display_buffers[index];
-            const size_t row=50u*SCREEN_WIDTH;
-            const uint32_t active=0xFF116BCEu;
-            const int home=frame[row+932u]==active;
-            const int details=frame[row+1112u]==active;
-            const int downloads=frame[row+1347u]==active;
-            const int settings=frame[row+1592u]==active;
+            /* The left Arabic rail is now the ONLY navigation source.
+             * Capture real screen states from its active highlight, not
+             * removed duplicate top tabs. */
+            const uint32_t active=0xFF15589Du;
+            const int home=frame[245u*SCREEN_WIDTH+232u]==active;
+            const int details=frame[345u*SCREEN_WIDTH+232u]==active;
+            const int downloads=frame[445u*SCREEN_WIDTH+232u]==active;
+            const int settings=frame[645u*SCREEN_WIDTH+232u]==active;
             if(home) capture_ppm(frame,"home",1u);
             else if(details) capture_ppm(frame,"details",2u);
             else if(downloads) capture_ppm(frame,"downloads",4u);

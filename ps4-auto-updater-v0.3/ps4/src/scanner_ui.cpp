@@ -8,6 +8,7 @@
 #include "ui_title_layout.h"
 #include "ui_icon_cache.h"
 #include "ui_models.h"
+#include "ui_visual_fx.h"
 #include "ui_arabic_generated.h"
 #ifdef PS4_UI_HOST_TEST
 #include "scanner_ui_host_mock.h"
@@ -522,8 +523,8 @@ static void header(uint32_t *p) {
 /* A blurred 96x54 background is computed ONLY when the selected local
  * icon changes. It uses the cached 128x128 thumbnail and 3x3 box sampling,
  * never the raw full-resolution PNG or a GPU shader. */
-#define BLUR_WIDTH 96
-#define BLUR_HEIGHT 54
+#define BLUR_WIDTH 240
+#define BLUR_HEIGHT 135
 static uint32_t blur_image[BLUR_WIDTH*BLUR_HEIGHT];
 static char blurred_for[10];
 static int blur_available=0;
@@ -808,7 +809,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     /* The approved mockup has a welcome banner above four compact cards.
      * Display only real read-only scanner and job data, no invented updates,
      * network connection, installed packages or compatibility verdicts. */
-    panel(p,269,125,1109,75,0xFF0C2850u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,269,125,1109,75,
+                      0xFF144B7Du,0xFF091F47u,0);
     rect(p,279,143,5,39,CYAN);
     panel(p,299,139,60,43,0xFF164881u);
     rect(p,310,154,15,4,WHITE);
@@ -838,7 +840,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
         good,install_unknown,errors,active_downloads
     };
     for(unsigned i=0;i<4;++i) {
-        panel(p,metric_x[i],201,270,95,PANEL);
+        ui_fx_glass_panel(p,WIDTH,HEIGHT,metric_x[i],201,270,95,
+                          0xFF19456Eu,0xFF092143u,0);
         /* Card icon on the left, RTL caption/value on the right. */
         rect(p,metric_x[i]+19,215,4,64,metric_colors[i]);
         panel(p,metric_x[i]+31,227,45,44,0xFF123C74u);
@@ -863,7 +866,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
     arabic(p,282,301,UI_AR_LIBRARY,WHITE);
     arabic(p,1035,301,complete?UI_AR_SCAN_COMPLETE:
            UI_AR_SCAN_INCOMPLETE,complete?0xFF6CCFACu:AMBER);
-    panel(p,269,336,1109,39,0xFF102D50u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,269,336,1109,39,
+                      0xFF1A4E7Bu,0xFF0A254Du,0);
     /* Five native Arabic table headings right-to-left, like the
      * approved reference, but never label SFO metadata as installed. */
     arabic(p,1180,340,UI_AR_GAME_COLUMN,MUTED);
@@ -906,7 +910,8 @@ static void dashboard(uint32_t *p, const ScannerUiEntry *entries,
 
     /* Main layout matches the approved mockup's wide library and narrow
      * right artwork rail. No remote artwork or invented update status. */
-    panel(p,1390,145,460,814,0xFF0B2142u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,1390,145,460,814,
+                      0xFF12365Du,0xFF071A3Au,0);
     rect(p,1394,162,4,776,0xFF1664B3u);
     arabic(p,1420,157,UI_AR_SELECTED_GAME,CYAN);
     panel(p,1413,205,414,326,0xFF112C50u);
@@ -959,7 +964,8 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
      * cards, a visible uncertainty/compatibility banner, candidate rows
      * and three explicit disabled actions. Never infer installed status,
      * authorized source or Retail-FPKG compatibility from appmeta. */
-    panel(p,266,129,1109,818,0xFF0C244Au);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,266,129,1109,818,
+                      0xFF123760u,0xFF071C3Bu,0);
     rect(p,286,149,4,87,CYAN);
     game_title(p,310,151,1030,g,WHITE,3);
     ascii(p,311,218,g->cusa?g->cusa:"UNKNOWN",CYAN,2,15);
@@ -1044,7 +1050,8 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
 
     /* Right-side local artwork only. icon0.png is square and remains
      * square: stretching it into fictional licensed cover art is rejected. */
-    panel(p,1390,129,460,818,0xFF0B2142u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,1390,129,460,818,
+                      0xFF153A65u,0xFF071C3Bu,0);
     arabic(p,1415,141,UI_AR_SELECTED_GAME,CYAN);
     panel(p,1413,191,414,300,0xFF123158u);
     rect(p,1428,201,382,2,CYAN);
@@ -1100,7 +1107,8 @@ static void downloads(uint32_t *p) {
         if(r->status==UI_JOB_COMPLETED)++finished;
         if(r->status==UI_JOB_BLOCKED || r->status==UI_JOB_FAILED)++blocked;
     }
-    panel(p,269,127,1109,75,0xFF0C2850u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,269,127,1109,75,
+                      0xFF144B7Du,0xFF091F47u,0);
     rect(p,282,143,5,44,CYAN);
     arabic(p,311,137,UI_AR_DOWNLOAD_LIST_TITLE,WHITE);
     arabic(p,710,140,UI_AR_ABOUT_NOTE,MUTED);
@@ -1115,7 +1123,11 @@ static void downloads(uint32_t *p) {
     char num[24];
     for(unsigned i=0;i<4;++i) {
         (void)snprintf(num,sizeof num,"%u",numbers[i]);
-        summary_at(p,xs[i],211,268,headers[i],num,colors[i]);
+        ui_fx_glass_panel(p,WIDTH,HEIGHT,xs[i],211,268,110,
+                          0xFF16446Fu,0xFF091E3Fu,0);
+        rect(p,xs[i]+16,232,4,66,colors[i]);
+        arabic(p,xs[i]+36,217,headers[i],MUTED);
+        ascii(p,xs[i]+36,274,num,WHITE,3,28);
     }
 
     panel(p,269,340,1109,606,PANEL);
@@ -1177,7 +1189,8 @@ static void downloads(uint32_t *p) {
         }
     }
 
-    panel(p,1390,127,460,819,0xFF0B2142u);
+    ui_fx_glass_panel(p,WIDTH,HEIGHT,1390,127,460,819,
+                      0xFF12365Du,0xFF071A3Au,0);
     arabic(p,1417,143,UI_AR_SELECTED_JOB,CYAN);
     panel(p,1413,197,414,230,0xFF112C50u);
     rect(p,1428,207,382,2,0xFF2C77C0u);

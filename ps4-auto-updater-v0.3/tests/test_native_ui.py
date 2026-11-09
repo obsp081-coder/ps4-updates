@@ -100,6 +100,44 @@ class NativeUiSmokeTests(unittest.TestCase):
                     # Main royal-blue header must be nonblank for every page.
                     self.assertNotEqual(pixels.getpixel((200, 45)),
                                         pixels.getpixel((0, 550)))
+                    # Visual regression anchors for the approved royal-blue
+                    # design. These are true native CPU framebuffer pixels,
+                    # not a browser mock or actual PS4 screenshot.
+                    if page == "home":
+                        self.assertEqual(
+                            pixels.getpixel((1250, 300)), (17, 44, 80),
+                            "Selected cover hero frame changed"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1500, 884)), (21, 88, 157),
+                            "Read-only details button is missing"
+                        )
+                    if page == "details":
+                        self.assertEqual(
+                            pixels.getpixel((400, 430)), (16, 45, 80),
+                            "Metadata card grid is missing"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1450, 360)), (18, 49, 88),
+                            "Dedicated right artwork panel is missing"
+                        )
+                    if page == "downloads":
+                        self.assertEqual(
+                            pixels.getpixel((160, 370)), (16, 45, 80),
+                            "Missing actual no-jobs explanation panel"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1000, 700)), (16, 45, 80),
+                            "Installation-disabled safety gate is missing"
+                        )
+                        # The page heading must stay above the three
+                        # summary tiles, not be overpainted by their fill.
+                        heading = pixels.crop((92, 135, 355, 178))
+                        heading_ink = sum(
+                            1 for r, g, b in heading.getdata()
+                            if r > 145 and g > 145 and b > 145
+                        )
+                        self.assertGreater(heading_ink, 18)
                     if page == "search_ar":
                         # Dynamic Arabic glyphs must be visible inside key
                         # rectangles rather than tofu squares or blank keys.

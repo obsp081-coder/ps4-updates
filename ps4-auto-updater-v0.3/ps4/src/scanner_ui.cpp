@@ -781,6 +781,9 @@ static void game_item(uint32_t *p,const ScannerUiEntry *g,
                       int y,int is_selected) {
     panel(p,269,y,1109,88,is_selected?0xFF164881u:PANEL);
     if(is_selected) {
+        /* A soft bounded halo like the approved list focus, applied only
+         * to the active real row; no translucent fake data or animation. */
+        ui_fx_focus_row_glow(p,WIDTH,HEIGHT,269,y,1109,88);
         rect(p,269,y+10,5,68,CYAN);
         rect(p,281,y+3,1067,2,CYAN);
         rect(p,281,y+5,1067,2,0xFF1765ABu);

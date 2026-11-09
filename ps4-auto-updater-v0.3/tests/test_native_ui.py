@@ -298,6 +298,17 @@ class NativeUiSmokeTests(unittest.TestCase):
                             bright_gutter, 0,
                             "Arabic Details rail label overlaps right gutter"
                         )
+                    if page == "home":
+                        # The focused native row has a genuine cyan inner
+                        # halo, but its center remains legible/untinted.
+                        # y=388 lies in the 8px rim; y=415 is mid-card.
+                        glow = pixels.getpixel((600, 388))
+                        center = pixels.getpixel((600, 415))
+                        self.assertGreater(
+                            glow[2], center[2]+8,
+                            "The focused Home row lost its soft blue rim"
+                        )
+                        self.assertGreater(glow[1], center[1])
                     if page == "search_restored_home":
                         # Actual Pad sequence typed an unmatched Arabic
                         # query and exited Search; three real game records

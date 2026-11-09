@@ -120,6 +120,37 @@ static inline void ui_fx_glass_panel(uint32_t *p,int sw,int sh,
     }
 }
 
+/* Small illuminated focus rim for the real selected game row.
+ * Never tint the center of a row: metadata remains sharp and existing
+ * row identity/pixel-based tests continue to read the same content.
+ * Four pixels of outer light fit the existing inter-row gutter.
+ * O(w*12 + h*12), not an expensive full-card per-pixel blur. */
+static inline void ui_fx_focus_row_glow(uint32_t *p,int sw,int sh,
+                                         int x,int y,int w,int h) {
+    if(!p || x<5 || y<5 || w<30 || h<25 ||
+       x+w+5>=sw || y+h+4>=sh)return;
+    for(int d=0;d<6;++d) {
+        const unsigned alpha=(unsigned)(6-d)*14u;
+        const int upper=y+8+d;
+        const int lower=y+h-9-d;
+        uint32_t *top=p+(size_t)upper*sw;
+        uint32_t *bottom=p+(size_t)lower*sw;
+        for(int xx=x+10;xx<x+w-10;++xx) {
+            top[xx]=ui_fx_blend8(top[xx],0xFF248CFBu,alpha);
+            bottom[xx]=ui_fx_blend8(bottom[xx],0xFF248CFBu,alpha);
+        }
+    }
+    for(int d=1;d<=3;++d) {
+        const unsigned alpha=(unsigned)(4-d)*20u;
+        uint32_t *top=p+(size_t)(y-d)*sw;
+        uint32_t *bottom=p+(size_t)(y+h-1+d)*sw;
+        for(int xx=x+11;xx<x+w-11;++xx) {
+            top[xx]=ui_fx_blend8(top[xx],0xFF0876FFu,alpha);
+            bottom[xx]=ui_fx_blend8(bottom[xx],0xFF0876FFu,alpha);
+        }
+    }
+}
+
 /* Background-only static light pool. Approximate an atmospheric cyan halo
  * while keeping the scene pixel source legitimate: a muted navy fallback
  * or the user's installed-game icon, never a shipped copyrighted poster.

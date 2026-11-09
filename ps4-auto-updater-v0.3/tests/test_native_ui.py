@@ -175,6 +175,18 @@ class NativeUiSmokeTests(unittest.TestCase):
                             pixels.getpixel((1500, 884)), (21, 88, 157),
                             "Read-only details button is missing"
                         )
+                    if page == "cached":
+                        # A stale/partial FTP scan may not cover the user
+                        # path to read-only game Details, even with a six-
+                        # row library. Banner lives in the lower list gutter.
+                        self.assertEqual(
+                            pixels.getpixel((800, 954)), (16, 45, 80),
+                            "Cache banner must live BELOW the six rows"
+                        )
+                        self.assertEqual(
+                            pixels.getpixel((1500, 884)), (21, 88, 157),
+                            "Cached game Details button was obscured"
+                        )
                     if page == "details":
                         self.assertEqual(
                             pixels.getpixel((400, 430)), (16, 45, 80),

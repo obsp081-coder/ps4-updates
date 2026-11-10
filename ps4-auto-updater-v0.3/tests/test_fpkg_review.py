@@ -24,16 +24,15 @@ CONTENT_ID = "EP9000-CUSA02343_00-UNCHARTEDTRILOGY"
 
 class FpkgReviewTests(unittest.TestCase):
     def setUp(self):
-        self.comparison = {
-            "schema": 1,
-            "catalog_is_official_retail_not_fpkg": True,
+        self.inventory = {
+            "schema": 4,
             "games": [{
                 "cusa": CUSA,
                 "name": "Fictional test game",
-                "last_scan_app_ver": "01.00",
-                "retail_latest_version": "01.02",
-                "console_content_id": CONTENT_ID,
-                "content_id_match": True,
+                "app_ver": "01.00",
+                "content_id": CONTENT_ID,
+                # A fictional kind declaration is NOT actual PS4 proof.
+                "package_kind": "fpkg",
             }],
         }
         self.entry = {
@@ -64,13 +63,13 @@ class FpkgReviewTests(unittest.TestCase):
             catalog = self.catalog()
         if installed is None:
             installed = self.installed
-        return review(self.comparison, catalog, installed, firmware)
+        return review(self.inventory, catalog, installed, firmware)
 
     def status(self, **kwargs):
         return self.check(**kwargs)["games"][0]["status"]
 
     def test_empty_catalog_no_fpkg_updates_claimed(self):
-        report = review(self.comparison)
+        report = review(self.inventory)
         self.assertEqual(
             report["games"][0]["status"],
             "NOT_IN_FPKG_CATALOG"
@@ -100,7 +99,7 @@ class FpkgReviewTests(unittest.TestCase):
     def test_without_install_confirmation_is_blocked(self):
         self.assertEqual(
             review(
-                self.comparison,
+                self.inventory,
                 self.catalog()
             )["games"][0]["status"],
             "INSTALL_UNCONFIRMED",
@@ -120,12 +119,24 @@ class FpkgReviewTests(unittest.TestCase):
             "INSTALL_UNCONFIRMED"
         )
 
-    def test_identity_mismatch_is_blocked(self):
-        self.comparison["games"][0]["content_id_match"] = False
+    def test_unknown_kind_never_gets_an_fpkg_candidate(self):
+        self.inventory["games"][0]["package_kind"] = "unknown"
         self.assertEqual(
             self.status(),
-            "RETAIL_IDENTITY_NOT_CONFIRMED"
+            "BASE_PACKAGE_KIND_UNCONFIRMED"
         )
+
+    def test_missing_kind_never_gets_an_fpkg_candidate(self):
+        del self.inventory["games"][0]["package_kind"]
+        self.assertEqual(self.status(), "BASE_PACKAGE_KIND_UNCONFIRMED")
+
+    def test_retail_base_excluded_even_if_fpkg_catalog_has_same_cusa(self):
+        self.inventory["games"][0]["package_kind"] = "retail"
+        report = self.check()
+        self.assertEqual(report["games"][0]["status"], "RETAIL_UNSUPPORTED")
+        self.assertIsNone(report["games"][0]["fpkg_candidate_version"])
+        self.assertFalse(report["download_enabled"])
+        self.assertFalse(report["install_enabled"])
 
     def test_content_id_mismatch_is_blocked(self):
         self.entry["content_id"] = (
@@ -210,8 +221,8 @@ class FpkgReviewTests(unittest.TestCase):
             self.check()
 
     def test_invalid_comparison_is_rejected(self):
-        self.comparison["games"][0][
-            "last_scan_app_ver"
+        self.inventory["games"][0][
+            "app_ver"
         ] = "invalid"
         with self.assertRaises(ValueError):
             self.check()
@@ -220,7 +231,7 @@ class FpkgReviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             sources = {
-                "comparison.json": self.comparison,
+                "inventory.json": self.inventory,
                 "catalog.json": self.catalog(),
                 "installed.json": self.installed,
             }
@@ -240,7 +251,7 @@ class FpkgReviewTests(unittest.TestCase):
             command = [
                 sys.executable,
                 str(PROJECT / "fpkg_review.py"),
-                str(root / "comparison.json"),
+                str(root / "inventory.json"),
                 "--catalog",
                 str(root / "catalog.json"),
                 "--installed-check",

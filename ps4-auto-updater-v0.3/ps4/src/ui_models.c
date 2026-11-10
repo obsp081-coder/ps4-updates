@@ -45,7 +45,8 @@ int ui_model_set_updates(const UiUpdateInfo *rows,unsigned count) {
            p->verdict<UI_UPDATE_UNKNOWN || p->verdict>=UI_UPDATE_VERIFIED ||
            (p->verdict==UI_UPDATE_BLOCKED && !p->compat_blockers) ||
            (p->verdict==UI_UPDATE_UNKNOWN && p->compat_blockers) ||
-           p->source_kind!=UI_SOURCE_FPKG_SUBMITTED)
+           p->source_kind==UI_SOURCE_RETAIL_HTTP ||
+           p->source_kind>UI_SOURCE_FPKG_SUBMITTED)
             return -2;
         for(unsigned j=0;j<i;++j)
             if(!strcmp(p->cusa,rows[j].cusa) &&

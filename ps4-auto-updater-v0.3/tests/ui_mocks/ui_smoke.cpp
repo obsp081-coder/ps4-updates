@@ -406,9 +406,14 @@ int32_t sceVideoOutSubmitFlip(int32_t, int32_t index, uint32_t, int64_t tag) {
             if(pad_reads>=14 && pad_reads<=19 &&
                frame[850u*SCREEN_WIDTH+310u]==0xFF164881u)
                 saw_job_scroll=true;
-            if(pad_reads==22 &&
-               frame[710u*SCREEN_WIDTH+450u]==0xFF102D50u)
-                saw_update_row=true;
+            /* FPKG? marker in a real candidate row. Test amber text
+             * rather than the old Retail label's coordinates. */
+            if(pad_reads==22) {
+                for(unsigned y=699u;y<721u && !saw_update_row;++y)
+                    for(unsigned x=415u;x<500u;++x)
+                        if(frame[y*SCREEN_WIDTH+x]==0xFFFFC37Du)
+                            saw_update_row=true;
+            }
         }
         if(test_async_scan) {
             const uint32_t *frame=display_buffers[index];

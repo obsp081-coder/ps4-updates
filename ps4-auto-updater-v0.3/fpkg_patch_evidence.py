@@ -107,12 +107,24 @@ def review_local_patch(path, manifest, inventory, firmware="14.00"):
         report["error_type"] = type(error).__name__
         return report
 
+    # Check the opened leaf's type before handing it to Python's file
+    # wrapper: fdopen() can reject a directory before fstat() is reached.
+    # O_NONBLOCK also prevents a FIFO from stalling before this check.
+    try:
+        initial = os.fstat(descriptor)
+        if not stat.S_ISREG(initial.st_mode):
+            os.close(descriptor)
+            report["status"] = "NOT_A_REGULAR_FILE"
+            return report
+    except OSError as error:
+        os.close(descriptor)
+        report["status"] = "FILE_READ_ERROR"
+        report["error_type"] = type(error).__name__
+        return report
+
     try:
         with os.fdopen(descriptor, "rb", buffering=0) as stream:
             before = os.fstat(stream.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                report["status"] = "NOT_A_REGULAR_FILE"
-                return report
             if not 0 < before.st_size <= MAX_PKG_BYTES:
                 report["status"] = "INVALID_PKG_SIZE"
                 return report

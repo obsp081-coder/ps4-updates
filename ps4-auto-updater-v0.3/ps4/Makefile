@@ -42,7 +42,10 @@ all: $(CONTENT_ID).pkg
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: src/ftp_scanner_v05.c | $(INTDIR)
+# Installed-PKG 8-byte read-only probe is compile-time opt-in only:
+# PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE (never in default release).
+# It reports a flag hint, NOT FPKG verification or installation permission.
+$(INTDIR)/main.o: src/ftp_scanner_v05.c src/pkg_header_evidence.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
 $(INTDIR)/ui_snapshot.o: src/ui_snapshot.c src/ui_snapshot.h | $(INTDIR)

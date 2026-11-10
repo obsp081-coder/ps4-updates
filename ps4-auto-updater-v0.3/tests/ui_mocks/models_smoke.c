@@ -26,6 +26,10 @@ int main(void) {
     assert(ui_model_update_for("CUSA02343",1)!=NULL);
     assert(ui_model_update_for("CUSA02343",2)==NULL);
 
+    UiUpdateInfo unsupported=u[0];
+    unsupported.source_kind=UI_SOURCE_RETAIL_HTTP;
+    assert(ui_model_set_updates(&unsupported,1)<0);
+    assert(ui_model_update_count()==2u);
     UiUpdateInfo bad[2]={u[0],u[0]};
     assert(ui_model_set_updates(bad,2)<0);
     assert(ui_model_update_count()==2u);

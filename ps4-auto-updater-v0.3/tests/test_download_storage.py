@@ -21,6 +21,7 @@ class DownloadStorageHostTests(unittest.TestCase):
                 [cc, "-std=c99", "-O2", "-Wall", "-Wextra",
                  "-Werror", str(SRC / "download_storage.c"),
                  str(SRC / "download_queue.c"),
+                 str(SRC / "download_sha256.c"),
                  str(FIXTURE), "-o", str(binary)],
                 text=True, capture_output=True, timeout=45,
             )

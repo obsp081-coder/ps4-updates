@@ -1,3 +1,39 @@
+## تحديث 10 نوفمبر 2026 — Host Recovery V2 وTransport Gate (أحدث Code)
+
+**Verdict: MODIFY — Host recovery verified by tests; Native PS4 Download/Install remain disabled.**
+
+- **Code SHA:** 9412120133a779415dd18a252af0d2c4840c77cc
+- **Host CI:** **245/245 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42832732548
+- **OpenOrbis:** **PC Simulation PASS + Build PS4 Package PASS** على Code SHA نفسه — https://github.com/obsp081-coder/ps4-updates/actions/runs/42832732399
+- **shadPS4:** لم يُستخدم لهذه الخطوة Pure C/Host Storage.
+- **Real PS4 FW14:** لم يُختبر على هذا الإصدار. Release Gate لا يزال مغلقًا.
+
+### التغييرات البرمجية المثبتة
+
+1. **Host Resume recovery:** تم تعديل tests/host_fixture_resume.py لإضافة Checkpoint schema version 2 (part_dev / part_ino) وربطها بملف .part الفعلي، مع رفض Duplicate JSON keys وschema التالف. تتم مراجعة Source/Content ID/Version/Trusted Full SHA-256 وHash الجزء المحفوظ قبل قبول الاستكمال. إذا كان الملف أطول من Checkpoint Offset نتيجة Crash/انقطاع متكرر، يُقص **الذيل غير المعتمد فقط** باستخدام FD للـInode المتحقق منه، مع fsync، ثم يُعاد HTTP Range من Offset الموثوق.
+2. **Crash after publish:** إذا اكتمل .part وكانت Full SHA-256 مطابقة، يمكن نشره حصريًا دون إعادة طلب البايتات. وإذا حدث Crash بعد hardlink النهائي وقبل Cleanup، يتحقق Restart من final الموجود ويحافظ عليه دون Replace أو Delete. تتحقق الدوال قبل Cleanup من device/inode حتى لا تحذف Leaf تم استبداله.
+3. **Concurrency policy:** ملف flock ثابت يمنع تنفيذ Resume متزامن بين Host fixture workers المتعاونين؛ لا يُحذف Lock كي لا ينشأ unlink/recreate race. هذا لا يضمن الحماية من عمليات خبيثة أخرى تملك صلاحيات UID نفسها، ولا يمثل PS4 File Backend.
+4. **Host tests:** الاختبارات الجديدة تغطي تكرار HTTP disconnect، Disk Full بعد Partial Write، Crash بعد Link وقبل Cleanup، تبديل Inode، فساد Prefix مع Tail إضافي، Duplicate/Incomplete Checkpoint، Symlink Lock، وحماية ملف مستبدل أثناء Cleanup.
+5. **Native C transport contract:** أضيف ps4/src/download_transport.h/.c وربط download_transport.o في ps4/Makefile، واختبارات tests/test_download_transport.py وtests/ui_mocks/transport_policy_smoke.c. يفرض حدود Headers 8192 bytes وRead chunks 64KiB، ورفض HTTP غير المشفر، TLS facts غير المثبتة، 200/206 غير المطابق، Redirect وRange/ETag الخاطئ، EOF المبكر والبايتات الزائدة، مع إغلاق Session عند الخطأ. **كل حقائق TLS الإيجابية في الاختبارات SYNTHETIC فقط؛ لا يوجد TLS live adapter.** على __ORBIS__ تعيد dt_begin دائمًا DT_UNAVAILABLE دون استدعاء Callback.
+6. **CI correction:** كشف أول CI لـTransport خطأ Conditional Compilation: كانت دالة stop محصورة داخل !__ORBIS__ مع استدعاء من dt_finish. تم إصلاحه في Code SHA أعلاه، وإعادة CI حتى PASS لعدد 245 Host tests وOpenOrbis Package Build.
+
+### مراجعة مصادر OpenOrbis — حدود الإثبات
+
+- مثال OpenOrbis net_http يستدعي SceNet/SceSsl/SceHttp وsceHttpReadData، لكنه يعرّف skipSslCallback تعيد SUCCESS بغض النظر عن verifyErr. **هذا مثال اتصال، وليس دليلًا على Certificate Chain/Hostname Validation آمن.** https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/samples/net_http/net_http/main.c
+- Header Http.h يحتوي تصريحات HTTP، SSL callback، Connect/Resolve/Send Timeout، Abort/Read/Headers، لكن مجرد Declaration أو Sample لا يثبت سلوك Firmware 14.00، ولا يسمح بتفعيل Network backend. https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/include/orbis/Http.h
+- Header Ssl.h يتضمن تصريحات كثيرة غير محددة التواقيع؛ لا نستخدمها كـAPI مثبتة دون تحقق مستقل. https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/include/orbis/Ssl.h
+
+### القيود والقرارات الأمنية
+
+- هذه تجربة **Host-only loopback HTTP** مقيدة بـ127.0.0.1؛ لا Transport HTTPS فعليًا، ولا صلاحيات PS4 Storage، ولا Native Resume/Downloader مفعّل.
+- Checkpoint V2 الحالي **لا يدعم Migration تلقائيًا من V1**؛ الملفات القديمة أو Metadata غير المتطابقة تُرفض وتحفظ للمعاينة بدل التخمين. لا يوجد ضمان Crash-safe عام ضد كل Power Loss أو TOCTOU لنفس UID.
+- No-overwrite Publish على FW14، شهادات TLS، مصدر FPKG مصرح به، فحص PKG/FPKG الحقيقي، Installer/Progress كلها **غير مثبتة على PS4 الحقيقي**.
+- أبقِ PR #1 Draft، ولا تنشر PKG نهائيًا، ولا تفتح Download/Install قبل وجود حقوق المصدر وTLS Verified/Storage/Compatibility/Hardware Gate.
+
+**التالي:** إثبات شهادة HTTPS وسلوك Hostname Verification مع SceHttp/SceSsl أو بديل مثبت؛ ثم Native Adapter آمن مع Test Fixture مخوّل، واستكمال Storage/Installed-state Hardware Tests عند توفر الجهاز.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — Resume Checkpoint + HTTP 206 حقيقي على Host
 
 **Verdict: MODIFY — Host Resume V1 + Native C Policy code reviewed/tested، لكن PS4 Download/Install ما زالا معطلين.**

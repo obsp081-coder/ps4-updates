@@ -3,6 +3,12 @@ name: PS4 Native Scanner Build (Experimental)
 
 on:
   workflow_dispatch:
+    inputs:
+      fw14_header_probe_pkg:
+        description: "Build separate read-only BREW01998 header diagnostic PKG (FW14 UNTESTED)"
+        required: false
+        type: boolean
+        default: false
   push:
     paths:
       - "ps4-auto-updater-v0.3/**"
@@ -255,6 +261,73 @@ jobs:
         with:
           name: shadps4-readonly-smoke-${{ github.sha }}
           path: ${{ runner.temp }}/shadps4-smoke/
+          if-no-files-found: error
+          retention-days: 7
+
+      # Branch-only manual proof artifact. It cannot be produced by push,
+      # the main branch, or default workflow_dispatch. First compile the
+      # normal package, then clean all build outputs before changing Title ID.
+      # No release is created; the user decides whether to install the
+      # isolated diagnostic only after checking their console/title IDs.
+      - name: Build isolated read-only FW14 header probe PKG
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true && github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='ps4-auto-updater-v0.3/ps4'
+          make -C "$APP" clean
+          make -C "$APP" FW14_DIAGNOSTIC=1
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          app = Path("ps4-auto-updater-v0.3/ps4")
+          expected = "IV0000-BREW01998_00-FW14HEADERPROBE0"
+          diagnostic = app / (expected + ".pkg")
+          assert diagnostic.is_file(), "Isolated diagnostic PKG not built"
+          assert list(app.glob("*.pkg")) == [diagnostic], (
+              "Mixed diagnostic/normal build artifacts"
+          )
+          with diagnostic.open("rb") as handle:
+              data = handle.read(0x1000)
+          assert len(data) == 0x1000 and data[:4] == b"\\x7fCNT", (
+              "Invalid PS4 PKG header"
+          )
+          cid = data[0x40:0x64].split(b"\\x00", 1)[0].decode("ascii")
+          assert cid == expected, f"Wrong diagnostic Content ID: {cid!r}"
+          assert diagnostic.stat().st_size >= 1024 * 1024
+          digest = hashlib.sha256()
+          with diagnostic.open("rb") as handle:
+              for block in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(block)
+          dest = Path(os.environ["RUNNER_TEMP"]) / "fw14-header-probe"
+          dest.mkdir(parents=True, exist_ok=True)
+          (dest / diagnostic.name).write_bytes(diagnostic.read_bytes())
+          manifest = "\\n".join([
+              "ISOLATED READ-ONLY FW14 PKG HEADER DIAGNOSTIC — UNTESTED ON HARDWARE",
+              "Commit: " + os.environ["GITHUB_SHA"],
+              "Title ID: BREW01998",
+              "Content ID: " + expected,
+              "Not the normal BREW00197 application",
+              "Only reports at /data/PS4AutoUpdaterProbe",
+              "Probe: installed app.pkg first 8 bytes, O_RDONLY, default off",
+              "No download/install source or user-game modifications",
+              "SHA256: " + digest.hexdigest(),
+              "Size: " + str(diagnostic.stat().st_size),
+              ""
+          ])
+          (dest / "DIAGNOSTIC_MANIFEST.txt").write_text(
+              manifest, encoding="utf-8"
+          )
+          print(manifest)
+          PY
+
+      - name: Upload opt-in FW14 diagnostic (NOT a release)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true && github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw14-readonly-header-probe-${{ github.sha }}
+          path: ${{ runner.temp }}/fw14-header-probe/
           if-no-files-found: error
           retention-days: 7
 

@@ -1,3 +1,19 @@
+## تحديث 10 نوفمبر 2026 — تنفيذ Offline-first لربط Compatibility Engine
+
+**القرار: MODIFY — استؤنف التطوير البرمجي؛ Hardware Verification مؤجل.**
+
+- أصبح محرك `ui_compatibility.c` مربوطًا بالـOpenOrbis Build. الملفات التنفيذية لا تمنح أي صلاحية تنزيل أو تثبيت: `download_allowed=0` و`install_allowed=0` دائمًا.
+- يوفّر `ui_source_publish_reviews()` جسرًا اختياريًا يستقبل **Candidate + Facts** متطابقتين في `CUSA` و`Content ID` و`Version`؛ عدم التطابق يرفض الدفعة كاملة دون تغيير بيانات UI السابقة.
+- يُنقل تعارض مثبت إلى `UI_UPDATE_BLOCKED` مع `compat_blockers`، ونقص الأدلة إلى `UI_UPDATE_UNKNOWN` مع `compat_unknowns`. حتى `REVIEW_ONLY` يظل `UNKNOWN` ولا يظهر بوصفه تثبيتًا مرخصًا.
+- الشاشة تستطيع إظهار رمز أول سبب حظر مع **إصدار المرشح الأول**، ولا تعمم الحكم على جميع الإصدارات أو جميع الألعاب.
+- `ui_models.c` يرفض `BLOCKED` بلا `compat_blockers` ويواصل رفض `UI_UPDATE_VERIFIED`.
+- اختبارات Host الجديدة تربط المصدر بالمراجع، وتغطي اختلاف Content ID وRetail/FPKG وFirmware والإصدارات والحالة غير المعروفة والرفض دون تغيير الحالة، وتختبر مسار العرض على Native Host Mock.
+- **المتبقي:** إثبات مصدر تحديث مخوّل، بيانات Installed مستقلة عن SFO، تفسير جميع أسباب الحظر بالعربية مع اختيار إصدار محدد، بناء حالة تحديث حقيقية على FW14، وتنزيل/تثبيت آمن. كل ما سبق **NOT TESTED on real PS4**. إنتاج التطبيق يبقى **Read Only**؛ `ui_source_publish_reviews` ليس Provider حيًا.
+
+**آخر Commit برمجي لهذا التغيير:** `a9eb64bfd6391439551e36336af21d0594a7573d`. يرجى مراجعة CI على هذا الـSHA قبل وصف البناء والاختبارات بالناجحة.
+
+---
+
 > **قرار جديد — 9 نوفمبر 2026:** هذه المرحلة **PAUSED / معلّقة بطلب المستخدم**. ملفات Compatibility Engine محفوظة ولا تُحذف. لم نربطها بعد بـNative UI، ولا نعدّها اختبارًا ناجحًا أو ميزة مكتملة. المرحلة النشطة حاليًا: **Stage 3 — Sources**، راجع `STAGE3_SOURCES_STATUS_AR.md`.
 
 # المرحلة الرابعة — Compatibility Engine

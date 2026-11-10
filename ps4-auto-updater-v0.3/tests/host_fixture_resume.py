@@ -22,9 +22,11 @@ NAME = re.compile(r"fixture-[a-z0-9_-]{1,48}\.bin\Z")
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 RANGE = re.compile(r"bytes ([0-9]+)-([0-9]+)/([0-9]+)\Z")
 ETAG = re.compile(r'"[\x21\x23-\x7e]{1,92}"\Z')
+FIXTURE_CONTENT_ID = "IV0000-CUSA02343_00-SCANNER000000000"
+FIXTURE_VERSION = "01.09"
 CHECKPOINT_KEYS = {
     "source", "filename", "total", "offset", "full_sha256",
-    "partial_sha256", "etag",
+    "partial_sha256", "etag", "content_id", "version",
 }
 
 
@@ -87,16 +89,19 @@ def header_one(response, name):
 
 
 def response_identity(response, expected_status, expected_length):
+    if response.version != 11:
+        raise ResumeFixtureError("HTTP/1.1 required")
     if response.status != expected_status:
         raise ResumeFixtureError("HTTP status mismatch")
     length = header_one(response, "Content-Length")
     if not length.isascii() or not length.isdecimal() or int(length) != expected_length:
         raise ResumeFixtureError("Content-Length mismatch")
-    if response.headers.get("Transfer-Encoding"):
+    if response.headers.get_all("Transfer-Encoding", []):
         raise ResumeFixtureError("transfer coding not supported")
-    if response.headers.get("Content-Encoding") not in (None, "identity"):
+    encodings = response.headers.get_all("Content-Encoding", [])
+    if len(encodings) > 1 or (encodings and encodings[0] != "identity"):
         raise ResumeFixtureError("content coding not supported")
-    if response.headers.get("Location"):
+    if response.headers.get_all("Location", []):
         raise ResumeFixtureError("redirect denied")
     tag = header_one(response, "ETag")
     if not ETAG.fullmatch(tag):
@@ -170,6 +175,7 @@ def start_interrupted_fixture(url, directory, filename, total, full_sha,
             "source": url, "filename": filename, "total": total,
             "offset": received, "full_sha256": full_sha,
             "partial_sha256": digest.hexdigest(), "etag": etag,
+            "content_id": FIXTURE_CONTENT_ID, "version": FIXTURE_VERSION,
         }
         meta_fd = open_exclusive(meta)
         own_meta = True
@@ -214,7 +220,8 @@ def load_checkpoint(meta):
     return payload
 
 
-def resume_fixture(url, directory, filename, total, full_sha):
+def resume_fixture(url, directory, filename, total, full_sha, *,
+                   native_reviewer=None):
     """One safe resume attempt; failed appends require a fresh explicit reset.
 
     On validation failure keep existing partial/checkpoint untouched. After
@@ -227,6 +234,8 @@ def resume_fixture(url, directory, filename, total, full_sha):
         raise ResumeFixtureError("destination exists")
     cp = load_checkpoint(meta)
     if (cp["source"] != url or cp["filename"] != filename or
+            cp["content_id"] != FIXTURE_CONTENT_ID or
+            cp["version"] != FIXTURE_VERSION or
             type(cp["total"]) is not int or cp["total"] != total or
             cp["full_sha256"] != full_sha or
             type(cp["offset"]) is not int or not 0 < cp["offset"] < total or
@@ -254,8 +263,19 @@ def resume_fixture(url, directory, filename, total, full_sha):
             if (not parts or tuple(map(int, parts.groups())) !=
                     (offset, total - 1, total)):
                 raise ResumeFixtureError("Content-Range changed")
-            if hash_fd(fd, offset) != cp["partial_sha256"]:
+            observed_hash = hash_fd(fd, offset)
+            if observed_hash != cp["partial_sha256"]:
                 raise ResumeFixtureError("partial changed during request")
+            if native_reviewer is not None:
+                header_lines = [
+                    f"HTTP/1.1 {response.status} {response.reason}",
+                    *(f"{k}: {v}" for k, v in response.headers.raw_items()),
+                    "", "",
+                ]
+                raw_headers = "\r\n".join(header_lines).encode("ascii")
+                if len(raw_headers) > 8192 or not native_reviewer(
+                        cp, observed_hash, raw_headers, total, full_sha):
+                    raise ResumeFixtureError("native C checkpoint review rejected")
             os.lseek(fd, offset, os.SEEK_SET)
             received = offset
             while received < total:

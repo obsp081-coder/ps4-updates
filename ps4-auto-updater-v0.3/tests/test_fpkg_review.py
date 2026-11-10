@@ -212,6 +212,44 @@ class FpkgReviewTests(unittest.TestCase):
                 "updates": []
             })
 
+    def test_forged_download_install_claims_are_rejected(self):
+        for key, value in (
+            ("download_url", "https://example.org/x.pkg"),
+            ("install_allowed", True),
+            ("source_authorized", True),
+            ("rights_verified", True),
+            ("fpkg_compatibility_confirmed", True),
+        ):
+            with self.subTest(key=key):
+                catalog = self.catalog()
+                catalog["updates"][0][key] = value
+                with self.assertRaises(ValueError):
+                    self.check(catalog=catalog)
+
+    def test_missing_false_permissions_and_retained_catalog_flags(self):
+        catalog = self.catalog()
+        del catalog["auto_install"]
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+        catalog = self.catalog()
+        catalog["compatibility_confirmed"] = "false"
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_forged_source_page_is_not_a_trusted_download_source(self):
+        catalog = self.catalog()
+        catalog["updates"][0]["source_page"] = "http://example.org/patch"
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_user_claimed_fpkg_kind_is_still_unverified(self):
+        report = self.check()
+        self.assertEqual(report["package_policy"], "fpkg_only")
+        self.assertFalse(report["games"][0]["base_kind_independently_verified"])
+        self.assertFalse(report["fpkg_compatibility_confirmed"])
+        self.assertFalse(report["install_enabled"])
+        self.assertFalse(report["download_enabled"])
+
     def test_duplicate_install_reports_are_rejected(self):
         self.installed["games"].append({
             "cusa": CUSA,

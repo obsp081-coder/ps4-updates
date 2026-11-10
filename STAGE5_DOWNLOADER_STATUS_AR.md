@@ -1,3 +1,31 @@
+## تحديث 10 نوفمبر 2026 — HTTPS Verified Host Fixture مع Native C Transport Policy
+
+**Verdict: MODIFY — إثبات TLS حقيقي على Host فقط، وبقاء PS4 Native Downloader مغلقًا.**
+
+**Code HEAD:** 3b781e3963f84d013e0736ad1dc66dbd7597cf24
+**Host CI:** 254/254 PASS على Code HEAD — https://github.com/obsp081-coder/ps4-updates/actions/runs/42835168317
+**OpenOrbis CI:** PC Simulation PASS وBuild PS4 Package PASS على Code HEAD — https://github.com/obsp081-coder/ps4-updates/actions/runs/42835162775
+**Real PS4 FW14 + GoldHEN:** لم يجر اختبار على الجهاز؛ لا تعتمد نجاح Compile كدليل Runtime.
+
+### Code Written / Host Tested
+
+- تمت إضافة tests/test_download_https_verified.py: اختبار مستقل يستعمل OpenSSL لإنشاء CA محلية مؤقتة وشهادة Server موقعة مع DNS SAN باسم updates.example. خادم HTTPS مقيّد على 127.0.0.1، ولا يجري أي Public DNS أو تنزيل تحديثات ألعاب. عميل Python ssl يستخدم CERT_REQUIRED وcheck_hostname مفعّلًا، ويفرض TLS 1.2 أو أحدث، ويتحقق من الشهادة والاسم عبر Handshake حقيقي.
+- الاختبار يمرّر HTTP response headers والبايتات الناتجة عن TLS المتحقق منه إلى نفس Native C download_transport.c عبر ctypes callbacks. هذا ليس Mock لنجاح TLS؛ الشهادة والحزمة TLS حقيقيتان محليًا، بينما C policy هو الذي يراجع 200/206 وContent-Length وRange/ETag والـEOF.
+- الاختبارات تؤكد نجاح نقل البيانات عند CA وHostname صحيحين، ونجاح Resume GET مع Range/If-Range مطابقين، ورفض CA غير موثوقة وHostname غير صحيح، ورفض Redirect وContent-Range/ETag غير المطابقين و200 بدل 206، وعدم إعلان نجاح الاستجابة المقطوعة. HTTPS Host لا يعني أن Native PS4 يقوم بتوثيق الشهادات.
+- تمت إضافة DT_PORT_TLS_VERIFY_FAILED إلى ps4/src/download_transport.h، وتعديل download_transport.c لتمييز فشل Chain/Hostname Authentication من فشل الشبكة العادي. أي فشل أثناء open_headers يستدعي close_request مع فحص نتيجة الإغلاق. أضيفت حالات منفصلة إلى tests/ui_mocks/transport_policy_smoke.c وأصبح test_download_https_verified.py يختبر نفس Error Code بعد TLS Verification Failure حقيقي.
+- لا يتم قبول TLS Authenticated Fact من HTTP Headers؛ يتحكم فيها Adapter مستقل بعد Handshake. في بناء PS4 ما زالت dt_begin() تحت __ORBIS__ تعيد DT_UNAVAILABLE فورًا، دون Socket أو Callback أو كتابة ملف.
+
+### Source Review / Unknowns
+
+- مثال OpenOrbis net_http يستخدم skipSslCallback التي تعيد HTTP_SUCCESS حتى مع verifyErr؛ لا يصلح إثبات Chain أو Hostname Verification ولا ينبغي نسخها في Production. https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/samples/net_http/net_http/main.c
+- يعرّف OpenOrbis Http.h واجهات sceHttpsEnableOption وsceHttpsSetSslCallback وsceHttpAbortRequest وغيرها، وتعرّف orbis/_types/http.h نوع OrbisHttpsCallback مع verifyErr. هذه Definitions/Declarations فقط؛ لم يتم إثبات bit flags أو سلوك SSL certificate/hostname في FW14 على Hardware، لذلك لم نبن Native SceSsl Backend غير موثق.
+- Host integration يعتمد على Python ssl/OpenSSL وليس SceSsl؛ ولا يغطي PS4 Permissions، Storage No-overwrite، Hostname Validation في Firmware 14.00، أو TLS timeout/cancel في Native API.
+- ما زالت Sources وFPKG Compatibility وInstaller وAuthorized Download Gate غير مكتملة. لا نشر تحديثات ألعاب محمية، ولا Download/Install على PS4. PR #1 يبقى Draft ولا Release نهائي.
+
+**الخطوة القادمة:** تدقيق Native SceHttp/SceSsl لإيجاد Certificate Chain + Hostname Evidence قابل للاختبار دون Callback تتجاوز verifyErr؛ وعزل واجهة الأخطاء والوقت/إلغاء النقل مع Host regression tests. قبل FW14 Hardware Proof تبقى جميع بوابات تنزيل/تثبيت PS4 مغلقة.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — Host Recovery V2 وTransport Gate (أحدث Code)
 
 **Verdict: MODIFY — Host recovery verified by tests; Native PS4 Download/Install remain disabled.**

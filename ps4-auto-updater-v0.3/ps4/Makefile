@@ -59,6 +59,10 @@ $(INTDIR)/ui_compatibility.o: src/ui_compatibility.c src/ui_compatibility.h | $(
 $(INTDIR)/ui_models.o: src/ui_models.c src/ui_models.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
+# Transport-free Stage 5 queue: built for ABI checks but not activated.
+$(INTDIR)/download_queue.o: src/download_queue.c src/download_queue.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
 $(INTDIR)/ui_navigation.o: src/ui_navigation.c src/ui_navigation.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
@@ -83,8 +87,8 @@ $(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h 
 $(INTDIR)/ps4_shell_exit.o: src/ps4_shell_exit.c src/ps4_shell_exit.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
-	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
+eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/download_queue.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
+	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/download_queue.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
 	$(TOOLBIN)/create-fself -in=$(INTDIR)/scanner.elf -out=$(INTDIR)/scanner.oelf --eboot eboot.bin --paid 0x3800000000000011
 
 sce_sys/param.sfo: Makefile

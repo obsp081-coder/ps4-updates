@@ -18,6 +18,12 @@ extern "C" {
  */
 #define DT_MAX_READ 65536u
 #define DT_MAX_URL 2048u
+/* The transport may return this from open_headers ONLY for a genuine
+ * certificate-chain or hostname-verification failure. Other connection,
+ * DNS, timeout or I/O failures must return a different nonzero code.
+ * The flag is never derived from server-controlled HTTP headers.
+ */
+#define DT_PORT_TLS_VERIFY_FAILED (-2)
 
 typedef enum DtResult {
     DT_OK = 0,
@@ -43,7 +49,8 @@ typedef struct DtRequest {
 
 /* Facts MUST be obtained from the real transport, not from HTTP headers.
  * In Host tests they are synthetic and NEVER proof of verified certificates.
- * open_headers must report precisely the request headers actually sent.
+ * open_headers must report precisely the request headers actually sent,
+ * and use DT_PORT_TLS_VERIFY_FAILED only after real TLS identity failure.
  */
 typedef struct DtPeerFacts {
     unsigned certificate_chain_verified;

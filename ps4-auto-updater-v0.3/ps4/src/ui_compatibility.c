@@ -83,6 +83,8 @@ UiCompatAssessment ui_compat_assess(const UiCompatFacts *f) {
     const int pk=(f->patch_kind==UI_COMPAT_RETAIL||
                   f->patch_kind==UI_COMPAT_FPKG);
     if(!bk||!pk)a.unknowns|=UI_COMPAT_KIND_UNCONFIRMED;
+    if(f->base_kind==UI_COMPAT_RETAIL||f->patch_kind==UI_COMPAT_RETAIL)
+        a.blockers|=UI_COMPAT_RETAIL_UNSUPPORTED;
     if(bk&&pk&&f->base_kind!=f->patch_kind)
         a.blockers|=UI_COMPAT_KIND_MISMATCH;
 
@@ -120,6 +122,7 @@ const char *ui_compat_reason_key(uint32_t bit) {
     case UI_COMPAT_REGION_MISMATCH:return "REGION_MISMATCH";
     case UI_COMPAT_PUBLISHER_MISMATCH:return "PUBLISHER_MISMATCH";
     case UI_COMPAT_KIND_MISMATCH:return "RETAIL_FPKG_MISMATCH";
+    case UI_COMPAT_RETAIL_UNSUPPORTED:return "RETAIL_UNSUPPORTED";
     case UI_COMPAT_NOT_INSTALLED:return "BASE_NOT_INSTALLED";
     case UI_COMPAT_INVALID_VERSION:return "INVALID_VERSION";
     case UI_COMPAT_NOT_NEWER:return "PATCH_NOT_NEWER";

@@ -146,10 +146,14 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
         # must be denied INDIVIDUALLY, not abort the entire inventory.
         # An invalid nonempty Content ID is distinct from an unknown one.
         category = game.get("category")
-        if category is not None and category not in BASE_CATEGORIES:
-            row["status"] = ("BASE_CATEGORY_UNCONFIRMED"
-                             if category == "" else "NOT_A_BASE_GAME")
-            continue
+        if category is not None:
+            if not isinstance(category, str):
+                row["status"] = "BASE_CATEGORY_INVALID"
+                continue
+            if category not in BASE_CATEGORIES:
+                row["status"] = ("BASE_CATEGORY_UNCONFIRMED"
+                                 if category == "" else "NOT_A_BASE_GAME")
+                continue
         if base_cid is None or base_cid == "":
             row["status"] = "BASE_CONTENT_ID_UNCONFIRMED"
             continue

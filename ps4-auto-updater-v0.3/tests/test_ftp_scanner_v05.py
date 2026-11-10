@@ -321,6 +321,40 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
         self.assertEqual(commands.count("RETR"), 3)
 
+    def test_installed_sfo_never_proves_fpkg_on_fw14(self):
+        """GoldHEN FTP SFO and even a clean scan are not PKG type proof."""
+        listing = b"drwxr-xr-x root root 0 CUSA02343\r\n"
+        inv, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", "Synthetic Base", "01.00")}
+        )
+        self.assertTrue(inv["scan_complete"])
+        self.assertFalse(inv["fpkg_detection_confirmed"])
+        self.assertEqual(inv["pkg_header_probe_mode"], "DISABLED")
+        self.assertEqual(len(inv["games"]), 1)
+        base = inv["games"][0]
+        self.assertEqual(base["package_kind"], "unknown")
+        self.assertIs(base["fpkg_confirmed"], False)
+        self.assertEqual(base["package_kind_evidence"], "SFO_NOT_PROOF")
+        self.assertEqual(base["pkg_header_observation"], "NOT_PROBED")
+        self.assertIsNone(base["pkg_header_flags_observed"])
+        self.assertEqual(base["pkg_header_location"], "not_available")
+        self.assertEqual(inv["metadata_records"][0]["package_kind"], "unknown")
+        self.assertFalse(inv["metadata_records"][0]["fpkg_confirmed"])
+        self.assertIn("PKG_HEADER_PROBE_DISABLED_DEFAULT: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS))
+
+        # Consume the real scanner JSON; the FPKG reviewer must deny
+        # candidates before considering Sony or submitted release metadata.
+        import sys
+        project = SCANNER.parents[2]
+        sys.path.insert(0, str(project))
+        from fpkg_review import review
+        checked = review(inv)
+        self.assertEqual(checked["games"][0]["status"],
+                         "BASE_PACKAGE_KIND_UNCONFIRMED")
+        self.assertFalse(checked["download_enabled"])
+        self.assertFalse(checked["install_enabled"])
+
     def test_ascii_mode_sfo_newlines_are_restored_safely(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         original = sfo("CUSA02343", "Recovered Game", "01.07")

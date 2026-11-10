@@ -163,6 +163,19 @@ class FpkgPatchEvidenceTests(unittest.TestCase):
         del self.inventory["games"][0]["package_kind"]
         self.assertEqual(self.review()["status"], "BASE_FPKG_KIND_UNCONFIRMED")
 
+    def test_fake_header_hint_is_not_base_fpkg_proof(self):
+        # Even a perfectly parsed fake-flag header is only an observation
+        # about a file, not verified identity of this installed base game.
+        self.inventory["games"][0]["package_kind"] = "unknown"
+        self.inventory["games"][0]["pkg_header_observation"] = (
+            "FAKE_FLAG_CANDIDATE"
+        )
+        self.inventory["games"][0]["pkg_header_flags_observed"] = "0x00000001"
+        result = self.review()
+        self.assertEqual(result["status"], "BASE_FPKG_KIND_UNCONFIRMED")
+        self.assertTrue(result["sha256_matched"])
+        self.safety(result)
+
     def test_symlink_and_directory_rejected_without_hanging(self):
         symlink = self.root / "symlink.pkg"
         symlink.symlink_to(self.pkg)

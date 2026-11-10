@@ -101,6 +101,7 @@ class FpkgPatchEvidenceTests(unittest.TestCase):
         for category in ("gd", "ac", "gdp", "gpe", "unknown"):
             with self.subTest(category=category):
                 synthetic_pkg(self.pkg, category=category)
+                self.manifest["size_bytes"] = self.pkg.stat().st_size
                 self.refresh_claim_hash()
                 result = self.review()
                 self.assertEqual(result["status"], "NOT_GAME_PATCH_CATEGORY")

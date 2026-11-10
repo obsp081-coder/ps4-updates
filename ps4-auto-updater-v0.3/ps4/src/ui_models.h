@@ -13,7 +13,9 @@ typedef enum UiUpdateVerdict {
     UI_UPDATE_BLOCKED=1,
     UI_UPDATE_VERIFIED=2
 } UiUpdateVerdict;
-/* Source kind is provenance, not authorization or compatibility. */
+/* Source kind is provenance, not authorization or compatibility.
+ * RETAIL_HTTP is retained as a numeric legacy value but REJECTED by
+ * the FPKG-only UI model; UNSPECIFIED remains read-only/unknown. */
 typedef enum UiUpdateSourceKind {
     UI_SOURCE_UNSPECIFIED=0, UI_SOURCE_RETAIL_HTTP=1,
     UI_SOURCE_FPKG_SUBMITTED=2

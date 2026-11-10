@@ -4,6 +4,16 @@ VERSION     := 01.14
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
 
+# This is a SEPARATE diagnostic application, never a replacement for
+# BREW00197. Default remains unchanged. Build only in a fresh checkout.
+FW14_DIAGNOSTIC ?= 0
+ifeq ($(FW14_DIAGNOSTIC),1)
+TITLE       := PS4 FPKG Header Probe - Read Only
+VERSION     := 00.01
+TITLE_ID    := BREW01998
+CONTENT_ID  := IV0000-BREW01998_00-FW14HEADERPROBE0
+endif
+
 TOOLCHAIN   := $(OO_PS4_TOOLCHAIN)
 TOOLBIN     := $(TOOLCHAIN)/bin/linux
 INTDIR      := build
@@ -20,6 +30,13 @@ CFLAGS      := -D__ORBIS__ -include stdbool.h -Wall -Wextra -Werror \
                -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) \
                -isystem $(TOOLCHAIN)/include
+
+ifeq ($(FW14_DIAGNOSTIC),1)
+# The scanner writes only to an isolated /data/PS4AutoUpdaterProbe root.
+# No install/download APIs are enabled. This macro opens only read-only
+# app.pkg headers and must never enter the normal production build.
+CFLAGS += -DPS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE -DPS4_DIAGNOSTIC_ISOLATED
+endif
 
 LDFLAGS     := -m elf_x86_64 -pie \
                --script $(TOOLCHAIN)/link.x \

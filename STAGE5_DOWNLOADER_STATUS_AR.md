@@ -1,3 +1,23 @@
+## تحديث لاحق 10 نوفمبر 2026 — SHA-256 Native فعلي على الملفات المخزنة
+
+**Verdict: MODIFY — نجاح Native C SHA-256 + Host + OpenOrbis؛ PS4 Hardware وDownloader الفعلي ما زالا غير مثبتين.**
+
+- أضفنا `ps4/src/download_sha256.h/.c` بمحرك SHA-256 مبني على قواعد `FIPS 180-4`، قادر على العمل تدريجيًا بكتل صغيرة، وبحد منطقي لعدد البايتات وإعادة استخدام السياق بعد Final. لا يعتمد على الإنترنت أو مكتبات Crypto إضافية.
+- `ds_sha256_verify_stored()` يعيد فتح ملف `.part` عبر `DsSha256Reader` من Backend مقيّد، ويقرأ كل المحتوى ليتحقق من **حجم مطابق تمامًا** و**بصمة SHA-256 مطابقة** مع إغلاق ناجح. لا يقرأ البصمة من `Content-Length` أو يثق بمحتوى غير موثق. `ds_finalize()` يمرّر `expected_size` إلى `verify_sha256` قبل `publish_exclusive`.
+- استبدلنا فحص Fixture القديم الذي يعتمد على Token تجريبي، بتجزئة **الملف المخزن فعليًا** في `tests/ui_mocks/storage_smoke.c`. مرجع Digest مستقل محسوب باستخدام Python `hashlib` لملف اختبار حجمه 41 بايت.
+- رفضت اختبارات Host حالة تغيير بايت واحد في الملف، والقطع، وإضافة بايت زائد، وتقديم Digest خاطئة، وفشل القراءة، ومحاولات نشر ملف غير معتمد.
+- اختبارات خوارزمية SHA-256 تشمل Empty/abc/55/56/64/65/256 Byte ومليون بايت، وتعدد دفعات `update()` وحماية Overflow، باستخدام Test Vectors مستقلة. توجد في `tests/ui_mocks/sha256_smoke.c` و`tests/test_download_sha256.py`.
+- **Code SHA:** `0d3392fad23499a4b25c72b40bf6e269eaa41d26`.
+- **Host CI:** **214/214 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42794816996
+- **OpenOrbis Package Build:** **PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42794809447
+- كشف بناء OpenOrbis الأول خطأ في Makefile (`clang: no input files`)؛ أُصلح بإضافة مصدر `$<` للأمر، ثم أُعيد CI حتى النجاح. لا يوجد Release نهائي جديد.
+
+**حدود الدليل:** يعمل حساب SHA-256 فعليًا على Host، ونجح Compile/Link على OpenOrbis؛ **لم تُثبت سرعة التجزئة أو صلاحيات القراءة/الكتابة على FW14**. Backend التخزين الوحيد الفعلي في الاختبارات هو POSIX Host، وليس PS4. `SHA-256` يثبت التطابق مع بصمة مرجعية **إذا كانت مرجعية مستقلة ومصرحًا بها**، ولا يثبت وحده الحقوق أو توقيع Retail/FPKG أو التوافق. التطبيق الفعلي يبقى **Read Only**، و`Download/Install` معطّلان.
+
+**التالي:** تنفيذ `PS4 Storage Port` مع مراجعة APIs ومسارات التطبيق وقيود `openat/O_EXCL/fsync` قبل أي Runtime تفعيل، ثم HTTPS/TLS Transport موثوق مع فحص الشهادات؛ تنزيل Test Fixture صغير فقط على محاكي عند جدواه، وPS4 Hardware Acceptance في النهاية.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — StorageAdapter Native بلا صلاحيات كتابة على PS4
 
 **Verdict: MODIFY — نجح كود إدارة ملفات النقل على Host، ولم يُفعّل على PS4.**

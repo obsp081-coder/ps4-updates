@@ -69,6 +69,16 @@ class Fw14DiagnosticBuildContractTests(unittest.TestCase):
         self.assertIn("github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'", workflow)
         self.assertIn("retention-days: 7", workflow)
 
+    def test_probe_includes_owned_homebrew_id_without_a_commercial_game(self):
+        source = SCANNER.read_text(encoding="utf-8")
+        self.assertIn('#if defined(PS4_DIAGNOSTIC_ISOLATED)', source)
+        self.assertIn('probe_header_target("BREW01998"', source)
+        self.assertIn('PKG_SELF_HEADER BREW01998 observation=', source)
+        self.assertIn('probe_header_target(g->cusa', source)
+        self.assertNotIn('open(path,O_WRONLY', source)
+        self.assertNotIn('open(path,O_RDWR', source)
+        self.assertIn('"package_kind"', source.replace('\\\"', '"'))
+
     def test_probe_access_is_read_only_nonblocking_and_no_follow(self):
         source = SCANNER.read_text(encoding="utf-8")
         self.assertIn("O_RDONLY|O_NOFOLLOW|O_NONBLOCK", source)

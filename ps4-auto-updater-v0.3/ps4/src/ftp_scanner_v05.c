@@ -15,6 +15,14 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "ui_local_art_probe.h"
+#include "pkg_header_evidence.h"
+
+/* Direct installed PKG reads are EXPERIMENTAL and disabled by default.
+ * No attempt is made to use an installer, unpack PFS, or modify game data. */
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #ifdef __ORBIS__
 #include <orbis/Net.h>
@@ -61,6 +69,8 @@ typedef struct {
     char category[12];
     char source[12];
     int installed;
+    PkgHeaderEvidence pkg_header;
+    unsigned pkg_header_location; /* 0 none, 1 internal, 2 ext0, 3 ext1 */
 } Game;
 
 static Game games[MAX_GAMES];
@@ -1274,6 +1284,74 @@ static void confirm_games(void) {
 #endif
 }
 
+/* Independent read-only diagnostic of *installed base* app.pkg headers.
+ * Based on ItemzFlow's publicly documented read path, not yet proven to
+ * be accessible in OUR FW14 homebrew sandbox. A header flag observation
+ * is NOT equivalent to authenticated FPKG, ownership or compatibility.
+ *
+ * Never enabled for the ordinary release; tests exercise the pure
+ * pkg_header_observe parser separately. Failing to open an installed
+ * package is an explicit UNKNOWN, never evidence of Retail or FPKG. */
+static void probe_installed_pkg_headers(void) {
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+    const char *roots[] = {
+        "/user/app",
+        "/mnt/ext0/user/app",
+        "/mnt/ext1/user/app"
+    };
+    for (unsigned i=0; i<found; ++i) {
+        Game *g=&games[i];
+        if(scan_should_abort()) break;
+        if(!valid_id(g->cusa)) continue;
+#ifndef O_NOFOLLOW
+        g->pkg_header.observation=PKG_OBS_NOFOLLOW_UNAVAILABLE;
+#else
+        g->pkg_header.observation=PKG_OBS_OPEN_FAILED;
+        for(unsigned location=0; location<3u; ++location) {
+            char path[128];
+            const int n=snprintf(path,sizeof path,"%s/%s/app.pkg",
+                                 roots[location],g->cusa);
+            if(n<=0 || (size_t)n>=sizeof path) continue;
+            /* O_NONBLOCK prevents a malicious FIFO from blocking open. */
+            int flags=O_RDONLY|O_NOFOLLOW;
+#ifdef O_NONBLOCK
+            flags|=O_NONBLOCK;
+#endif
+#ifdef O_CLOEXEC
+            flags|=O_CLOEXEC;
+#endif
+            const int fd=open(path,flags);
+            if(fd<0) continue;
+            struct stat st;
+            if(fstat(fd,&st)!=0 || !S_ISREG(st.st_mode)) {
+                g->pkg_header.observation=PKG_OBS_NOT_REGULAR;
+                (void)close(fd);
+                break;
+            }
+            unsigned char raw[8];
+            const ssize_t got=read(fd,raw,sizeof raw);
+            (void)close(fd);
+            g->pkg_header=(got==8) ?
+                pkg_header_observe(raw,sizeof raw) :
+                pkg_header_observe(NULL,0u);
+            g->pkg_header_location=location+1u;
+            break;
+        }
+#endif
+        if(report)
+            fprintf(report,"PKG_HEADER %s observation=%s location=%u "
+                    "header_read=%u flags=0x%08x (UNVERIFIED)\n",
+                    g->cusa,
+                    pkg_header_observation_name(g->pkg_header.observation),
+                    g->pkg_header_location,
+                    g->pkg_header.header_read,
+                    (unsigned)g->pkg_header.flags_be);
+    }
+#else
+    logmsg("PKG_HEADER_PROBE_DISABLED_DEFAULT",1);
+#endif
+}
+
 static int save_inventory(const char *path) {
     char tmp[1024];
     int n = snprintf(tmp, sizeof tmp, "%s.tmp", path);
@@ -1288,6 +1366,12 @@ static int save_inventory(const char *path) {
         "  \"schema\":6,\n"
         "  \"source\":\"ftp_loopback_readonly_v065\",\n"
         "  \"metadata_only\":true,\n"
+        "  \"fpkg_detection_confirmed\":false,\n"
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+        "  \"pkg_header_probe_mode\":\"EXPERIMENTAL_READ_ONLY\",\n"
+#else
+        "  \"pkg_header_probe_mode\":\"DISABLED\",\n"
+#endif
         "  \"scan_complete\":",
         fp
     );
@@ -1331,7 +1415,9 @@ static int save_inventory(const char *path) {
         fputs(",\"metadata_kind\":", fp);
         json_str(fp, metadata_kind(g->category));
         fputs(",\"source\":", fp); json_str(fp, g->source);
-        fputs(",\"installed_confirmed\":false}", fp);
+        fputs(",\"installed_confirmed\":false", fp);
+        fputs(",\"package_kind\":\"unknown\"",fp);
+        fputs(",\"fpkg_confirmed\":false}",fp);
     }
     fputs("\n  ],\n  \"games\":[\n", fp);
 
@@ -1355,6 +1441,23 @@ static int save_inventory(const char *path) {
 
         fputs(",\"category\":", fp);
         json_str(fp, g->category);
+
+        /* Existing SFO, known CUSA, or AppInstUtil AppExists do not
+         * reveal installed Retail/FPKG authenticity. Never infer it. */
+        fputs(",\"package_kind\":\"unknown\"", fp);
+        fputs(",\"fpkg_confirmed\":false", fp);
+        fputs(",\"package_kind_evidence\":\"SFO_NOT_PROOF\"", fp);
+        fputs(",\"pkg_header_observation\":", fp);
+        json_str(fp,pkg_header_observation_name(g->pkg_header.observation));
+        fputs(",\"pkg_header_flags_observed\":", fp);
+        if(g->pkg_header.header_read)
+            fprintf(fp,"\"0x%08x\"", (unsigned)g->pkg_header.flags_be);
+        else fputs("null",fp);
+        fputs(",\"pkg_header_location\":",fp);
+        json_str(fp,
+             g->pkg_header_location==1u ? "internal" :
+             g->pkg_header_location==2u ? "ext0" :
+             g->pkg_header_location==3u ? "ext1" : "not_available");
 
         fputs(",\"source\":", fp);
         json_str(fp, g->source);
@@ -1539,6 +1642,8 @@ static int scan_readonly(void) {
 #endif
     confirm_games();
     logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
+    probe_installed_pkg_headers();
+    logmsg("SCAN_STAGE_PKG_HEADER_PROBE_DONE", 1);
 
 #ifdef __ORBIS__
     /* Critical cache invariant: never erase an existing, valid library

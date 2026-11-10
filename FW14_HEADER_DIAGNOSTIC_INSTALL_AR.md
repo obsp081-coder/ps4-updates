@@ -38,7 +38,8 @@ gh workflow run ps4-build.yml \
 وأرسل نتيجتي الملفات بعد حذف أي أسماء خاصة/معلومات لا ترغب بنشرها. لا حاجة لإرسال PKG ألعاب أو ملفات Save Data.
 
 ## كيف نقيم نجاح الاختبار؟
-- يجب أن يثبت Log التشغيل `SCAN_STAGE_PKG_HEADER_PROBE_DONE: 1`، ويحتوي سطر `PKG_HEADER CUSAxxxxx observation=... location=... header_read=... flags=...` إذا وجد Scanner أي Game Metadata صالحة.
+- **أول دليل مطلوب:** يكتب الفحص سطر `PKG_SELF_HEADER BREW01998 observation=... location=... header_read=... flags=...` عن **PKG الخاصة بالتطبيق التشخيصي نفسه**، حتى لو لم تظهر أي ألعاب CUSA. `OPEN_FAILED` يعني عدم القدرة على القراءة أو عدم وجود المسار، ولا يعني Retail.
+- يجب أن يثبت Log التشغيل `SCAN_STAGE_PKG_HEADER_PROBE_DONE: 1`. وقد تظهر أسطر `PKG_HEADER CUSAxxxxx observation=...` إذا وجد Scanner بيانات ألعاب CUSA، لكن **لا نحتاج أي ألعاب تجارية** لاختبار المسار الأول.
 - `FAKE_FLAG_CANDIDATE` = تلميح من 8 بايت. **لا يعني تلقائيًا FPKG مؤكدة**. يمكن أن تظهر `OPEN_FAILED` بسبب صلاحيات أو اختلاف المسار. هذا فشل إثبات، لا دليل Retail.
 - إذا لم يظهر أي CUSA بعد الفحص، افحص اتصال GoldHEN FTP وتقرير `scan_complete` دون تغيير ملفات ألعاب أو تثبيت باتشات.
 - يقف الاختبار حتى بعد نجاح قراءة Header عند `fpkg_detection_confirmed:false`، و`download_enabled:false` و`install_enabled:false`.

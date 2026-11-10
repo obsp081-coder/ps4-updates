@@ -1,3 +1,30 @@
+## تحديث 10 نوفمبر 2026 — Resume Checkpoint + HTTP 206 حقيقي على Host
+
+**Verdict: MODIFY — Host Resume V1 + Native C Policy code reviewed/tested، لكن PS4 Download/Install ما زالا معطلين.**
+
+**Code SHA:** `7e5f572dea9541779ccdd79fbc669b534df59576`  
+**Host CI:** **234/234 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42825272867  
+**OpenOrbis Build:** **PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42825265008
+
+### المنجز
+- `ps4/src/download_resume.h/.c` يعرّف `DlResumeCheckpoint` و`dl_resume_review()`: يرفض استكمال ملف إلا بعد مطابقته مع **Content ID + Version + حجم الملف + SHA-256 الكامل من Manifest موثوق منفصل**، ومطابقة **حجم الملف الجزئي الفعلي وبصمته** مع Checkpoint، ووصول `206` بمدى صحيح وStrong `ETag` مطابق عبر `dl_http_parse_headers` و`dl_http_review`.
+- Trust bit الخاص بـTLS وحقائق `Range/If-Range` تأتي من Adapter منفصل لا من استجابة الخادم. **لا توجد شهادة TLS محققة أو Adapter PS4 الآن**؛ اختبارات Host تستخدم حقيقة TLS اصطناعية *فقط لاختبار القرار*.
+- `tests/host_fixture_resume.py` و`tests/test_host_fixture_resume.py`: ينشئان خادم TCP/HTTP محليًا في `127.0.0.1`، ويكتبان `.part` وCheckpoint مستقل بعد `fsync`، ثم ينفذان `GET Range: bytes=OFFSET-` مع `If-Range: ETag`، ويتحققان من البايتات قبل الاستكمال ثم من SHA-256 النهائي بعد النقل وينشران الملف عبر `link` الحصري داخل مجلد Host خاص.
+- `tests/native_resume_gate.py` يحمّل **نفس دالة C** داخل Host Test عبر `ctypes` ويمرر لها الـCheckpoint وترويسات HTTP `206` المستلمة فعلًا قبل Append. هذه مشاركة فعلية لسياسة Native، **وليست Native Network Transport أو PS4 Runtime Test**.
+- تم اختبار نجاح الاستكمال، ورفض `ETag` المتغير و`200` بدل `206` و`Content-Range` خاطئ أو مكرر، ورفض ملف جزئي معدّل، ورفض Manifest/Checkpoint مختلفين، ورفض قطع الاتصال أو فساد البايتات، وحماية الملف النهائي القديم و`.part` الموجود سابقًا.
+- `download_resume.o` مرتبط في بناء OpenOrbis للاختبار البرمجي فقط. ما زال `download_pipeline.c` يبدأ من Byte 0 على Host و**يرفض التشغيل بالكامل في `__ORBIS__`**. لا توجد أوامر حقيقية لتنزيل أو تثبيت تحديثات الألعاب.
+
+### القيود والبوابات التالية
+1. **Resume Host V1 تجربة محكومة وليست استكمالًا دائمًا لكل الأعطال**: يتم إنشاء Checkpoint عند توقف مخطط ومدوّن. إذا انقطع النقل *أثناء الاستكمال* وتغير طول `.part`، يرفض النظام محاولات إعادة الاستكمال تلقائيًا لأن Checkpoint أصبح قديمًا، ويستلزم Recovery/Reset صريحًا. هذا أفضل من قبول بايتات غير موثوقة.
+2. `Checkpoint` في الاختبار مكتوب كـJSON تحت Host POSIX، لا توجد صيغة Persistence معتمدة على PS4 ولا اختبار للتعافي بعد تعطل الجهاز أو انقطاع الكهرباء. يجب فحص استعادة Ownership وSymlink/Race والـDisk Reserve قبل التفعيل.
+3. `HTTPS/SceSsl` وCertificate chain + hostname validation وTrusted/Authorized source catalog غير مثبتة. `HTTP` المحلي غير المشفر لا يثبت أيًا منها.
+4. لا يوجد **No-overwrite Publish** مثبت على FW14 + GoldHEN، لذا Native PS4 Storage Backend مقفل. لا تفعّل `Download` أو `Install` أو تقدم UI إلا بعد Transport + Storage + Compatibility Hardware Gates.
+5. الاختبار الحقيقي على PS4 مؤجل لمرحلة القبول النهائي بطلب المستخدم. استخدم `shadPS4` فقط عند الحاجة لاختبار Native runtime؛ لا تدّعِ اختبارات غير منفذة.
+
+**الخطوة العملية التالية:** تصميم `PS4 HTTPS TransportAdapter` ضمن واجهات SDK المعروفة، مع آلية Cert Validation مؤكدة، ومزيد من اختبارات Restart/Crash/Low Storage للـCheckpoint على Host. المسار الحالي Read Only.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — Download Pipeline V1 عبر Host TCP Loopback
 
 **القرار: MODIFY — دمج مسار تنزيل C حقيقي في اختبارات Host فقط، ورفض التشغيل على PS4 عمدًا.**

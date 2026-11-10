@@ -1089,7 +1089,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     /* The approved artwork-first composition: six read-only metadata
      * cards, a visible uncertainty/compatibility banner, candidate rows
      * and three explicit disabled actions. Never infer installed status,
-     * authorized source or Retail-FPKG compatibility from appmeta. */
+     * authorized FPKG source or package kind from appmeta. */
     ui_fx_glass_panel(p,WIDTH,HEIGHT,266,129,1109,818,
                       0xFF123760u,0xFF071C3Bu,0);
     rect(p,286,149,4,87,CYAN);
@@ -1157,9 +1157,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
             ascii(p,307,y+4,row->version,WHITE,2,15);
             /* An update SOURCE label is not an installation verdict.
              * The renderer never changes any action button state here. */
-            if(row->source_kind==UI_SOURCE_RETAIL_HTTP)
-                ascii(p,415,y+8,"RETAIL",MUTED,2,6);
-            else if(row->source_kind==UI_SOURCE_FPKG_SUBMITTED)
+            if(row->source_kind==UI_SOURCE_FPKG_SUBMITTED)
                 ascii(p,415,y+8,"FPKG?",AMBER,2,5);
             if(row->minimum_fw[0])
                 ascii(p,511,y+4,row->minimum_fw,CYAN,2,15);

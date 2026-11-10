@@ -1,148 +1,51 @@
-name: FPKG Source Metadata Audit
+name: FPKG Publisher Metadata Review (Offline)
 
 on:
   workflow_dispatch:
   push:
     paths:
       - ".github/workflows/fpkg-source-audit.yml"
+      - "ps4-auto-updater-v0.3/fpkg_publisher_sources.py"
+      - "ps4-auto-updater-v0.3/update_source_registry.py"
+      - "ps4-auto-updater-v0.3/catalog_ingest.py"
+      - "ps4-auto-updater-v0.3/tests/test_fpkg_publisher_sources.py"
+      - "ps4-auto-updater-v0.3/source_registry/reviewed_publishers.json"
 
 permissions:
   contents: read
 
 jobs:
-  audit:
-    name: Audit public FPKGi metadata
+  review:
+    name: Validate separately reviewed FPKG publisher references
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
-      - name: Check sources without downloading PKGs
-        env:
-          PYTHONUNBUFFERED: "1"
+      - name: Checkout reviewed source records
+        uses: actions/checkout@v4
+
+      - name: Run no-network source policy tests
+        run: |
+          python3 -m unittest discover \
+            -s ps4-auto-updater-v0.3/tests \
+            -p 'test_fpkg_publisher_sources.py' -v
+
+      - name: Check local registry without fetching any packages or catalogs
+        working-directory: ps4-auto-updater-v0.3
         run: |
           python3 - <<'PY'
           import json
-          import os
-          import re
           from pathlib import Path
-          from urllib.error import HTTPError, URLError
-          from urllib.request import Request, HTTPRedirectHandler, build_opener
+          from fpkg_publisher_sources import _policy, review_publisher_origins
+          from catalog_ingest import ingest
 
-          TARGETS = {
-              "CUSA00001", "CUSA06122", "CUSA57220",
-              "CUSA03506", "CUSA01116", "CUSA08032",
-              "CUSA00411", "CUSA03551", "CUSA02343",
-          }
-          SOURCES = {
-              "FPKGi Catalog Hub": (
-                  "https://raw.githubusercontent.com/"
-                  "Dinos17/FPKGi-Catalog-Hub/main/ps4/updates.json"
-              ),
-              "PS4Arab GitHub": (
-                  "https://raw.githubusercontent.com/"
-                  "ps4arab/fpkgi/main/UPDATES.json"
-              ),
-              "PS4Arab Website": "https://ps4ar.com/fpkgi/UPDATES.json",
-          }
-          LIMIT = 2 * 1024 * 1024
-
-          class NoRedirect(HTTPRedirectHandler):
-              def redirect_request(self, req, fp, code, msg, headers, newurl):
-                  return None
-
-          opener = build_opener(NoRedirect)
-          CUSA_RE = re.compile(r"CUSA[0-9]{5}\Z")
-          report = {
-              "schema": 1,
-              "metadata_only": True,
-              "download_enabled": False,
-              "install_enabled": False,
-              "fpkg_compatibility_confirmed": False,
-              "targets_checked": len(TARGETS),
-              "sources": [],
-          }
-
-          def check_source(name, url):
-              row = {"source": name, "status": "UNKNOWN",
-                     "entries": 0, "matches": [], "missing_title_ids": 0}
-              try:
-                  req = Request(url, headers={"User-Agent": "PS4-Metadata-Audit/1.0"})
-                  with opener.open(req, timeout=12) as response:
-                      payload = response.read(LIMIT + 1)
-                  if len(payload) > LIMIT:
-                      raise ValueError("catalog exceeds 2 MiB")
-                  if payload.startswith(b"\x7fCNT"):
-                      raise ValueError("package bytes are not metadata")
-                  doc = json.loads(payload.decode("utf-8-sig"))
-                  records = doc.get("DATA") if isinstance(doc, dict) else None
-                  if not isinstance(records, dict):
-                      raise ValueError("missing DATA dictionary")
-                  row["entries"] = len(records)
-                  for meta in records.values():
-                      if not isinstance(meta, dict):
-                          continue
-                      title_id = meta.get("title_id")
-                      if not isinstance(title_id, str):
-                          row["missing_title_ids"] += 1
-                          continue
-                      ident = title_id.strip().upper()
-                      if not CUSA_RE.fullmatch(ident):
-                          row["missing_title_ids"] += 1
-                          continue
-                      if ident in TARGETS:
-                          row["matches"].append({
-                              "cusa": ident,
-                              "name": str(meta.get("name", ""))[:120],
-                              "listed_version": str(meta.get("version", ""))[:20],
-                              "declared_min_fw": str(meta.get("min_fw", ""))[:30],
-                              "content_id_verified": False,
-                              "base_version_verified": False,
-                              "package_type_verified": False,
-                          })
-                  row["status"] = (
-                      "EMPTY" if not records else
-                      "MATCHES_UNVERIFIED" if row["matches"] else
-                      "NO_TARGET_MATCH"
-                  )
-              except (HTTPError, URLError, TimeoutError, OSError,
-                      ValueError, UnicodeError, json.JSONDecodeError) as err:
-                  row["status"] = "FETCH_OR_PARSE_ERROR"
-                  row["error_type"] = type(err).__name__
-                  if isinstance(err, HTTPError):
-                      row["http_status"] = err.code
-              return row
-
-          for label, url in SOURCES.items():
-              report["sources"].append(check_source(label, url))
-
-          Path("fpkg_source_audit.json").write_text(
-              json.dumps(report, indent=2, ensure_ascii=False) + "\n",
-              encoding="utf-8"
-          )
-
-          summary = [
-              "## FPKG Source Metadata Audit", "",
-              "Metadata only: NO package downloads or installation.",
-              "Matching CUSA alone is NOT proof of FPKG compatibility.", "",
-              "| Source | Status | Entries | Matching records |",
-              "|---|---|---:|---:|",
-          ]
-          for row in report["sources"]:
-              summary.append(
-                  f'| {row["source"]} | {row["status"]} | '
-                  f'{row["entries"]} | {len(row["matches"])} |'
+          registry = json.loads(
+              Path("source_registry/reviewed_publishers.json").read_text(
+                  encoding="utf-8"
               )
-          summary.extend(["", "All matches are unverified metadata. See JSON artifact."])
-          body = "\n".join(summary) + "\n"
-          print(body)
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write(body)
+          )
+          audited = _policy(registry)
+          empty_catalog = ingest({"schema": 1, "submissions": []})
+          assert review_publisher_origins(empty_catalog, registry) == {}
+          print("Publisher references recorded:", len(audited))
+          print("No external requests. No PKG downloads or rights granted.")
           PY
-
-      - name: Save read-only audit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fpkg-source-audit
-          path: fpkg_source_audit.json
-          if-no-files-found: warn
-          retention-days: 14

@@ -436,11 +436,14 @@ static void ui_title(uint32_t *p,int x,int y,int width,
 static UiArabicLabel category_label(const ScannerUiEntry *g) {
     if (!g || !g->metadata_verified) return UI_AR_UNVERIFIED_METADATA;
     if (!g->category) return UI_AR_OTHER_METADATA;
-    if (!strcmp(g->category,"gp") || !strcmp(g->category,"gdp"))
+    if (!strcmp(g->category,"gp") || !strcmp(g->category,"gpc") ||
+        !strcmp(g->category,"gpd") || !strcmp(g->category,"gpe") ||
+        !strcmp(g->category,"gpk") || !strcmp(g->category,"gpl") ||
+        !strcmp(g->category,"gdp"))
         return UI_AR_PATCH_METADATA;
     if (!strcmp(g->category,"ac")) return UI_AR_DLC_METADATA;
-    if (!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
-        !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"))
+    if (!strcmp(g->category,"gd") || !strcmp(g->category,"gdO") ||
+        !strcmp(g->category,"gdo"))
         return g->install_state==1 ? UI_AR_GAME_INSTALLED :
                g->install_state==0 ? UI_AR_GAME_NOT_INSTALLED :
                UI_AR_BASE_UNKNOWN;
@@ -839,11 +842,14 @@ static UiArabicLabel compact_state(const ScannerUiEntry *g) {
         return UI_AR_TABLE_STATE_UNKNOWN;
     if(!g->category)
         return UI_AR_TABLE_STATE_OTHER;
-    if(!strcmp(g->category,"gd") || !strcmp(g->category,"gda") ||
-       !strcmp(g->category,"gdo") || !strcmp(g->category,"gde"))
+    if(!strcmp(g->category,"gd") || !strcmp(g->category,"gdO") ||
+       !strcmp(g->category,"gdo"))
         return g->install_state<0 ? UI_AR_TABLE_STATE_UNKNOWN :
                UI_AR_TABLE_STATE_BASE;
-    if(!strcmp(g->category,"gp") || !strcmp(g->category,"gdp"))
+    if(!strcmp(g->category,"gp") || !strcmp(g->category,"gpc") ||
+       !strcmp(g->category,"gpd") || !strcmp(g->category,"gpe") ||
+       !strcmp(g->category,"gpk") || !strcmp(g->category,"gpl") ||
+       !strcmp(g->category,"gdp"))
         return UI_AR_TABLE_STATE_PATCH;
     if(!strcmp(g->category,"ac"))
         return UI_AR_TABLE_STATE_DLC;

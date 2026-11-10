@@ -89,8 +89,9 @@ DtResult dt_begin(DtSession *s, const DtPort *port,
         /* Backend close must be safe even if open only partially succeeded. */
         const int closed = port->close_request(port->context);
         if (closed != 0) return DT_CLOSE_FAILED;
-        return opened == DT_PORT_TLS_VERIFY_FAILED ?
-               DT_TLS_UNVERIFIED : DT_CONNECT_FAILED;
+        if (opened == DT_PORT_TLS_VERIFY_FAILED) return DT_TLS_UNVERIFIED;
+        if (opened == DT_PORT_TIMED_OUT) return DT_TIMED_OUT;
+        return DT_CONNECT_FAILED;
     }
 
     s->port = *port;
@@ -131,8 +132,11 @@ DtResult dt_read(DtSession *s, uint8_t *buffer, size_t capacity,
     const uint64_t left = s->remaining - s->delivered;
     const size_t bounded = (uint64_t)capacity > left ? (size_t)left : capacity;
     size_t n = 0u;
-    if (s->port.read_body(s->port.context, buffer, bounded, &n) != 0)
-        return stop(s, DT_READ_FAILED);
+    const int read_result =
+        s->port.read_body(s->port.context, buffer, bounded, &n);
+    if (read_result != 0)
+        return stop(s, read_result == DT_PORT_TIMED_OUT ?
+                       DT_TIMED_OUT : DT_READ_FAILED);
     if (n > bounded) return stop(s, DT_EXTRA_DATA);
     if (!n) return stop(s, DT_INCOMPLETE);
     s->delivered += (uint64_t)n;
@@ -146,8 +150,11 @@ DtResult dt_finish(DtSession *s) {
     if (s->delivered != s->remaining) return stop(s, DT_INCOMPLETE);
     uint8_t extra = 0u;
     size_t got = 0u;
-    if (s->port.read_body(s->port.context, &extra, 1u, &got) != 0)
-        return stop(s, DT_READ_FAILED);
+    const int read_result =
+        s->port.read_body(s->port.context, &extra, 1u, &got);
+    if (read_result != 0)
+        return stop(s, read_result == DT_PORT_TIMED_OUT ?
+                       DT_TIMED_OUT : DT_READ_FAILED);
     if (got != 0u) return stop(s, DT_EXTRA_DATA);
     return stop(s, DT_OK);
 }
@@ -156,5 +163,6 @@ DtResult dt_cancel(DtSession *s) {
     if (!s || !s->active || s->stopped) return DT_INVALID;
     const int aborted = s->port.abort_request(s->port.context);
     const DtResult closed = stop(s, DT_OK);
-    return aborted == 0 ? closed : DT_CLOSE_FAILED;
+    if (closed != DT_OK) return closed;
+    return aborted == 0 ? DT_OK : DT_ABORT_FAILED;
 }

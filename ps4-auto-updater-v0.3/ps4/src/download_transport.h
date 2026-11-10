@@ -24,6 +24,10 @@ extern "C" {
  * The flag is never derived from server-controlled HTTP headers.
  */
 #define DT_PORT_TLS_VERIFY_FAILED (-2)
+/* Transport callback contract only: backend must implement real timeouts.
+ * Not a PS4 SDK error code and not a substitute for configured deadlines.
+ */
+#define DT_PORT_TIMED_OUT (-3)
 
 typedef enum DtResult {
     DT_OK = 0,
@@ -37,7 +41,9 @@ typedef enum DtResult {
     DT_READ_FAILED = -8,
     DT_INCOMPLETE = -9,
     DT_EXTRA_DATA = -10,
-    DT_CLOSE_FAILED = -11
+    DT_CLOSE_FAILED = -11,
+    DT_TIMED_OUT = -12,
+    DT_ABORT_FAILED = -13
 } DtResult;
 
 typedef struct DtRequest {
@@ -51,6 +57,8 @@ typedef struct DtRequest {
  * In Host tests they are synthetic and NEVER proof of verified certificates.
  * open_headers must report precisely the request headers actually sent,
  * and use DT_PORT_TLS_VERIFY_FAILED only after real TLS identity failure.
+ * Return DT_PORT_TIMED_OUT only after a REAL backend timeout.
+ * Native C does not implement clocks or enforce time limits on its own.
  */
 typedef struct DtPeerFacts {
     unsigned certificate_chain_verified;
@@ -91,7 +99,7 @@ DtResult dt_read(DtSession *session, uint8_t *buffer, size_t capacity,
                  size_t *received);
 /* Requires all expected bytes and real EOF; rejects trailing bytes. */
 DtResult dt_finish(DtSession *session);
-/* Abort/close a started request; errors do not imply successful cancellation. */
+/* Abort/close a started request; distinguish abort and close failures. */
 DtResult dt_cancel(DtSession *session);
 
 #ifdef __cplusplus

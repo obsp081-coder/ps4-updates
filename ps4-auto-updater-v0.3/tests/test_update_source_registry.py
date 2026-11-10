@@ -1,4 +1,8 @@
-"""Stage 3: no-network PS4 retail/FPKG source provenance gates."""
+"""FPKG-only source discovery contract: no Sony metadata, no download rights.
+
+Fixtures are fictional. The submitted kind is a declaration, not proof that
+the installed game/PKG really is FPKG or that distribution is authorized.
+"""
 import copy
 import json
 import subprocess
@@ -9,153 +13,155 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from official_patch_lookup import discover
+
 from catalog_ingest import ingest
-from update_source_registry import build_source_index
+from update_source_registry import build_source_index, MAX_CANDIDATES_PER_TITLE
 
 CUSA = "CUSA02343"
 CID = "EP9000-CUSA02343_00-UNCHARTEDTRILOGY"
-RETAIL_XML = (
-    b'<titlepatch><tag><package version="01.02" '
-    b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>'
-    b'<package version="01.09" '
-    b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>'
-    b'</tag></titlepatch>'
-)
 
 
-class UpdateSourceRegistryTests(unittest.TestCase):
-    def retail(self):
-        return discover([CUSA], lambda unused: RETAIL_XML)
-
-    def fpkg(self):
-        return ingest({"schema": 1, "submissions": [{
-            "cusa": CUSA, "content_id": CID,
-            "version": "01.10", "min_fw": "11.00",
+class FpkgOnlySourceIndexTests(unittest.TestCase):
+    def submission(self, *, version="01.10"):
+        return {
+            "cusa": CUSA,
+            "content_id": CID,
+            "version": version,
+            "min_fw": "11.00",
             "required_base_version": "01.00",
             "package_kind": "fpkg_patch",
             "source_page": "https://example.org/manual/metadata",
-        }]})
+        }
 
-    def test_no_sources_means_no_trusted_update(self):
-        o = build_source_index([CUSA])
-        self.assertEqual(o["titles"][0]["source_status"],
+    def fpkg(self, submissions=None):
+        if submissions is None:
+            submissions = [self.submission()]
+        return ingest({"schema": 1, "submissions": submissions})
+
+    def test_no_fpkg_source_is_not_no_update_claim(self):
+        index = build_source_index([CUSA])
+        self.assertEqual(index["schema"], 2)
+        self.assertEqual(index["package_policy"], "fpkg_only")
+        self.assertEqual(index["titles"][0]["source_status"],
                          "NO_TRUSTED_UPDATE_SOURCE")
-        self.assertFalse(o["download_allowed"])
-        self.assertFalse(o["install_allowed"])
+        self.assertEqual(index["titles"][0]["candidates"], [])
+        self.assertFalse(index["download_allowed"])
+        self.assertFalse(index["install_allowed"])
+        self.assertFalse(index["compatibility_confirmed"])
 
-    def test_http_retail_versions_do_not_grant_fpkg(self):
-        row = build_source_index([CUSA], self.retail())["titles"][0]
-        self.assertEqual([x["version"] for x in row["candidates"]],
-                         ["01.09", "01.02"])
-        self.assertEqual({x["package_kind"] for x in row["candidates"]},
-                         {"retail_patch"})
-        self.assertTrue(all(x["size_bytes"] is None for x in row["candidates"]))
-        self.assertTrue(all(x["minimum_fw"] is None for x in row["candidates"]))
-        self.assertTrue(all(x["history_complete"] is False for x in row["candidates"]))
-        self.assertFalse(row["compatibility_confirmed"])
-        self.assertFalse(row["install_allowed"])
-
-    def test_untrusted_fpkg_submission_remains_separate(self):
-        row = build_source_index([CUSA], self.retail(), self.fpkg())["titles"][0]
-        self.assertEqual([x["package_kind"] for x in row["candidates"]],
-                         ["fpkg_patch", "retail_patch", "retail_patch"])
-        self.assertEqual(row["fpkg_submission_status"], "SUBMISSIONS_RECEIVED")
+    def test_declared_fpkg_metadata_only_never_grants_action(self):
+        index = build_source_index([CUSA], fpkg_report=self.fpkg())
+        row = index["titles"][0]
+        self.assertEqual(index["phase"],
+                         "FPKG_ONLY_SOURCE_DISCOVERY_METADATA_ONLY")
+        self.assertEqual(row["source_status"], "UNVERIFIED_FPKG_CANDIDATES")
+        self.assertEqual(row["fpkg_submission_status"],
+                         "SUBMISSIONS_RECEIVED")
+        self.assertEqual(len(row["candidates"]), 1)
+        self.assertEqual(row["candidates"][0]["package_kind"], "fpkg_patch")
         self.assertEqual(row["candidates"][0]["source_status"],
                          "FPKG_SUBMISSION_UNVERIFIED")
+        self.assertIsNone(row["candidates"][0]["size_bytes"])
+        self.assertFalse(row["candidates"][0]["history_complete"])
+        self.assertNotIn("retail", json.dumps(index).lower())
+        self.assertNotIn("download_url", json.dumps(index))
+        self.assertNotIn("source_page", json.dumps(index))
         self.assertFalse(row["download_allowed"])
         self.assertFalse(row["install_allowed"])
-        self.assertNotIn("source_page", json.dumps(row))
-        self.assertNotIn("download_url", json.dumps(row))
 
-    def test_http_error_does_not_mean_no_update(self):
-        report = self.retail()
-        report["titles"][0] = dict(report["titles"][0], status="LOOKUP_FAILED")
-        row = build_source_index([CUSA], report)["titles"][0]
-        self.assertEqual(row["source_status"], "LOOKUP_FAILED")
-        self.assertEqual(row["candidates"], [])
+    def test_retail_report_is_not_a_parameter_any_more(self):
+        with self.assertRaises(TypeError):
+            build_source_index([CUSA], retail_report={
+                "source_kind": "official_retail_metadata"
+            })
 
-    def test_not_listed_is_not_no_trusted_source_misstatement(self):
-        report = self.retail()
-        report["titles"][0]["status"] = "NOT_LISTED"
-        row = build_source_index([CUSA], report)["titles"][0]
-        self.assertEqual(row["retail_lookup_status"], "NOT_LISTED")
-        self.assertEqual(row["source_status"], "NO_TRUSTED_UPDATE_SOURCE")
+    def test_retail_package_kind_is_not_accepted(self):
+        for kind in ("retail_patch", "retail", None):
+            with self.subTest(kind=kind):
+                source = self.submission()
+                source["package_kind"] = kind
+                with self.assertRaises(ValueError):
+                    self.fpkg([source])
 
-    def test_invalid_or_duplicate_titles_fail_closed(self):
-        for titles in ([CUSA, CUSA], ["CUSA00000", "BAD"], [], [CUSA] * 101):
+    def test_duplicate_or_invalid_title_ids_fail_closed(self):
+        for titles in ([CUSA, CUSA], ["CUSA00000", "BAD"], [], [CUSA]*101):
             with self.subTest(titles=titles[:3]):
                 with self.assertRaises(ValueError):
                     build_source_index(titles)
 
-    def test_untrusted_action_fields_never_pass(self):
-        for key, val in (("download_url", "https://example.org/x.pkg"),
-                         ("install_command", "run"),
-                         ("auto_install", True)):
-            report = self.retail()
-            report["titles"][0][key] = val
-            with self.subTest(field=key):
-                with self.assertRaises(ValueError):
-                    build_source_index([CUSA], report)
-
-    def test_forged_retail_source_or_permission_fails(self):
-        for key, val in (
-            ("metadata_url", "https://example.org/fake"),
-            ("transport_authenticated", True),
-            ("rights_verified", True),
-            ("downloads_enabled", True),
-        ):
-            report = self.retail()
-            report["titles"][0][key] = val
-            with self.subTest(key=key):
-                with self.assertRaises(ValueError):
-                    build_source_index([CUSA], report)
-
-    def test_fake_fpkg_compatibility_and_malformed_cid_fails(self):
-        for key, val in (
+    def test_fpkg_tamper_or_action_fields_rejected(self):
+        for key, value in (
             ("patch_compatibility_confirmed", True),
             ("content_id", "EP9000-CUSA99999_00-UNCHARTEDTRILOGY"),
             ("download_url", "https://example.org/x.pkg"),
+            ("install_command", "run"),
+            ("source_page", "http://example.org/metadata"),
         ):
-            f = self.fpkg()
-            f["updates"][0][key] = val
+            with self.subTest(key=key):
+                report = self.fpkg()
+                report["updates"][0][key] = value
+                with self.assertRaises(ValueError):
+                    build_source_index([CUSA], fpkg_report=report)
+
+    def test_report_action_claims_rejected(self):
+        for key, value in (
+            ("auto_install", True),
+            ("download_allowed", True),
+            ("download_url", "https://example.org/x.pkg"),
+            ("compatibility_confirmed", True),
+        ):
+            report = self.fpkg()
+            report[key] = value
             with self.subTest(key=key):
                 with self.assertRaises(ValueError):
-                    build_source_index([CUSA], fpkg_report=f)
+                    build_source_index([CUSA], fpkg_report=report)
 
-    def test_retail_candidate_duplicate_detected(self):
-        report = self.retail()
-        report["titles"][0]["observed_retail_versions"].append(
-            copy.deepcopy(report["titles"][0]["observed_retail_versions"][0]))
+    def test_duplicate_fpkg_candidate_rejected(self):
+        report = self.fpkg()
+        report["updates"].append(copy.deepcopy(report["updates"][0]))
         with self.assertRaises(ValueError):
-            build_source_index([CUSA], retail_report=report)
+            build_source_index([CUSA], fpkg_report=report)
 
-    def test_retail_latest_record_inconsistency_detected(self):
-        report = self.retail()
-        report["titles"][0]["latest_retail_version"] = "99.99"
-        with self.assertRaises(ValueError):
-            build_source_index([CUSA], retail_report=report)
-
-    def test_target_not_in_submitted_catalog_rejected(self):
+    def test_title_not_in_known_inventory_rejected(self):
         with self.assertRaises(ValueError):
             build_source_index(["CUSA99999"], fpkg_report=self.fpkg())
 
-    def test_cli_offline_combines_without_any_pkg_link(self):
+    def test_more_than_24_candidates_discloses_truncation(self):
+        report = self.fpkg([
+            self.submission(version=f"01.{i:02d}")
+            for i in range(MAX_CANDIDATES_PER_TITLE + 1)
+        ])
+        row = build_source_index([CUSA], fpkg_report=report)["titles"][0]
+        self.assertTrue(row["truncated"])
+        self.assertEqual(len(row["candidates"]), MAX_CANDIDATES_PER_TITLE)
+        self.assertEqual(row["candidates"][0]["version"], "01.24")
+        self.assertEqual(row["candidates"][-1]["version"], "01.01")
+
+    def test_cli_fpkg_only_and_legacy_retail_option_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             folder = Path(d)
-            p1, p2, out = [folder / x for x in ("retail.json", "fpkg.json", "index.json")]
-            p1.write_text(json.dumps(self.retail()), encoding="utf-8")
-            p2.write_text(json.dumps(self.fpkg()), encoding="utf-8")
-            done = subprocess.run([
-                sys.executable, str(ROOT / "update_source_registry.py"),
-                "--cusa", CUSA, "--retail-report", str(p1),
-                "--fpkg-report", str(p2), "--out", str(out)],
-                capture_output=True, text=True, timeout=15)
+            src = folder / "submitted.json"
+            output = folder / "index.json"
+            src.write_text(json.dumps(self.fpkg()), encoding="utf-8")
+            command = [sys.executable, str(ROOT / "update_source_registry.py"),
+                       "--cusa", CUSA, "--fpkg-report", str(src),
+                       "--out", str(output)]
+            done = subprocess.run(
+                command, capture_output=True, text=True, timeout=15
+            )
             self.assertEqual(done.returncode, 0, done.stderr)
-            result = json.loads(out.read_text(encoding="utf-8"))
-            self.assertFalse(result["install_allowed"])
-            self.assertFalse(result["download_allowed"])
-            self.assertEqual(len(result["titles"][0]["candidates"]), 3)
+            index = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(index["package_policy"], "fpkg_only")
+            self.assertEqual(len(index["titles"][0]["candidates"]), 1)
+            self.assertFalse(index["install_allowed"])
+            self.assertFalse(index["download_allowed"])
+
+            legacy = subprocess.run(
+                command + ["--retail-report", str(src)],
+                capture_output=True, text=True, timeout=15
+            )
+            self.assertNotEqual(legacy.returncode, 0)
+            self.assertIn("unrecognized arguments", legacy.stderr)
 
 
 if __name__ == "__main__":

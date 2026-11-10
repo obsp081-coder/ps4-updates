@@ -338,6 +338,32 @@ class FpkgReviewTests(unittest.TestCase):
             self.check()
 
 
+    def test_cli_rejects_duplicate_json_keys_and_oversize(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_file = root / "inventory.json"
+            output_file = root / "report.json"
+            command = [
+                sys.executable, str(PROJECT / "fpkg_review.py"),
+                str(input_file), "--out", str(output_file),
+            ]
+            input_file.write_text(
+                '{"games":[],"games":[]}', encoding="utf-8"
+            )
+            proc = subprocess.run(
+                command, capture_output=True, text=True, timeout=15
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("Duplicate FPKG review JSON key", proc.stderr)
+            self.assertFalse(output_file.exists())
+            input_file.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+            proc = subprocess.run(
+                command, capture_output=True, text=True, timeout=15
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("exceeds 2 MiB", proc.stderr)
+            self.assertFalse(output_file.exists())
+
     def test_cli_writes_report_without_altering_inputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -46,10 +46,12 @@ static int close_mock(void *arg) {
 static const char *OK =
     "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n"
     "ETag: \"source-v1\"\r\n\r\n";
+#ifndef __ORBIS__
 static const char *PARTIAL =
     "HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\n"
     "Content-Range: bytes 3-5/6\r\n"
     "ETag: \"source-v1\"\r\n\r\n";
+#endif
 
 static DtPort port(Fixture *f) {
     DtPort p = {0};

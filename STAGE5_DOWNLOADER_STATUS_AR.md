@@ -1,3 +1,37 @@
+## تحديث إضافي 10 نوفمبر 2026 — Host File Backend فعلي وPS4 Fail-closed
+
+**Verdict: MODIFY** — نواة التخزين أصبحت تملك تنفيذًا لعمليات الملفات على Host POSIX فقط؛ ما زال PS4 Backend غير مفعل.
+
+**Code SHA:** `528acf587b3b6c221cd60b9310d0ebabc2cf2ad5`  
+**Host CI:** **216/216 PASS** https://github.com/obsp081-coder/ps4-updates/actions/runs/42801480340  
+**OpenOrbis Build:** **PASS** https://github.com/obsp081-coder/ps4-updates/actions/runs/42801473677
+
+### ماذا نُفذ
+- `ps4/src/download_file_backend.h/.c`: `DsFileBackend` جديد يتلقى **Directory FD من جهة موثوقة**، ولا ينشئ مجلدات أو يقبل Path مصدره HTTP. نسخة Host تتحقق من ملكية المجلد وعدم قابليته للكتابة من الآخرين، وتنسخ الـFD.
+- تنشئ `.part` عبر `openat(O_EXCL|O_NOFOLLOW)`، وتقرأ عبر FD جديد مع فحص `device/inode`، وتنفذ `fsync`، وتتحقق من SHA-256 للملف المخزن، ثم تستخدم `linkat` للنشر الحصري مع رفض استبدال الملف النهائي. تنظيف `.part` فقط إذا بقيت هوية الملف مملوكة للجلسة نفسها.
+- اختبارات `file_backend_smoke.c` على Host تكتب ملفات فعلية في `mkdtemp` وتغطي النجاح، وجود ملف نهائي، وجود Partial مسبق، Symlink، تبديل Inode، وفساد البايتات. لا تحمل أي ملف لعبة.
+- **في بناء PS4: `#ifdef __ORBIS__` يُرجع Backend غير مدعوم (`-1`) وCallbacks فارغة**. اختبار مستقل يجبر هذا المسار على Host ويتحقق من رفض `ds_begin`، حتى لا يحدث تفعيل غير مقصود.
+- لا يوجد استعمال إنتاجي للـBackend ولا تشغيل تنزيل في الـPKG؛ البناء فقط يتأكد من التوافق. لم نختبر Runtime على `shadPS4` أو جهاز FW14 في هذا التعديل، لأن الوظيفة القابلة للتجربة حاليا Host فقط.
+
+### لماذا لم نفعّل PS4 Backend
+- المصدر الأولي `OpenOrbis/musl` يبين أن `linkat` على PS4 قد يعيد `ENOSYS` دون `PS4_LIBKERNEL_SYS`، و`unlinkat` على PS4 يعيد `ENOSYS` في التنفيذ المتاح؛ `fsync` المعتاد معرّف خارج `PS4`. هذه أدلة **Code inspection** وليست تجربة FW14.
+  - https://github.com/OpenOrbis/musl/blob/master/src/unistd/linkat.c
+  - https://github.com/OpenOrbis/musl/blob/master/src/unistd/unlinkat.c
+  - https://github.com/OpenOrbis/musl/blob/master/src/unistd/fsync.c
+- تتضمن `libkernel.h` تصريحات `sceKernelOpen` و`sceKernelFsync` و`sceKernelRename` و`sceKernelUnlink`، لكن مسار نشر مضمون **No-overwrite** لم يثبت؛ `Rename` وحدها لا تعوّض `linkat`. لا نصطنع واجهات PS4 أو نفترض أن مجرد Compile يثبت دعمها.
+  - https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/include/orbis/libkernel.h
+- حتى Host backend ليس ضمانًا ضد جهات خبيثة تملك حق الكتابة المتزامنة في مجلد التطبيق؛ يفترض مجلدًا خاصًا وعملية نقل واحدة، مع فحوص هوية ملف تخفف السباقات ولا تلغيها. `fsync` للملفات والدليل والتعافي بعد سقوط الكهرباء/Runtime Crash ما تزال بحاجة اختبارات أوسع قبل الاعتماد.
+
+### ما بقي
+1. إثبات **PS4-safe exclusive publish** وOwnership/Directory handling بدون الكتابة فوق ملفات مسبقة أو الاعتماد على Syscalls غير مدعومة.
+2. ربط `DsPort` بـNative Storage Backend في نطاق مسار بيانات التطبيق المملوك فقط وبعد التحقق من الصلاحيات؛ لا اقتراب من `/user/app` أو ملفات الألعاب والحفظ.
+3. HTTPS/TLS Certificate verification، مصدر مخوّل وHash مستقل، ثم نقل Fixture مصرح به مع Cancel/Retry/Resume موثوق.
+4. اختبار `shadPS4` فقط عندما يصبح لدينا مسار Native قابل للتشغيل؛ **اختبار PS4 الحقيقي في المرحلة النهائية** بناءً على طلب المستخدم.
+
+**حالة الأمان:** `download_enabled=false` و`install_enabled=false` باقية في التطبيق. لا Release جديد ولا ادعاء دعم FW14 حقيقي.
+
+---
+
 ## تحديث لاحق 10 نوفمبر 2026 — SHA-256 Native فعلي على الملفات المخزنة
 
 **Verdict: MODIFY — نجاح Native C SHA-256 + Host + OpenOrbis؛ PS4 Hardware وDownloader الفعلي ما زالا غير مثبتين.**

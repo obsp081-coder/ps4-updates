@@ -29,6 +29,8 @@ HOST = "updates.example"
 DT_OK = 0
 DT_URL_REJECTED = -3
 DT_CONNECT_FAILED = -4
+DT_TLS_UNVERIFIED = -5
+PORT_TLS_VERIFY_FAILED = -2
 DT_POLICY_REJECTED = -7
 DT_INCOMPLETE = -9
 
@@ -268,6 +270,11 @@ class VerifiedHostPort:
             peer_pointer.contents.range_sent = int(resume)
             peer_pointer.contents.if_range_sent = int(resume)
             return 0
+        except ssl.SSLCertVerificationError as exc:
+            self.ssl_failure = exc
+            if self.connection is None and tcp is not None:
+                tcp.close()
+            return PORT_TLS_VERIFY_FAILED
         except (AssertionError, OSError, ssl.SSLError, UnicodeError,
                 ValueError) as exc:
             self.ssl_failure = exc
@@ -366,14 +373,14 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
     def setUp(self):
         self.server.observed.clear()
 
-    def transfer(self, path="/ok", *, host=HOST, trusted=True,
-                 offset=0, etag=None):
+    def transfer(self, path="/ok", *, host=HOST, scheme="https",
+                 trusted=True, offset=0, etag=None):
         adapter = VerifiedHostPort(
             self.server.server_port, self.ca, trust_ca=trusted
         )
         session = CSession()
         self.native.dt_init(ctypes.byref(session))
-        url = f"https://{host}{path}".encode("ascii")
+        url = f"{scheme}://{host}{path}".encode("ascii")
         version = etag.encode("ascii") if etag else None
         request = CRequest(url, len(DATA), offset, version)
         state = self.native.dt_begin(
@@ -413,7 +420,7 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
 
     def test_wrong_hostname_is_rejected_by_tls_before_native_body(self):
         status, body, port = self.transfer(host="wrong.example")
-        self.assertEqual(status, DT_CONNECT_FAILED)
+        self.assertEqual(status, DT_TLS_UNVERIFIED)
         self.assertEqual(body, b"")
         self.assertFalse(port.handshake_verified)
         self.assertIsInstance(port.ssl_failure,
@@ -421,7 +428,7 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
 
     def test_untrusted_ca_is_rejected_by_tls(self):
         status, body, port = self.transfer(trusted=False)
-        self.assertEqual(status, DT_CONNECT_FAILED)
+        self.assertEqual(status, DT_TLS_UNVERIFIED)
         self.assertEqual(body, b"")
         self.assertFalse(port.handshake_verified)
         self.assertIsInstance(port.ssl_failure,
@@ -453,9 +460,13 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
         self.assertEqual(port.close_count, 1)
 
     def test_plain_http_rejected_before_opening_any_socket(self):
-        status, body, port = self.transfer(
-            path="/ok", host=HOST + ":443"
-        )
+        status, body, port = self.transfer(scheme="http")
+        self.assertEqual(status, DT_URL_REJECTED)
+        self.assertEqual(body, b"")
+        self.assertFalse(port.handshake_verified)
+
+    def test_explicit_url_port_rejected_before_open(self):
+        status, body, port = self.transfer(host=HOST + ":443")
         self.assertEqual(status, DT_URL_REJECTED)
         self.assertEqual(body, b"")
         self.assertFalse(port.handshake_verified)

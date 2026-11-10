@@ -1,3 +1,30 @@
+## تحديث 10 نوفمبر 2026 — Download Pipeline V1 عبر Host TCP Loopback
+
+**القرار: MODIFY — دمج مسار تنزيل C حقيقي في اختبارات Host فقط، ورفض التشغيل على PS4 عمدًا.**
+
+**Code SHA:** `7e2e323952dad311b7179e621e7a23ff4be3e7e7`  
+**Host CI:** **222/222 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42819573731  
+**OpenOrbis Build:** راجع https://github.com/obsp081-coder/ps4-updates/actions/runs/42819573705 — **لا تعتمد نجاحه حتى اكتمال CI**.
+
+### المنجز
+- `ps4/src/download_pipeline.h/.c`: جمع `download_http_headers` ثم `download_http_policy` ثم `download_queue` ثم `download_storage` مع SHA-256 للملف المخزن و`publish_exclusive`. يُقبل Start فقط بعد Parser وPolicy وSpace Preflight. Progress هو عدد البايتات الفعلية التي أكّد `write_all` كتابتها.
+- `dlp_feed()` يمنع تجاوز Content-Length المتوقع أو Chunk يتجاوز 64 KiB؛ `dlp_finish()` يرفض بيانات ناقصة أو بصمة خاطئة ولا يحوّل Queue إلى COMPLETED قبل تحقق التخزين والنشر. `dlp_cancel()` ينظف الملف الجزئي المملوك للعملية فقط. أخطاء Cleanup تُعرض كأخطاء ولا تُخفى.
+- التجربة End-to-End: `tests/ui_mocks/pipeline_loopback_client.c` تنشئ Socket TCP حقيقيًا متصلًا فقط بـ`127.0.0.1`، وتغذي C Pipeline باستجابة HTTP/1.1 وبايتات هيئة اختبار محلية. `tests/test_download_pipeline_loopback.py` يشغل `ThreadingHTTPServer` محليًا؛ ويقدم Hash مستقلًا من Python hashlib، ثم يفحص الملف النهائي وبصمته. تشمل الاختبارات إلغاء حقيقي بعد استلام بايتات، ملف مقطوع/معدل/أطول، تكرار Header وRedirect و206 غير متوقع، ورفض Trust غير المثبت.
+- **TLS اصطناعي داخل Host Fixture فقط:** لأن Loopback يعمل بـHTTP غير مشفر، يُمرر وضع `tls-test` في برنامج Host ليختبر منطق Pipeline، **ولا يعني اتصال HTTPS مُصادق عليه**. `__ORBIS__` في `dlp_begin()` يعيد `DLP_UNAVAILABLE` دائمًا مهما كانت قيمة TLS أو Header؛ و`download_file_backend` الخاص بـPS4 لا يسمح بعمليات ملفات.
+- `tests/ui_mocks/pipeline_ps4_gate_smoke.c` و`tests/test_download_pipeline_ps4_gate.py` يجمّعان مسار `__ORBIS__` على Host ويثبتان أن Queue لا تبدأ ولا تُكتب أية بايتات. هذا **ليس اختبار Hardware أو Emulator**.
+- كشف اختبار End-to-End عدم تطابق بروتوكول خادم Python الافتراضي `HTTP/1.0` مع Parser الذي يدعم فقط `HTTP/1.1`؛ صُحح اختبار الخادم، ثم نجحت الاختبارات.
+
+### محدوديات واضحة / بوابات مفتوحة
+1. **لا توجد Native PS4 SceHttp/SceSsl Connection** أو شهادة TLS موثقة، ولا مزود تحديثات ألعاب مصرح به. لا يُسمح للتطبيق بجلب أي تحديث PKG فعلي.
+2. **Resume بعد الانقطاع غير منفذ**؛ Pipeline V1 يبدأ من Byte 0 ويرفض دائمًا `resume_offset != 0` من خلال عدم تقديم مسار استكمال. اختبارات `206` تخص طبقة Policy فقط، وليست Resume E2E.
+3. **لا نشر آمن مثبت على FW14**؛ يبقى PS4 Storage Backend مقفلًا لأنه لا يجوز افتراض `linkat` أو اعتبار `sceKernelRename` بديلًا آمنًا لـNo-overwrite.
+4. Progress يصل إلى C Queue من الكتابة الفعلية في Host؛ لا يوجد بعد ربط لواجهة PS4 أو Background Download، ولا Status Download حقيقي على شاشة السوني.
+5. **اختبار PS4 الحقيقي مؤجل للنهاية** بطلب المستخدم؛ `shadPS4` سيستخدم فقط عندما توجد Native Runtime API تستحق التجربة. لا يوجد Hardware claim جديد.
+
+**المهمة التالية:** تصميم `TransportAdapter` مع Trust Contract حقيقي للشهادات وسلوك Range/ETag، ثم اختبار الاستكمال End-to-End على Host باستمرارية وحماية ضد تبدل المصدر أو ملف .part؛ لا تفعّل ذلك على PS4 قبل إثبات Exclusive Storage & TLS.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — HTTP/1.1 Header Decoder Native وتثبيت بوابة أمان التخزين
 
 **Verdict: MODIFY — Native parser / Host tests / OpenOrbis PASS؛ PS4 Download/Install ما زالا مغلقين.**

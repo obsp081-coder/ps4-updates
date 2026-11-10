@@ -264,13 +264,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Branch-only manual proof artifact. It cannot be produced by push,
+      # Branch-only verification build. It can compile on push, but ONLY a
+      # manually requested run can publish a diagnostic ZIP artifact.
+      # The normal package is built and staged before this clean rebuild.
       # the main branch, or default workflow_dispatch. First compile the
       # normal package, then clean all build outputs before changing Title ID.
       # No release is created; the user decides whether to install the
       # isolated diagnostic only after checking their console/title IDs.
-      - name: Build isolated read-only FW14 header probe PKG
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true && github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
+      - name: Verify isolated read-only FW14 header probe PKG (not published by push)
+        if: ${{ github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -290,10 +292,10 @@ jobs:
           )
           with diagnostic.open("rb") as handle:
               data = handle.read(0x1000)
-          assert len(data) == 0x1000 and data[:4] == b"\\x7fCNT", (
+          assert len(data) == 0x1000 and data[:4] == bytes.fromhex("7f434e54"), (
               "Invalid PS4 PKG header"
           )
-          cid = data[0x40:0x64].split(b"\\x00", 1)[0].decode("ascii")
+          cid = data[0x40:0x64].split(bytes([0]), 1)[0].decode("ascii")
           assert cid == expected, f"Wrong diagnostic Content ID: {cid!r}"
           assert diagnostic.stat().st_size >= 1024 * 1024
           digest = hashlib.sha256()
@@ -302,8 +304,9 @@ jobs:
                   digest.update(block)
           dest = Path(os.environ["RUNNER_TEMP"]) / "fw14-header-probe"
           dest.mkdir(parents=True, exist_ok=True)
-          (dest / diagnostic.name).write_bytes(diagnostic.read_bytes())
-          manifest = "\\n".join([
+          import shutil
+          shutil.copyfile(diagnostic, dest / diagnostic.name)
+          manifest = chr(10).join([
               "ISOLATED READ-ONLY FW14 PKG HEADER DIAGNOSTIC — UNTESTED ON HARDWARE",
               "Commit: " + os.environ["GITHUB_SHA"],
               "Title ID: BREW01998",

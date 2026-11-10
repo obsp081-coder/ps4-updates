@@ -131,6 +131,24 @@ jobs:
         run: |
           make -C ps4-auto-updater-v0.3/ps4
 
+      # Build-time proof only: compile the opt-in 8-byte installed-app
+      # header probe, but NEVER link it into the default PKG or upload it.
+      # Firmware 14 sandbox read rights remain unverified.
+      - name: Compile optional PKG header diagnostic (NOT packaged)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ps4-auto-updater-v0.3/ps4
+          clang -D__ORBIS__ -DPS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE \
+            -include stdbool.h -Wall -Wextra -Werror \
+            --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+            -isysroot "$OO_PS4_TOOLCHAIN" \
+            -isystem "$OO_PS4_TOOLCHAIN/include" \
+            -o build/experimental_pkg_header_probe_only.o \
+            src/ftp_scanner_v05.c
+          test -s build/experimental_pkg_header_probe_only.o
+          echo "Optional probe object COMPILED ONLY; not linked into eboot."
+
       - name: Verify PS4 package header and publish SHA256
         run: |
           python3 - <<'PY'

@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from catalog_ingest import CUSA, CONTENT_ID, VERSION, _source
+from fpkg_publisher_sources import review_publisher_origins
 
 MAX_TITLES = 100
 MAX_CANDIDATES_PER_TITLE = 24
@@ -48,7 +49,7 @@ def _check_cusa(cusa):
         raise ValueError("Invalid title ID")
 
 
-def _fpkg_rows(report, target):
+def _fpkg_rows(report, target, publisher_audit=None):
     if report is None:
         return {}, False
     if (not isinstance(report, dict) or report.get("schema") != 1
@@ -86,8 +87,12 @@ def _fpkg_rows(report, target):
         if key in seen:
             raise ValueError("Duplicate FPKG metadata")
         seen.add(key)
+        reviewed = (publisher_audit or {}).get(key)
         output.setdefault(title, []).append({
             "package_kind": "fpkg_patch",
+            "publisher_origin_review": (
+                reviewed["status"] if reviewed else "NOT_REVIEWED"
+            ),
             "version": ver,
             "content_id": cid,
             "minimum_fw": obj["min_fw"],  # submitted, unverified
@@ -99,7 +104,7 @@ def _fpkg_rows(report, target):
     return output, True
 
 
-def build_source_index(cusas, fpkg_report=None):
+def build_source_index(cusas, fpkg_report=None, source_policy=None):
     """Read-only, FPKG-only metadata for known CUSA IDs; never authorizes I/O."""
     if (not isinstance(cusas, (list, tuple))
             or not 1 <= len(cusas) <= MAX_TITLES):
@@ -109,7 +114,11 @@ def build_source_index(cusas, fpkg_report=None):
     if len(set(cusas)) != len(cusas):
         raise ValueError("Ambiguous duplicate game IDs")
     allowed = set(cusas)
-    fpkg, fpkg_supplied = _fpkg_rows(fpkg_report, allowed)
+    if source_policy is not None and fpkg_report is None:
+        raise ValueError("Publisher review requires an FPKG report")
+    audit = (review_publisher_origins(fpkg_report, source_policy)
+             if source_policy is not None else None)
+    fpkg, fpkg_supplied = _fpkg_rows(fpkg_report, allowed, audit)
     results = []
     for title in cusas:
         candidates = list(fpkg.get(title, []))
@@ -140,6 +149,7 @@ def build_source_index(cusas, fpkg_report=None):
         "phase": "FPKG_ONLY_SOURCE_DISCOVERY_METADATA_ONLY",
         "package_policy": "fpkg_only",
         "fpkg_report_supplied": fpkg_supplied,
+        "publisher_registry_supplied": source_policy is not None,
         "history_complete": False,
         "download_allowed": False,
         "install_allowed": False,
@@ -152,6 +162,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cusa", nargs="+", required=True)
     parser.add_argument("--fpkg-report", type=Path)
+    parser.add_argument("--source-policy", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     def load(path):
@@ -161,7 +172,8 @@ def main():
             raise ValueError("Report exceeds 1 MiB")
         return json.loads(path.read_text(encoding="utf-8"))
     try:
-        output = build_source_index(args.cusa, load(args.fpkg_report))
+        output = build_source_index(args.cusa, load(args.fpkg_report),
+                                    load(args.source_policy))
     except (ValueError, OSError) as err:
         parser.error(str(err))
     args.out.write_text(json.dumps(output, ensure_ascii=False, indent=2)

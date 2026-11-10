@@ -1294,17 +1294,19 @@ static void confirm_games(void) {
  * package is an explicit UNKNOWN, never evidence of Retail or FPKG. */
 static void probe_installed_pkg_headers(void) {
 #if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#if defined(O_NOFOLLOW) && defined(O_NONBLOCK)
     const char *roots[] = {
         "/user/app",
         "/mnt/ext0/user/app",
         "/mnt/ext1/user/app"
     };
+#endif
     for (unsigned i=0; i<found; ++i) {
         Game *g=&games[i];
         if(scan_should_abort()) break;
         if(!valid_id(g->cusa)) continue;
-#ifndef O_NOFOLLOW
-        g->pkg_header.observation=PKG_OBS_NOFOLLOW_UNAVAILABLE;
+#if !defined(O_NOFOLLOW) || !defined(O_NONBLOCK)
+        g->pkg_header.observation=PKG_OBS_SAFE_OPEN_UNAVAILABLE;
 #else
         g->pkg_header.observation=PKG_OBS_OPEN_FAILED;
         for(unsigned location=0; location<3u; ++location) {
@@ -1312,18 +1314,21 @@ static void probe_installed_pkg_headers(void) {
             const int n=snprintf(path,sizeof path,"%s/%s/app.pkg",
                                  roots[location],g->cusa);
             if(n<=0 || (size_t)n>=sizeof path) continue;
-            /* O_NONBLOCK prevents a malicious FIFO from blocking open. */
-            int flags=O_RDONLY|O_NOFOLLOW;
-#ifdef O_NONBLOCK
-            flags|=O_NONBLOCK;
-#endif
+            /* Require both flags: never block on a FIFO or follow
+             * an attacker-controlled last-component symlink. */
+            int flags=O_RDONLY|O_NOFOLLOW|O_NONBLOCK;
 #ifdef O_CLOEXEC
             flags|=O_CLOEXEC;
 #endif
             const int fd=open(path,flags);
             if(fd<0) continue;
             struct stat st;
-            if(fstat(fd,&st)!=0 || !S_ISREG(st.st_mode)) {
+            if(fstat(fd,&st)!=0) {
+                g->pkg_header.observation=PKG_OBS_STAT_UNAVAILABLE;
+                (void)close(fd);
+                break;
+            }
+            if(!S_ISREG(st.st_mode)) {
                 g->pkg_header.observation=PKG_OBS_NOT_REGULAR;
                 (void)close(fd);
                 break;

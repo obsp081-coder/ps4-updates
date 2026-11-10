@@ -18,6 +18,7 @@ import ssl
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from urllib.parse import urlsplit
 
@@ -29,6 +30,8 @@ HOST = "updates.example"
 DT_OK = 0
 DT_URL_REJECTED = -3
 DT_CONNECT_FAILED = -4
+DT_TIMED_OUT = -12
+PORT_TIMED_OUT = -3
 DT_TLS_UNVERIFIED = -5
 PORT_TLS_VERIFY_FAILED = -2
 DT_POLICY_REJECTED = -7
@@ -104,6 +107,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         source_range = self.headers.get("Range")
         if_range = self.headers.get("If-Range")
         self.server.observed.append((self.path, source_range, if_range))
+        if self.path == "/slow-headers":
+            time.sleep(0.75)
         offset = 0
         if source_range and source_range.startswith("bytes="):
             try:
@@ -141,6 +146,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
         self.close_connection = True
         if self.path == "/truncated":
             payload = payload[:len(payload) // 2]
+        if self.path == "/slow-body":
+            time.sleep(0.75)
         try:
             self.wfile.write(payload)
             self.wfile.flush()
@@ -190,10 +197,12 @@ class VerifiedHostPort:
     Its only TCP destination is 127.0.0.1. The URL DNS name is used solely
     for certificate verification and SNI, not for socket resolution.
     """
-    def __init__(self, port_number, ca_file, *, trust_ca=True):
+    def __init__(self, port_number, ca_file, *, trust_ca=True,
+                 timeout_seconds=3):
         self.port_number = port_number
         self.ca_file = ca_file
         self.trust_ca = trust_ca
+        self.timeout_seconds = timeout_seconds
         self.connection = None
         self.response = None
         self.handshake_verified = False
@@ -224,12 +233,12 @@ class VerifiedHostPort:
             assert context.check_hostname
 
             tcp = socket.create_connection(
-                ("127.0.0.1", self.port_number), timeout=3
+                ("127.0.0.1", self.port_number), timeout=self.timeout_seconds
             )
             self.connection = context.wrap_socket(
                 tcp, server_hostname=parsed.hostname
             )
-            self.connection.settimeout(3)
+            self.connection.settimeout(self.timeout_seconds)
             self.handshake_verified = bool(self.connection.getpeercert())
             if not self.handshake_verified:
                 return -1
@@ -275,6 +284,11 @@ class VerifiedHostPort:
             if self.connection is None and tcp is not None:
                 tcp.close()
             return PORT_TLS_VERIFY_FAILED
+        except TimeoutError as exc:
+            self.ssl_failure = exc
+            if self.connection is None and tcp is not None:
+                tcp.close()
+            return PORT_TIMED_OUT
         except (AssertionError, OSError, ssl.SSLError, UnicodeError,
                 ValueError) as exc:
             self.ssl_failure = exc
@@ -288,6 +302,8 @@ class VerifiedHostPort:
             ctypes.memmove(buffer, data, len(data))
             received[0] = len(data)
             return 0
+        except TimeoutError:
+            return PORT_TIMED_OUT
         except (OSError, ssl.SSLError, http.client.HTTPException):
             return -1
 
@@ -374,9 +390,10 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
         self.server.observed.clear()
 
     def transfer(self, path="/ok", *, host=HOST, scheme="https",
-                 trusted=True, offset=0, etag=None):
+                 trusted=True, offset=0, etag=None, timeout_seconds=3):
         adapter = VerifiedHostPort(
-            self.server.server_port, self.ca, trust_ca=trusted
+            self.server.server_port, self.ca, trust_ca=trusted,
+            timeout_seconds=timeout_seconds
         )
         session = CSession()
         self.native.dt_init(ctypes.byref(session))
@@ -458,6 +475,25 @@ class HttpsVerifiedNativeTests(unittest.TestCase):
         self.assertGreater(len(body), 0)
         self.assertLess(len(body), len(DATA))
         self.assertEqual(port.close_count, 1)
+
+    def test_verified_tls_slow_headers_get_bounded_timeout(self):
+        status, body, adapter = self.transfer(
+            "/slow-headers", timeout_seconds=0.20
+        )
+        self.assertEqual(status, DT_TIMED_OUT)
+        self.assertEqual(body, b"")
+        self.assertTrue(adapter.handshake_verified)
+        self.assertIsInstance(adapter.ssl_failure, TimeoutError)
+        self.assertEqual(adapter.close_count, 1)
+
+    def test_verified_tls_slow_body_get_bounded_timeout(self):
+        status, body, adapter = self.transfer(
+            "/slow-body", timeout_seconds=0.20
+        )
+        self.assertEqual(status, DT_TIMED_OUT)
+        self.assertEqual(body, b"")
+        self.assertTrue(adapter.handshake_verified)
+        self.assertEqual(adapter.close_count, 1)
 
     def test_plain_http_rejected_before_opening_any_socket(self):
         status, body, port = self.transfer(scheme="http")

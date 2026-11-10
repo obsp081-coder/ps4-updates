@@ -8,9 +8,12 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
+from native_resume_gate import NativeResumeGate
 
 from host_fixture_resume import (
     ResumeFixtureError, start_interrupted_fixture, resume_fixture,
@@ -87,6 +90,26 @@ class RangeFixture(BaseHTTPRequestHandler):
 class HostFixtureResumeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cc = shutil.which("cc") or shutil.which("clang")
+        if not cc:
+            raise unittest.SkipTest("C compiler required for native resume gate")
+        cls.compiled = tempfile.TemporaryDirectory()
+        src = Path(__file__).resolve().parents[1] / "ps4" / "src"
+        shared = Path(cls.compiled.name) / "libnative-resume.so"
+        build = subprocess.run(
+            [cc, "-std=c99", "-fPIC", "-shared", "-O2", "-Wall",
+             "-Wextra", "-Werror",
+             str(src / "download_resume.c"),
+             str(src / "download_http_headers.c"),
+             str(src / "download_http_policy.c"),
+             str(src / "download_sha256.c"),
+             "-o", str(shared)],
+            text=True, capture_output=True, timeout=45,
+        )
+        if build.returncode:
+            cls.compiled.cleanup()
+            raise AssertionError(build.stdout + build.stderr)
+        cls.native = NativeResumeGate(shared)
         cls.server = ThreadingHTTPServer(("127.0.0.1", 0), RangeFixture)
         cls.server.observed = []
         cls.thread = threading.Thread(target=cls.server.serve_forever,
@@ -98,6 +121,7 @@ class HostFixtureResumeTests(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
         cls.thread.join(timeout=3)
+        cls.compiled.cleanup()
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -109,6 +133,12 @@ class HostFixtureResumeTests(unittest.TestCase):
 
     def url(self, path):
         return f"http://127.0.0.1:{self.server.server_address[1]}{path}"
+
+    def resume(self, url, root, filename, total, digest):
+        # Execute the native C checkpoint reviewer against headers returned
+        # by a REAL localhost HTTP 206 response before appending bytes.
+        return resume_fixture(url, root, filename, total, digest,
+                              native_reviewer=self.native)
 
     def interrupt(self, endpoint="/ok", size=60001):
         url = self.url(endpoint)
@@ -123,7 +153,7 @@ class HostFixtureResumeTests(unittest.TestCase):
         meta = self.root / (FILE + ".resume.json")
         self.assertEqual(part.stat().st_size, 60237)
         self.assertTrue(meta.exists())
-        result = resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+        result = self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertEqual(result.read_bytes(), DATA)
         self.assertEqual(hashlib.sha256(result.read_bytes()).hexdigest(), DIGEST)
         self.assertFalse(part.exists())
@@ -139,7 +169,7 @@ class HostFixtureResumeTests(unittest.TestCase):
             f.seek(3)
             f.write(b"Z")
         with self.assertRaisesRegex(ResumeFixtureError, "fingerprint"):
-            resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertTrue(part.exists())
         self.assertTrue((self.root / (FILE + ".resume.json")).exists())
         self.assertFalse((self.root / FILE).exists())
@@ -152,14 +182,14 @@ class HostFixtureResumeTests(unittest.TestCase):
         payload["full_sha256"] = "0" * 64
         meta.write_text(json.dumps(payload))
         with self.assertRaisesRegex(ResumeFixtureError, "manifest"):
-            resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertFalse((self.root / FILE).exists())
         self.assertEqual(len(self.server.observed), 1)
 
     def test_source_identity_requires_exact_original_url(self):
         self.interrupt()
         with self.assertRaisesRegex(ResumeFixtureError, "manifest"):
-            resume_fixture(self.url("/redirect"), self.root,
+            self.resume(self.url("/redirect"), self.root,
                            FILE, len(DATA), DIGEST)
         self.assertEqual(len(self.server.observed), 1)
 
@@ -174,34 +204,34 @@ class HostFixtureResumeTests(unittest.TestCase):
                                               len(DATA), DIGEST, 40001)
                     before = (root / (FILE + ".part")).read_bytes()
                     with self.assertRaises(ResumeFixtureError):
-                        resume_fixture(url, root, FILE, len(DATA), DIGEST)
+                        self.resume(url, root, FILE, len(DATA), DIGEST)
                     self.assertEqual((root / (FILE + ".part")).read_bytes(), before)
                     self.assertFalse((root / FILE).exists())
 
     def test_mutated_206_body_fails_final_digest_and_never_publishes(self):
         url = self.interrupt("/mutated")
         with self.assertRaisesRegex(ResumeFixtureError, "final SHA-256"):
-            resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertFalse((self.root / FILE).exists())
         self.assertTrue((self.root / (FILE + ".resume.json")).exists())
 
     def test_mid_resume_disconnect_keeps_untrusted_partial_not_final(self):
         url = self.interrupt("/truncated")
         with self.assertRaises(ResumeFixtureError):
-            resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertFalse((self.root / FILE).exists())
         self.assertTrue((self.root / (FILE + ".resume.json")).exists())
         # After a partial append, checkpoint offset no longer matches file;
         # repeated attempts are denied until explicit recovery/reset.
         with self.assertRaises(ResumeFixtureError):
-            resume_fixture(url, self.root, FILE, len(DATA), DIGEST)
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
 
     def test_existing_final_or_partial_is_never_overwritten(self):
         self.interrupt()
         final = self.root / FILE
         final.write_bytes(b"previous user file")
         with self.assertRaisesRegex(ResumeFixtureError, "destination exists"):
-            resume_fixture(self.url("/ok"), self.root,
+            self.resume(self.url("/ok"), self.root,
                            FILE, len(DATA), DIGEST)
         self.assertEqual(final.read_bytes(), b"previous user file")
         with self.assertRaises(ResumeFixtureError):

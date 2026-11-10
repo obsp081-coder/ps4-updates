@@ -17,6 +17,7 @@ class SourceBridgeTests(unittest.TestCase):
             executable=Path(folder)/"stage3"
             b=subprocess.run([cc,"-std=c99","-Wall","-Wextra","-Werror",
                               "-O2",str(SRC/"ui_models.c"),
+                              str(SRC/"ui_compatibility.c"),
                               str(SRC/"ui_source_bridge.c"),str(FIX),
                               "-o",str(executable)],
                              capture_output=True,text=True,timeout=45)

@@ -18,8 +18,10 @@ int main(void) {
     u[1]=u[0];
     strcpy(u[1].version,"01.08");
     u[1].verdict=UI_UPDATE_BLOCKED;
+    u[1].compat_blockers=1u; /* Synthetic mismatch reason. */
     assert(ui_model_set_updates(u,2)==0);
     assert(ui_model_update_count()==2u);
+    assert(ui_model_update(1)->compat_blockers==1u);
     assert(ui_model_update_for("CUSA02343",0)!=NULL);
     assert(ui_model_update_for("CUSA02343",1)!=NULL);
     assert(ui_model_update_for("CUSA02343",2)==NULL);
@@ -30,6 +32,14 @@ int main(void) {
     assert(strcmp(ui_model_update(1)->version,"01.08")==0);
     strcpy(bad[0].cusa,"BADID");
     assert(ui_model_set_updates(bad,1)<0);
+    assert(ui_model_update_count()==2u);
+    /* A blocked label cannot exist without a machine-readable reason. */
+    UiUpdateInfo false_block=u[1];
+    false_block.compat_blockers=0u;
+    assert(ui_model_set_updates(&false_block,1)<0);
+    false_block.verdict=UI_UPDATE_UNKNOWN;
+    false_block.compat_blockers=1u;
+    assert(ui_model_set_updates(&false_block,1)<0);
     assert(ui_model_update_count()==2u);
     u[0].verdict=UI_UPDATE_VERIFIED;
     assert(ui_model_set_updates(u,1)<0); /* Phase 3 denies fake approval */

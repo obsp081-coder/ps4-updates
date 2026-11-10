@@ -4,7 +4,7 @@
 
 **Code SHA:** `7e2e323952dad311b7179e621e7a23ff4be3e7e7`  
 **Host CI:** **222/222 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42819573731  
-**OpenOrbis Build:** راجع https://github.com/obsp081-coder/ps4-updates/actions/runs/42819573705 — **لا تعتمد نجاحه حتى اكتمال CI**.
+**OpenOrbis Package Build:** **PASS** على Code SHA نفسه (Compile + PKG structure validation؛ لم يتم نشر Release) — https://github.com/obsp081-coder/ps4-updates/actions/runs/42819573705.
 
 ### المنجز
 - `ps4/src/download_pipeline.h/.c`: جمع `download_http_headers` ثم `download_http_policy` ثم `download_queue` ثم `download_storage` مع SHA-256 للملف المخزن و`publish_exclusive`. يُقبل Start فقط بعد Parser وPolicy وSpace Preflight. Progress هو عدد البايتات الفعلية التي أكّد `write_all` كتابتها.

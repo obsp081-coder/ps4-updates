@@ -10,12 +10,15 @@ typedef struct Fixture {
     size_t size, offset;
     unsigned chain, hostname, range, if_range;
     unsigned opens, aborts, closes;
+    int open_result;
 } Fixture;
 
 static int open_mock(void *arg, const DtRequest *r, char *dst, size_t cap,
                      size_t *size, DtPeerFacts *peer) {
     Fixture *f = (Fixture *)arg;
     (void)r;
+    f->opens++;
+    if (f->open_result) return f->open_result;
     const size_t n = strlen(f->headers);
     if (n > cap) return -1;
     memcpy(dst, f->headers, n);
@@ -24,7 +27,6 @@ static int open_mock(void *arg, const DtRequest *r, char *dst, size_t cap,
     peer->hostname_verified = f->hostname;
     peer->range_sent = f->range;
     peer->if_range_sent = f->if_range;
-    f->opens++;
     return 0;
 }
 static int read_mock(void *arg, uint8_t *dst, size_t cap, size_t *got) {
@@ -99,6 +101,15 @@ int main(void) {
     assert(dt_begin(&s, &p, &request) == DT_URL_REJECTED);
     assert(f.opens == 0u);
     request.url = "https://fixture.example/test";
+
+    f = fixture(OK); f.open_result = DT_PORT_TLS_VERIFY_FAILED;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_TLS_UNVERIFIED);
+    assert(f.opens == 1u && f.closes == 1u);
+    f = fixture(OK); f.open_result = -1;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_CONNECT_FAILED);
+    assert(f.opens == 1u && f.closes == 1u);
 
     f = fixture(OK); f.chain = 0u;
     p = port(&f); dt_init(&s);

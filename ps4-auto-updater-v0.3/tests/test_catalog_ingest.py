@@ -112,6 +112,58 @@ class CatalogIngestTests(unittest.TestCase):
 
                 self.entry.pop(key)
 
+    def test_untrusted_source_cannot_claim_rights_or_actions(self):
+        for field, value in (
+            ("rights_verified", True),
+            ("source_authorized", True),
+            ("download_allowed", False),
+            ("install_allowed", True),
+            ("download_enabled", True),
+            ("install_enabled", True),
+            ("compatibility_confirmed", True),
+            ("fpkg_compatibility_confirmed", False),
+            ("package_file", "fake.pkg"),
+            ("local_pkg_path", "/data/fake.pkg"),
+        ):
+            with self.subTest(field=field):
+                self.entry[field] = value
+                with self.assertRaises(ValueError):
+                    self.validate()
+                del self.entry[field]
+
+    def test_schema_boolean_and_malformed_fixture_flags_rejected(self):
+        for schema in (True, False, "1", None):
+            with self.subTest(schema=schema):
+                with self.assertRaises(ValueError):
+                    ingest({"schema": schema, "submissions": [self.entry]})
+        for flag in (True, "true", 1, None):
+            with self.subTest(flag=flag):
+                with self.assertRaises(ValueError):
+                    ingest({"schema": 1, "fixture_only": flag,
+                            "submissions": [self.entry]})
+        for flag in (True, "true", 1, None):
+            with self.subTest(flag=flag):
+                self.entry["demo_only"] = flag
+                with self.assertRaises(ValueError):
+                    self.validate()
+                del self.entry["demo_only"]
+
+    def test_cli_duplicate_json_keys_cannot_override_submissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "raw.json"
+            output = root / "out.json"
+            source.write_text(
+                '{"schema":1,"schema":1,"submissions":[]}', encoding="utf-8"
+            )
+            proc = subprocess.run([
+                sys.executable, str(PROJECT / "catalog_ingest.py"),
+                str(source), "--out", str(output)
+            ], capture_output=True, text=True, timeout=15)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("Duplicate catalog JSON key", proc.stderr)
+            self.assertFalse(output.exists())
+
     def test_duplicate_update_rejected(self):
         with self.assertRaises(ValueError):
             ingest({

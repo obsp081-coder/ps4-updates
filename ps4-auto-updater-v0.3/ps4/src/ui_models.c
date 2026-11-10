@@ -43,6 +43,8 @@ int ui_model_set_updates(const UiUpdateInfo *rows,unsigned count) {
            !version_valid(p->version,sizeof p->version,1) ||
            !version_valid(p->minimum_fw,sizeof p->minimum_fw,0) ||
            p->verdict<UI_UPDATE_UNKNOWN || p->verdict>=UI_UPDATE_VERIFIED ||
+           (p->verdict==UI_UPDATE_BLOCKED && !p->compat_blockers) ||
+           (p->verdict==UI_UPDATE_UNKNOWN && p->compat_blockers) ||
            p->source_kind<UI_SOURCE_UNSPECIFIED ||
            p->source_kind>UI_SOURCE_FPKG_SUBMITTED)
             return -2;

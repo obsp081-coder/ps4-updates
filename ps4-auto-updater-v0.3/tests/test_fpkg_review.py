@@ -313,6 +313,7 @@ class FpkgReviewTests(unittest.TestCase):
             ("gp", "NOT_A_BASE_GAME"),
             ("ac", "NOT_A_BASE_GAME"),
             ("", "BASE_CATEGORY_UNCONFIRMED"),
+            (["gd"], "BASE_CATEGORY_INVALID"),
         ):
             with self.subTest(category=category):
                 self.inventory["games"][0]["category"] = category

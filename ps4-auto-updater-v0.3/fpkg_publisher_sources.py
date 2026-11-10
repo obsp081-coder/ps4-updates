@@ -25,13 +25,13 @@ GITHUB_RELEASE = re.compile(
 EVIDENCE_URL = re.compile(
     r"https://github\.com/"
     r"(?P<repo>[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100})"
-    r"/(?:blob|tree)/[A-Za-z0-9._/-]{1,240}\Z"
+    r"/(?:blob|tree)/(?P<path>[A-Za-z0-9._/-]{1,240})\Z"
 )
 FORBIDDEN = frozenset((
     "download_url", "pkg_url", "package_url", "install_url",
-    "auto_install", "download_allowed", "install_allowed",
+    "download_allowed", "install_allowed",
     "downloads_enabled", "install_enabled", "rights_verified",
-    "source_authorized", "compatibility_confirmed",
+    "source_authorized",
 ))
 
 
@@ -68,7 +68,7 @@ def _policy(registry):
         match = EVIDENCE_URL.fullmatch(evidence) if isinstance(evidence, str) else None
         if not match or _repo(match.group("repo")) != repo:
             raise ValueError("Evidence URL must belong to exact publisher repo")
-        path = evidence.split("/", 7)[-1]
+        path = match.group("path")
         if path.startswith("/") or "//" in path or ".." in path.split("/"):
             raise ValueError("Unsafe evidence path")
         note, ticket = item["review_note"], item["review_ticket"]
@@ -105,7 +105,10 @@ def review_publisher_origins(report, policy):
     output = {}
     seen = set()
     for row in report["updates"]:
-        if not isinstance(row, dict) or any(k in row for k in FORBIDDEN):
+        if (not isinstance(row, dict)
+                or any(k in row for k in FORBIDDEN)
+                or "auto_install" in row
+                or "compatibility_confirmed" in row):
             raise ValueError("Untrusted source row claims actions")
         cusa, cid, version = (row.get("cusa"), row.get("content_id"),
                               row.get("version"))

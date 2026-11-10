@@ -1134,7 +1134,10 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
        first->compat_blockers) {
         const uint32_t bit=first->compat_blockers &
                            (0u-first->compat_blockers);
-        ascii(p,625,583,ui_compat_reason_key(bit),AMBER,1,32);
+        char reason[80];
+        (void)snprintf(reason,sizeof reason,"%.15s: %s",
+                       first->version,ui_compat_reason_key(bit));
+        ascii(p,625,571,reason,AMBER,2,32);
     }
 
     arabic(p,303,632,UI_AR_AVAILABLE_UPDATES,CYAN);

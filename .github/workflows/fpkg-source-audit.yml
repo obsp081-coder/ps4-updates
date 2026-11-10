@@ -6,9 +6,11 @@ on:
     paths:
       - ".github/workflows/fpkg-source-audit.yml"
       - "ps4-auto-updater-v0.3/fpkg_publisher_sources.py"
+      - "ps4-auto-updater-v0.3/fpkg_github_release_observer.py"
       - "ps4-auto-updater-v0.3/update_source_registry.py"
       - "ps4-auto-updater-v0.3/catalog_ingest.py"
       - "ps4-auto-updater-v0.3/tests/test_fpkg_publisher_sources.py"
+      - "ps4-auto-updater-v0.3/tests/test_fpkg_github_release_observer.py"
       - "ps4-auto-updater-v0.3/source_registry/reviewed_publishers.json"
 
 permissions:
@@ -28,6 +30,9 @@ jobs:
           python3 -m unittest discover \
             -s ps4-auto-updater-v0.3/tests \
             -p 'test_fpkg_publisher_sources.py' -v
+          python3 -m unittest discover \
+            -s ps4-auto-updater-v0.3/tests \
+            -p 'test_fpkg_github_release_observer.py' -v
 
       - name: Check local registry without fetching any packages or catalogs
         working-directory: ps4-auto-updater-v0.3

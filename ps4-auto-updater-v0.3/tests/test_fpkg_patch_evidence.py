@@ -205,7 +205,13 @@ class FpkgPatchEvidenceTests(unittest.TestCase):
             return details
         with patch.object(module, "read_pkg_metadata_stream", side_effect=edited):
             result = self.review()
-        self.assertEqual(result["status"], "FILE_CHANGED_DURING_REVIEW")
+        # On filesystems with coarse timestamp precision, the same-sized
+        # mutation can be caught by the digest rather than fstat. Both
+        # statuses reject the PKG and neither can grant permission.
+        self.assertIn(result["status"], (
+            "FILE_CHANGED_DURING_REVIEW", "SHA256_MISMATCH"
+        ))
+        self.assertFalse(result["sha256_matched"])
         self.safety(result)
 
     def test_filename_replaced_by_symlink_after_open_is_rejected(self):

@@ -1,16 +1,15 @@
-"""Phase 3: combine *observed* PS4 patch metadata without trusting it.
+"""Phase 3: FPKG-only candidate metadata index; fail closed.
 
-Input is a report from official_patch_lookup.discover (historical Sony HTTP,
-unauthenticated) and/or catalog_ingest.ingest (submitted FPKG metadata).
-This module makes NO network, console, file-write, download or install calls.
-The results are manual-review candidates, never confirmed update availability.
+Only accepts submissions normalized by catalog_ingest.ingest. Historical
+Sony/Retail metadata is explicitly excluded, not merged or used as fallback.
+No network, console, downloads or installs. A submitted FPKG package-kind
+is a declaration, not proof of a matching installed FPKG or distribution rights.
 """
 import argparse
 import json
 from pathlib import Path
 
 from catalog_ingest import CUSA, CONTENT_ID, VERSION, _source
-from official_patch_lookup import patch_url
 
 MAX_TITLES = 100
 MAX_CANDIDATES_PER_TITLE = 24
@@ -47,86 +46,6 @@ def _cid(value, cusa):
 def _check_cusa(cusa):
     if not isinstance(cusa, str) or not CUSA.fullmatch(cusa):
         raise ValueError("Invalid title ID")
-
-
-def _retail_rows(report, target):
-    if report is None:
-        return {}, False
-    if (not isinstance(report, dict) or report.get("schema") != 1
-            or report.get("source_kind") != "official_retail_metadata"
-            or not isinstance(report.get("titles"), list)
-            or len(report["titles"]) > MAX_TITLES):
-        raise ValueError("Invalid retail report")
-    _must_no_actions(report)
-    if any(report.get(k) is not False for k in (
-        "install_enabled", "downloads_enabled",
-        "fpkg_compatibility_confirmed",
-    )):
-        raise ValueError("Retail report asserts actions")
-    results = {}
-    for row in report["titles"]:
-        if not isinstance(row, dict):
-            raise ValueError("Malformed retail row")
-        _must_no_actions(row)
-        title = row.get("cusa")
-        _check_cusa(title)
-        if title not in target or title in results:
-            raise ValueError("Unexpected/duplicate retail title")
-        if (row.get("source") != "sony-retail-patch-xml"
-                or row.get("metadata_url") != patch_url(title)
-                or any(row.get(k) is not False for k in (
-                    "transport_authenticated", "rights_verified",
-                    "fpkg_compatibility_confirmed", "install_enabled",
-                    "downloads_enabled",
-                ))):
-            raise ValueError("Unproven Sony source/rights asserted")
-        status = row.get("status")
-        if status not in ("RETAIL_PATCH_LISTED", "NOT_LISTED",
-                          "LOOKUP_FAILED"):
-            raise ValueError("Invalid retail status")
-        package_rows = []
-        if status == "RETAIL_PATCH_LISTED":
-            observed = row.get("observed_retail_versions")
-            if observed is None:
-                # Legacy reports may contain only the latest item.
-                observed = [{
-                    "version": row.get("latest_retail_version"),
-                    "content_id": row.get("content_id"),
-                }]
-            if (not isinstance(observed, list) or not observed
-                    or len(observed) > 128):
-                raise ValueError("Invalid retail patch collection")
-            seen = set()
-            for obj in observed:
-                if not isinstance(obj, dict):
-                    raise ValueError("Malformed retail patch record")
-                _must_no_actions(obj)
-                ver, cid = obj.get("version"), obj.get("content_id")
-                _version(ver)
-                _cid(cid, title)
-                key = (ver, cid)
-                if key in seen:
-                    raise ValueError("Duplicate retail patch metadata")
-                seen.add(key)
-                package_rows.append({
-                    "package_kind": "retail_patch",
-                    "version": ver,
-                    "content_id": cid,
-                    "minimum_fw": None,
-                    "size_bytes": None,
-                    "source_status": "SONY_HTTP_METADATA_UNAUTHENTICATED",
-                    "history_complete": False,
-                })
-            if (_version(row.get("latest_retail_version"))
-                    != max(_version(x["version"]) for x in package_rows)):
-                raise ValueError("Inconsistent latest retail version")
-            _cid(row.get("content_id"), title)
-            if not any(x["version"] == row["latest_retail_version"]
-                       and x["content_id"] == row["content_id"]
-                       for x in package_rows):
-                raise ValueError("Inconsistent latest retail Content ID")
-        results[title] = (status, package_rows)
-    return results, True
 
 
 def _fpkg_rows(report, target):
@@ -180,8 +99,8 @@ def _fpkg_rows(report, target):
     return output, True
 
 
-def build_source_index(cusas, retail_report=None, fpkg_report=None):
-    """Fail-closed, bounded, deterministic inventory keyed by known titles."""
+def build_source_index(cusas, fpkg_report=None):
+    """Read-only, FPKG-only metadata for known CUSA IDs; never authorizes I/O."""
     if (not isinstance(cusas, (list, tuple))
             or not 1 <= len(cusas) <= MAX_TITLES):
         raise ValueError("Expected 1..100 title IDs")
@@ -190,29 +109,24 @@ def build_source_index(cusas, retail_report=None, fpkg_report=None):
     if len(set(cusas)) != len(cusas):
         raise ValueError("Ambiguous duplicate game IDs")
     allowed = set(cusas)
-    retail, retail_supplied = _retail_rows(retail_report, allowed)
     fpkg, fpkg_supplied = _fpkg_rows(fpkg_report, allowed)
     results = []
     for title in cusas:
-        status, retail_candidates = retail.get(title, ("NOT_QUERIED", []))
-        candidates = retail_candidates + fpkg.get(title, [])
+        candidates = list(fpkg.get(title, []))
         candidates.sort(key=lambda x: (
-            _version(x["version"]), x["package_kind"], x["content_id"]
+            _version(x["version"]), x["content_id"]
         ), reverse=True)
         overflow = len(candidates) > MAX_CANDIDATES_PER_TITLE
-        # Do not silently discard; report truncation, even though every
-        # candidate remains unverified and not actionable.
+        # Truncation is disclosed; no candidate is actionable.
         candidates = candidates[:MAX_CANDIDATES_PER_TITLE]
         results.append({
             "cusa": title,
-            "retail_lookup_status": status,
             "fpkg_submission_status": (
                 "SUBMISSIONS_RECEIVED" if fpkg.get(title)
                 else "NO_SUBMISSIONS" if fpkg_supplied else "NOT_PROVIDED"
             ),
             "source_status": (
-                "UNVERIFIED_CANDIDATES" if candidates
-                else "LOOKUP_FAILED" if status == "LOOKUP_FAILED"
+                "UNVERIFIED_FPKG_CANDIDATES" if candidates
                 else "NO_TRUSTED_UPDATE_SOURCE"
             ),
             "truncated": overflow,
@@ -222,9 +136,9 @@ def build_source_index(cusas, retail_report=None, fpkg_report=None):
             "compatibility_confirmed": False,
         })
     return {
-        "schema": 1,
-        "phase": "SOURCE_DISCOVERY_METADATA_ONLY",
-        "retail_report_supplied": retail_supplied,
+        "schema": 2,
+        "phase": "FPKG_ONLY_SOURCE_DISCOVERY_METADATA_ONLY",
+        "package_policy": "fpkg_only",
         "fpkg_report_supplied": fpkg_supplied,
         "history_complete": False,
         "download_allowed": False,
@@ -237,7 +151,6 @@ def build_source_index(cusas, retail_report=None, fpkg_report=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cusa", nargs="+", required=True)
-    parser.add_argument("--retail-report", type=Path)
     parser.add_argument("--fpkg-report", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -248,8 +161,7 @@ def main():
             raise ValueError("Report exceeds 1 MiB")
         return json.loads(path.read_text(encoding="utf-8"))
     try:
-        output = build_source_index(args.cusa, load(args.retail_report),
-                                    load(args.fpkg_report))
+        output = build_source_index(args.cusa, load(args.fpkg_report))
     except (ValueError, OSError) as err:
         parser.error(str(err))
     args.out.write_text(json.dumps(output, ensure_ascii=False, indent=2)

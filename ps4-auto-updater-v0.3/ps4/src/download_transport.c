@@ -84,7 +84,11 @@ DtResult dt_begin(DtSession *s, const DtPort *port,
     DtPeerFacts peer = {0};
     memset(raw, 0, sizeof raw);
     if (port->open_headers(port->context, request, raw, sizeof raw,
-                           &n, &peer) != 0) return DT_CONNECT_FAILED;
+                           &n, &peer) != 0) {
+        /* Backend close must be safe even if open only partially succeeded. */
+        (void)port->close_request(port->context);
+        return DT_CONNECT_FAILED;
+    }
 
     s->port = *port;
     s->active = 1u;
@@ -125,9 +129,9 @@ DtResult dt_read(DtSession *s, uint8_t *buffer, size_t capacity,
     const size_t bounded = (uint64_t)capacity > left ? (size_t)left : capacity;
     size_t n = 0u;
     if (s->port.read_body(s->port.context, buffer, bounded, &n) != 0)
-        return DT_READ_FAILED;
-    if (n > bounded) return DT_EXTRA_DATA;
-    if (!n) return DT_INCOMPLETE;
+        return stop(s, DT_READ_FAILED);
+    if (n > bounded) return stop(s, DT_EXTRA_DATA);
+    if (!n) return stop(s, DT_INCOMPLETE);
     s->delivered += (uint64_t)n;
     *received = n;
     return DT_OK;
@@ -136,12 +140,12 @@ DtResult dt_read(DtSession *s, uint8_t *buffer, size_t capacity,
 DtResult dt_finish(DtSession *s) {
     if (!s || !s->active || s->stopped || !s->port.read_body)
         return DT_INVALID;
-    if (s->delivered != s->remaining) return DT_INCOMPLETE;
+    if (s->delivered != s->remaining) return stop(s, DT_INCOMPLETE);
     uint8_t extra = 0u;
     size_t got = 0u;
     if (s->port.read_body(s->port.context, &extra, 1u, &got) != 0)
-        return DT_READ_FAILED;
-    if (got != 0u) return DT_EXTRA_DATA;
+        return stop(s, DT_READ_FAILED);
+    if (got != 0u) return stop(s, DT_EXTRA_DATA);
     return stop(s, DT_OK);
 }
 

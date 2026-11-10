@@ -1302,64 +1302,88 @@ static void confirm_games(void) {
  * Never enabled for the ordinary release; tests exercise the pure
  * pkg_header_observe parser separately. Failing to open an installed
  * package is an explicit UNKNOWN, never evidence of Retail or FPKG. */
-static void probe_installed_pkg_headers(void) {
 #if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
-#if defined(O_NOFOLLOW) && defined(O_NONBLOCK)
-    const char *roots[] = {
+/* Only known, fixed title IDs from validated native inventory or the
+ * explicit probe app itself may reach the filesystem. Header is NOT a
+ * verification of FPKG authenticity, ownership or patch compatibility. */
+static void probe_header_target(const char *title_id,
+                                PkgHeaderEvidence *evidence,
+                                unsigned *observed_location) {
+    if(!title_id || !evidence || !observed_location)return;
+    *observed_location=0u;
+    *evidence=(PkgHeaderEvidence){PKG_OBS_NOT_PROBED,0u,0u};
+#if !defined(O_NOFOLLOW) || !defined(O_NONBLOCK)
+    evidence->observation=PKG_OBS_SAFE_OPEN_UNAVAILABLE;
+#else
+    const char *roots[]={
         "/user/app",
         "/mnt/ext0/user/app",
         "/mnt/ext1/user/app"
     };
-#endif
-    for (unsigned i=0; i<found; ++i) {
-        Game *g=&games[i];
-        if(scan_should_abort()) break;
-        if(!valid_id(g->cusa)) continue;
-#if !defined(O_NOFOLLOW) || !defined(O_NONBLOCK)
-        g->pkg_header.observation=PKG_OBS_SAFE_OPEN_UNAVAILABLE;
-#else
-        g->pkg_header.observation=PKG_OBS_OPEN_FAILED;
-        for(unsigned location=0; location<3u; ++location) {
-            char path[128];
-            const int n=snprintf(path,sizeof path,"%s/%s/app.pkg",
-                                 roots[location],g->cusa);
-            if(n<=0 || (size_t)n>=sizeof path) continue;
-            /* Require both flags: never block on a FIFO or follow
-             * an attacker-controlled last-component symlink. */
-            int flags=O_RDONLY|O_NOFOLLOW|O_NONBLOCK;
+    evidence->observation=PKG_OBS_OPEN_FAILED;
+    for(unsigned location=0; location<3u; ++location) {
+        char path[128];
+        const int n=snprintf(path,sizeof path,"%s/%s/app.pkg",
+                             roots[location],title_id);
+        if(n<=0 || (size_t)n>=sizeof path)continue;
+        /* Require both flags: no FIFO block, no followed leaf symlink. */
+        int flags=O_RDONLY|O_NOFOLLOW|O_NONBLOCK;
 #ifdef O_CLOEXEC
-            flags|=O_CLOEXEC;
+        flags|=O_CLOEXEC;
 #endif
-            const int fd=open(path,flags);
-            if(fd<0) continue;
-            struct stat st;
-            if(fstat(fd,&st)!=0) {
-                g->pkg_header.observation=PKG_OBS_STAT_UNAVAILABLE;
-                (void)close(fd);
-                break;
-            }
-            if(!S_ISREG(st.st_mode)) {
-                g->pkg_header.observation=PKG_OBS_NOT_REGULAR;
-                (void)close(fd);
-                break;
-            }
-            unsigned char raw[8];
-            const ssize_t got=read(fd,raw,sizeof raw);
+        const int fd=open(path,flags);
+        if(fd<0)continue;
+        *observed_location=location+1u;
+        struct stat st;
+        if(fstat(fd,&st)!=0) {
+            evidence->observation=PKG_OBS_STAT_UNAVAILABLE;
             (void)close(fd);
-            g->pkg_header=(got==8) ?
-                pkg_header_observe(raw,sizeof raw) :
-                pkg_header_observe(NULL,0u);
-            g->pkg_header_location=location+1u;
             break;
         }
+        if(!S_ISREG(st.st_mode)) {
+            evidence->observation=PKG_OBS_NOT_REGULAR;
+            (void)close(fd);
+            break;
+        }
+        unsigned char raw[8];
+        const ssize_t got=read(fd,raw,sizeof raw);
+        (void)close(fd);
+        *evidence=(got==8) ?
+            pkg_header_observe(raw,sizeof raw) :
+            pkg_header_observe(NULL,0u);
+        break;
+    }
 #endif
+}
+#endif
+
+static void probe_installed_pkg_headers(void) {
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#if defined(PS4_DIAGNOSTIC_ISOLATED)
+    /* First target is our own diagnostic app, never a user's game:
+     * this isolated Title ID is controlled by our Makefile.
+     * Failure is an observable UNKNOWN, not a fallback to Retail. */
+    PkgHeaderEvidence self_header={PKG_OBS_NOT_PROBED,0u,0u};
+    unsigned self_location=0u;
+    probe_header_target("BREW01998",&self_header,&self_location);
+    if(report)
+        fprintf(report,"PKG_SELF_HEADER BREW01998 observation=%s "
+                "location=%u header_read=%u flags=0x%08x (UNVERIFIED)\n",
+                pkg_header_observation_name(self_header.observation),
+                self_location,self_header.header_read,
+                (unsigned)self_header.flags_be);
+#endif
+    for(unsigned i=0; i<found; ++i) {
+        Game *g=&games[i];
+        if(scan_should_abort())break;
+        if(!valid_id(g->cusa))continue;
+        probe_header_target(g->cusa,&g->pkg_header,&g->pkg_header_location);
         if(report)
             fprintf(report,"PKG_HEADER %s observation=%s location=%u "
                     "header_read=%u flags=0x%08x (UNVERIFIED)\n",
                     g->cusa,
                     pkg_header_observation_name(g->pkg_header.observation),
-                    g->pkg_header_location,
-                    g->pkg_header.header_read,
+                    g->pkg_header_location,g->pkg_header.header_read,
                     (unsigned)g->pkg_header.flags_be);
     }
 #else

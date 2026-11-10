@@ -49,8 +49,7 @@ static int publish(const UiSourceCandidate *rows,const UiCompatFacts *facts,
         if(!cusa_ok(source->cusa) ||
            !cid_ok(source->content_id,source->cusa) ||
            !version_ok(source->version) ||
-           (source->source_kind!=UI_SOURCE_RETAIL_HTTP &&
-            source->source_kind!=UI_SOURCE_FPKG_SUBMITTED))return -2;
+           source->source_kind!=UI_SOURCE_FPKG_SUBMITTED)return -2;
         memcpy(stage[i].cusa,source->cusa,sizeof stage[i].cusa);
         memcpy(stage[i].version,source->version,sizeof stage[i].version);
         memcpy(stage[i].content_id,source->content_id,

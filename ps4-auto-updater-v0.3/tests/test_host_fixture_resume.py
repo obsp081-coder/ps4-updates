@@ -4,7 +4,9 @@ This exercises a private disk checkpoint, partial-file checksum, independent
 full checksum, malformed 206 responses and exclusive publication.
 No real HTTPS, no FPKG, no PlayStation, no background service.
 """
+import errno
 import hashlib
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -13,6 +15,8 @@ import subprocess
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
+import host_fixture_resume as fixture
 from native_resume_gate import NativeResumeGate
 
 from host_fixture_resume import (
@@ -59,8 +63,12 @@ class RangeFixture(BaseHTTPRequestHandler):
         remaining = DATA[offset:]
         if ranged and self.path == "/mutated":
             remaining = b"X" + remaining[1:]
-        if ranged and self.path == "/truncated":
+        if ranged and (self.path == "/truncated" or
+                (self.path == "/truncated-once" and
+                 not self.server.once_truncated)):
             emitted = remaining[:len(remaining) // 2]
+            if self.path == "/truncated-once":
+                self.server.once_truncated = True
         else:
             emitted = remaining
 
@@ -127,6 +135,7 @@ class HostFixtureResumeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.server.observed.clear()
+        self.server.once_truncated = False
 
     def tearDown(self):
         self.temp.cleanup()
@@ -221,10 +230,11 @@ class HostFixtureResumeTests(unittest.TestCase):
             self.resume(url, self.root, FILE, len(DATA), DIGEST)
         self.assertFalse((self.root / FILE).exists())
         self.assertTrue((self.root / (FILE + ".resume.json")).exists())
-        # After a partial append, checkpoint offset no longer matches file;
-        # repeated attempts are denied until explicit recovery/reset.
+        # The next attempt must rehash the checkpointed prefix and discard
+        # the unverified tail; this permanently truncated source still fails.
         with self.assertRaises(ResumeFixtureError):
             self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(self.server.observed[-1][1], "bytes=60001-")
 
     def test_existing_final_or_partial_is_never_overwritten(self):
         self.interrupt()
@@ -263,6 +273,115 @@ class HostFixtureResumeTests(unittest.TestCase):
             start_interrupted_fixture(self.url("/ok"), self.root,
                                       "../unsafe.bin", len(DATA), DIGEST, 50000)
         self.assertEqual(list(self.root.iterdir()), [])
+
+
+    def test_two_interruptions_then_verified_recovery(self):
+        url = self.interrupt("/truncated-once")
+        with self.assertRaises(ResumeFixtureError):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        part = self.root / (FILE + ".part")
+        self.assertGreater(part.stat().st_size, 60001)
+        final = self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(final.read_bytes(), DATA)
+        self.assertEqual([x[1] for x in self.server.observed],
+                         [None, "bytes=60001-", "bytes=60001-"])
+
+    def test_full_verified_partial_after_crash_publishes_without_http(self):
+        self.interrupt()
+        part = self.root / (FILE + ".part")
+        with part.open("ab") as handle:
+            handle.write(DATA[60001:])
+            handle.flush()
+            os.fsync(handle.fileno())
+        final = self.resume(self.url("/ok"), self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(final.read_bytes(), DATA)
+        self.assertEqual(len(self.server.observed), 1)
+        self.assertFalse(part.exists())
+
+    def test_disk_full_after_partial_write_recovers_only_verified_prefix(self):
+        url = self.interrupt()
+        original = fixture.write_all
+        def disk_full(fd, data):
+            original(fd, data[:117])
+            raise OSError(errno.ENOSPC, "simulated disk full")
+        with patch.object(fixture, "write_all", side_effect=disk_full):
+            with self.assertRaises(ResumeFixtureError):
+                self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertGreater((self.root / (FILE + ".part")).stat().st_size, 60001)
+        result = self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(result.read_bytes(), DATA)
+
+    def test_crash_after_exclusive_link_preserves_complete_final(self):
+        url = self.interrupt()
+        with patch.object(fixture, "disk_sync",
+                          side_effect=OSError(errno.EIO, "crash timing")):
+            with self.assertRaises(ResumeFixtureError):
+                self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        final = self.root / FILE
+        self.assertEqual(final.read_bytes(), DATA)
+        self.assertTrue((self.root / (FILE + ".part")).exists())
+        result = self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(result.read_bytes(), DATA)
+        self.assertEqual(len(self.server.observed), 2)
+
+    def test_replaced_partial_inode_rejected_without_truncation(self):
+        url = self.interrupt()
+        part = self.root / (FILE + ".part")
+        replacement = self.root / "replacement"
+        replacement.write_bytes(part.read_bytes() + b"untrusted")
+        os.replace(replacement, part)
+        before = part.read_bytes()
+        with self.assertRaisesRegex(ResumeFixtureError, "fingerprint"):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(part.read_bytes(), before)
+        self.assertFalse((self.root / FILE).exists())
+
+    def test_untrusted_tail_and_modified_prefix_remain_blocked(self):
+        url = self.interrupt()
+        part = self.root / (FILE + ".part")
+        with part.open("r+b") as handle:
+            handle.seek(0)
+            handle.write(b"X")
+            handle.seek(0, os.SEEK_END)
+            handle.write(b"extra")
+        before = part.read_bytes()
+        with self.assertRaisesRegex(ResumeFixtureError, "fingerprint"):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(part.read_bytes(), before)
+
+    def test_checkpoint_duplicate_keys_and_partial_schema_fail_closed(self):
+        url = self.interrupt()
+        meta = self.root / (FILE + ".resume.json")
+        raw = meta.read_text()
+        meta.write_text(raw[:-1] + ',"offset":60001}')
+        with self.assertRaisesRegex(ResumeFixtureError, "duplicate"):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        meta.write_text(raw.replace('"checkpoint_version":2,', ''))
+        with self.assertRaisesRegex(ResumeFixtureError, "schema"):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertFalse((self.root / FILE).exists())
+
+    def test_symlink_resume_lock_is_never_followed(self):
+        url = self.interrupt()
+        protected = self.root / "protected"
+        protected.write_bytes(b"do not write")
+        (self.root / (FILE + ".resume.lock")).symlink_to(protected)
+        with self.assertRaises(ResumeFixtureError):
+            self.resume(url, self.root, FILE, len(DATA), DIGEST)
+        self.assertEqual(protected.read_bytes(), b"do not write")
+
+    def test_failed_initial_transfer_does_not_delete_replaced_leaf(self):
+        url = self.url("/ok")
+        part = self.root / (FILE + ".part")
+        def replaced(fd, data):
+            part.unlink()
+            part.write_bytes(b"foreign file")
+            raise OSError(errno.EIO, "write failed")
+        with patch.object(fixture, "write_all", side_effect=replaced):
+            with self.assertRaises(ResumeFixtureError):
+                self.interrupt()
+        self.assertEqual(part.read_bytes(), b"foreign file")
+        self.assertFalse((self.root / FILE).exists())
 
 
 if __name__ == "__main__":

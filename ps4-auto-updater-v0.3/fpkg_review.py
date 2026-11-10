@@ -19,6 +19,20 @@ CUSA = re.compile(r"CUSA\d{5}\Z")
 CONTENT_ID = re.compile(r"[A-Z]{2}\d{4}-(CUSA\d{5})_\d{2}-[A-Z0-9]{16}\Z")
 VERSION = re.compile(r"\d{1,4}\.\d{1,4}\Z")
 
+# Consumer-owned access control; untrusted metadata must not carry actions.
+FORBIDDEN_ACTION_FIELDS = frozenset((
+    "download_url", "pkg_url", "package_url", "install_command",
+    "download_allowed", "install_allowed", "download_enabled",
+    "install_enabled", "rights_verified", "source_authorized",
+    "compatibility_verified", "fpkg_compatibility_confirmed",
+))
+
+
+def _reject_action_claims(row):
+    if any(key in row for key in FORBIDDEN_ACTION_FIELDS):
+        raise ValueError("Catalog metadata cannot carry action authorization")
+
+
 
 def version(value):
     if not isinstance(value, str) or not VERSION.fullmatch(value):
@@ -34,15 +48,18 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
         raise ValueError("Inventory must have a games list")
 
     if catalog is None:
-        catalog = {"schema": 1, "status": "UNVERIFIED_METADATA_ONLY", "updates": []}
+        catalog = {"schema": 1, "status": "UNVERIFIED_METADATA_ONLY",
+                   "auto_install": False, "compatibility_confirmed": False,
+                   "updates": []}
     if (not isinstance(catalog, dict)
             or catalog.get("schema") != 1
             or catalog.get("status") != "UNVERIFIED_METADATA_ONLY"
             or catalog.get("fixture_only") is True
-            or catalog.get("auto_install") not in (None, False)
-            or catalog.get("compatibility_confirmed") not in (None, False)
+            or catalog.get("auto_install") is not False
+            or catalog.get("compatibility_confirmed") is not False
             or not isinstance(catalog.get("updates"), list)):
         raise ValueError("Catalog must be normalized, non-demo, unverified FPKG metadata")
+    _reject_action_claims(catalog)
 
     reports = {}
     if installed_check is not None:
@@ -64,12 +81,14 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
     for item in catalog["updates"]:
         if not isinstance(item, dict):
             raise ValueError("Malformed FPKG catalog record")
+        _reject_action_claims(item)
         ident = item.get("cusa")
         cid = item.get("content_id")
         match = CONTENT_ID.fullmatch(cid) if isinstance(cid, str) else None
         if (not isinstance(ident, str) or not CUSA.fullmatch(ident)
                 or not match or match.group(1) != ident
                 or item.get("declared_package_kind") != "fpkg_patch"
+                or item.get("patch_compatibility_confirmed") is not False
                 or version(item.get("version")) is None
                 or version(item.get("min_fw")) is None
                 or not isinstance(item.get("source_page"), str)):

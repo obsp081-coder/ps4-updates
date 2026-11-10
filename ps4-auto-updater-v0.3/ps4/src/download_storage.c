@@ -98,7 +98,7 @@ DsResult ds_finalize(DsSession *s) {
     s->state=DS_SEALED;
     /* SHA-256 backend must read the stored bytes from the .part path. */
     if(s->port.verify_sha256(s->port.context,s->part_leaf,
-                             s->expected_sha256)!=1) {
+                             s->expected_size,s->expected_sha256)!=1) {
         s->state=DS_FAILED;
         return DS_VERIFY_FAILED;
     }

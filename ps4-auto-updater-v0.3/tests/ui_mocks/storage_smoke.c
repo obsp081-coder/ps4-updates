@@ -1,10 +1,11 @@
 /* Host POSIX fixture backend only. Native PS4 runtime remains READ ONLY.
- * The verifier below checks KNOWN FIXTURE BYTES (NOT a SHA implementation).
- * Production must use a verified SHA-256 backend before enabling any action.
+ * This test hashes actual stored bytes with the native C SHA-256 verifier.
+ * It does not implement or verify a PS4 filesystem backend.
  */
 #define _POSIX_C_SOURCE 200809L
 #include "../../ps4/src/download_storage.h"
 #include "../../ps4/src/download_queue.h"
+#include "../../ps4/src/download_sha256.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -17,15 +18,17 @@
 
 static const char *CID="IV0000-CUSA02343_00-SCANNER000000000";
 static const uint8_t PAYLOAD[]="HOST-ONLY-BYTES-not-a-game-pkg-0123456789";
+/* Independent Python hashlib.sha256(PAYLOAD) reference; 41 bytes. */
 static const uint8_t DIGEST[32]={
-    1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,
-    17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
-}; /* Fixture token, NOT a cryptographic digest. */
+    0x09u,0x0au,0x7bu,0x33u,0xdbu,0x4du,0x25u,0xdeu,0xa8u,0x0fu,0x9cu,0x87u,0xc1u,0x72u,0x59u,0x1au,
+    0xfeu,0xd2u,0x25u,0xd0u,0x37u,0x4au,0xd2u,0x43u,0x05u,0x77u,0xe5u,0x5bu,0xc4u,0x7bu,0x3au,0x3fu
+};
 
 typedef struct Fixture {
     char root[128];
     int fd;
     int fail_write,fail_flush,fail_verify,fail_publish,fail_unlink;
+    int fail_read;
 } Fixture;
 
 static void path_for(char *out,size_t cap,const Fixture *f,const char *leaf) {
@@ -67,18 +70,41 @@ static int host_close(void *ctx) {
     f->fd=-1;
     return rc;
 }
-static int host_verify(void *ctx,const char *leaf,const uint8_t digest[32]) {
+static int host_open_read(void *ctx,const char *leaf) {
     Fixture *f=(Fixture *)ctx;
-    if(f->fail_verify || memcmp(digest,DIGEST,32))return 0;
     char path[256];
     path_for(path,sizeof path,f,leaf);
+    if(f->fd!=-1)return -1;
     int fd=open(path,O_RDONLY|O_NOFOLLOW);
     if(fd<0)return -1;
-    uint8_t bytes[sizeof PAYLOAD];
-    const ssize_t n=read(fd,bytes,sizeof bytes);
-    const int close_rc=close(fd);
-    return close_rc==0 && n==(ssize_t)(sizeof PAYLOAD-1u) &&
-           !memcmp(bytes,PAYLOAD,sizeof PAYLOAD-1u) ? 1 : 0;
+    struct stat st;
+    if(fstat(fd,&st)!=0 || !S_ISREG(st.st_mode)) {
+        const int rc=close(fd);
+        (void)rc;
+        return -1;
+    }
+    f->fd=fd;
+    return 0;
+}
+static int host_read_next(void *ctx,uint8_t *buf,size_t cap,size_t *got) {
+    Fixture *f=(Fixture *)ctx;
+    if(f->fail_read)return -1;
+    ssize_t n;
+    do {n=read(f->fd,buf,cap);} while(n<0 && errno==EINTR);
+    if(n<0)return -1;
+    *got=(size_t)n;
+    return 0;
+}
+static int host_verify(void *ctx,const char *leaf,uint64_t expected_size,
+                       const uint8_t digest[32]) {
+    Fixture *f=(Fixture *)ctx;
+    if(f->fail_verify)return 0;
+    DsSha256Reader r={0};
+    r.context=ctx;
+    r.open_read=host_open_read;
+    r.read_next=host_read_next;
+    r.close_read=host_close;
+    return ds_sha256_verify_stored(&r,leaf,expected_size,digest);
 }
 static int host_publish(void *ctx,const char *part,const char *final) {
     Fixture *f=(Fixture *)ctx;
@@ -192,7 +218,7 @@ int main(void) {
     assert(ds_abort(&s)==DS_OK);
     assert(access(part,F_OK)!=0 && access(final,F_OK)!=0);
 
-    /* Backend fixture verification failure keeps .part, never final. */
+    /* Cryptographic verification failure keeps .part, never final. */
     begin(&s,&port);
     assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
     f.fail_verify=1;
@@ -201,6 +227,54 @@ int main(void) {
     assert(s.state==DS_FAILED && access(part,F_OK)==0);
     assert(access(final,F_OK)!=0);
     assert(ds_abort(&s)==DS_OK && access(part,F_OK)!=0);
+
+    /* One-byte mutation after write is rejected even with same length. */
+    begin(&s,&port);
+    assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
+    int mutation=open(part,O_WRONLY|O_NOFOLLOW);
+    assert(mutation>=0);
+    assert(pwrite(mutation,"X",1u,0)==1);
+    assert(close(mutation)==0);
+    assert(ds_finalize(&s)==DS_VERIFY_FAILED);
+    assert(access(final,F_OK)!=0 && access(part,F_OK)==0);
+    assert(ds_abort(&s)==DS_OK && access(part,F_OK)!=0);
+
+    /* A truncated stored file cannot pass even if the writer counted all
+     * expected bytes. The verifier independently checks the file length. */
+    begin(&s,&port);
+    assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
+    assert(truncate(part,7)==0);
+    assert(ds_finalize(&s)==DS_VERIFY_FAILED);
+    assert(access(final,F_OK)!=0);
+    assert(ds_abort(&s)==DS_OK);
+
+    /* Append an extra byte: stored length differs from expected. */
+    begin(&s,&port);
+    assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
+    mutation=open(part,O_WRONLY|O_NOFOLLOW);
+    assert(mutation>=0);
+    assert(pwrite(mutation,"Z",1u,(off_t)(sizeof PAYLOAD-1u))==1);
+    assert(close(mutation)==0);
+    assert(ds_finalize(&s)==DS_VERIFY_FAILED);
+    assert(access(final,F_OK)!=0);
+    assert(ds_abort(&s)==DS_OK);
+
+    /* A fresh session with an incorrect expected digest must fail. */
+    uint8_t wrong_digest[32]={0};
+    ds_init(&s);
+    assert(ds_begin(&s,&port,CID,"01.09",sizeof PAYLOAD-1u,
+                    wrong_digest)==DS_OK);
+    assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
+    assert(ds_finalize(&s)==DS_VERIFY_FAILED);
+    assert(ds_abort(&s)==DS_OK);
+
+    /* Independent verifier read failure is never mistaken for matching. */
+    begin(&s,&port);
+    assert(ds_write(&s,PAYLOAD,sizeof PAYLOAD-1u)==DS_OK);
+    f.fail_read=1;
+    assert(ds_finalize(&s)==DS_VERIFY_FAILED);
+    f.fail_read=0;
+    assert(ds_abort(&s)==DS_OK);
 
     /* Failed sync is terminal, and the file can be cleaned up. */
     begin(&s,&port);
@@ -237,7 +311,7 @@ int main(void) {
     assert(dlq_received(&q,0,sizeof PAYLOAD-1u)==DLQ_OK);
     assert(dlq_begin_verification(&q,0)==DLQ_OK);
     assert(ds_finalize(&s)==DS_OK);
-    /* Test fixture verifier is not actual SHA; never enable production. */
+    /* Stored-byte SHA-256 is real; PS4 backend/authorization remains off. */
     assert(dlq_finish_verification(&q,0,1)==DLQ_OK);
     assert(dlq_get(&q,0)->state==DLQ_COMPLETED);
     cleanup_path(final);

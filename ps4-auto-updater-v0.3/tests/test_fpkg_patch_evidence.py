@@ -172,6 +172,15 @@ class FpkgPatchEvidenceTests(unittest.TestCase):
         result = self.review(self.root)
         self.assertEqual(result["status"], "NOT_A_REGULAR_FILE")
 
+    def test_fifo_is_rejected_without_blocking(self):
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("Host does not support FIFO fixtures")
+        fifo = self.root / "named-pipe.pkg"
+        os.mkfifo(fifo)
+        result = self.review(fifo)
+        self.assertEqual(result["status"], "NOT_A_REGULAR_FILE")
+        self.safety(result)
+
     def test_file_changed_after_sfo_read_never_trusted(self):
         import fpkg_patch_evidence as module
         original = module.read_pkg_metadata_stream

@@ -22,6 +22,9 @@ DIGEST = hashlib.sha256(DATA).hexdigest()
 
 
 class FixtureServer(BaseHTTPRequestHandler):
+    # Header decoder is intentionally restricted to HTTP/1.1.
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, *unused):
         pass
 

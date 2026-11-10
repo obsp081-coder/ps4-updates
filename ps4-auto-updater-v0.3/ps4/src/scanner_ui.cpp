@@ -8,6 +8,7 @@
 #include "ui_title_layout.h"
 #include "ui_icon_cache.h"
 #include "ui_models.h"
+#include "ui_compatibility.h"
 #include "ui_visual_fx.h"
 #include "ui_arabic_generated.h"
 #ifdef PS4_UI_HOST_TEST
@@ -1084,6 +1085,7 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
         return;
     }
     const ScannerUiEntry *g=&entries[idx];
+    const UiUpdateInfo *first=ui_model_update_for(g->cusa,0);
     /* The approved artwork-first composition: six read-only metadata
      * cards, a visible uncertainty/compatibility banner, candidate rows
      * and three explicit disabled actions. Never infer installed status,
@@ -1125,10 +1127,18 @@ static void details(uint32_t *p,const ScannerUiEntry *entries,
     rect(p,322,548,5,37,AMBER);
     arabic(p,342,542,UI_AR_COMPATIBILITY_UNKNOWN,AMBER);
     arabic(p,625,546,UI_AR_DATA_NOT_PROOF,MUTED);
+    /* The first candidate's known blocking reason can be shown without
+     * implying that the whole game's installation/compatibility is
+     * verified. No extra network work and no new actionable control. */
+    if(first && first->verdict==UI_UPDATE_BLOCKED &&
+       first->compat_blockers) {
+        const uint32_t bit=first->compat_blockers &
+                           (0u-first->compat_blockers);
+        ascii(p,625,583,ui_compat_reason_key(bit),AMBER,1,32);
+    }
 
     arabic(p,303,632,UI_AR_AVAILABLE_UPDATES,CYAN);
     rect(p,288,674,1063,2,0xFF255B8Du);
-    const UiUpdateInfo *first=ui_model_update_for(g->cusa,0);
     if(!first) {
         panel(p,289,691,1062,118,0xFF102D50u);
         rect(p,290,704,5,93,AMBER);

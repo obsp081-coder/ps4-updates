@@ -1,3 +1,34 @@
+## تحديث 10 نوفمبر 2026 — HTTP/1.1 Header Decoder Native وتثبيت بوابة أمان التخزين
+
+**Verdict: MODIFY — Native parser / Host tests / OpenOrbis PASS؛ PS4 Download/Install ما زالا مغلقين.**
+
+**Code SHA:** `8edf524244108de212047fa0b4ea3f363e2a4a31`  
+**Host CI:** **217 / 217 PASS** https://github.com/obsp081-coder/ps4-updates/actions/runs/42810242238  
+**PS4 Package Build:** **PASS** https://github.com/obsp081-coder/ps4-updates/actions/runs/42810234495
+
+### ما أُضيف
+- `ps4/src/download_http_headers.h/.c` Decoder صارم لـ**HTTP/1.1 response header block فقط**، محدود بـ8 KiB، 1024 بايت في كل سطر، و64 حقلًا؛ لا يتعامل مع HTTP body أو HTML ولا يجري اتصال شبكة.
+- يستخرج `Content-Length` و`Content-Range` و`ETag` وأعلام `Transfer-Encoding` و`Content-Encoding` و`Location`. يرفض التكرارات الحساسة، وInteger Overflow، وHeaders غير ASCII أو `obs-fold`، والسطور/البنية غير الصحيحة. إن فشل فلا يعيد حقائق جزئية للمستخدم.
+- ربطه الاختباري بـ`dl_http_review()` يختبر `200` من الصفر و`206` بعد استكمال Range/If-Range مع Strong ETag مطابق، مع رفض اختلاف الإزاحة والطول والبصمة/المصدر.
+- لا يستطيع Header مزور باسم `X-TLS-Authenticated` تفعيل `tls_authenticated`: القيمة تبقى 0 حتى يقدم Adapter موثوق دليل HTTPS حقيقيًا. الاختبارات تستخدم قيمة TLS اصطناعية **للمراجعة فقط**.
+- `tests/ui_mocks/http_headers_smoke.c` و`tests/test_download_http_headers.py` يغطيان Duplicate `Content-Length/Range/ETag`، وMalformed/Truncated Header، وOverflow، وUnsupported Encoding وRedirect، وTLS spoofing. **Host tests: 217/217 ناجحة**.
+- رُبط الـDecoder ببناء OpenOrbis، ولا توجد أي عملية تحميل تلقائي أو تطبيق تحديث نظام PS4، ولا أعمال ملفات على PS4.
+
+### قرار PS4 storage publish — DEFER
+- لا دليل Code/Hardware كافي يثبت No-overwrite atomic publish على FW14. `OpenOrbis/musl` يستخدم مسارات قد تعيد `ENOSYS` لـ `linkat/unlinkat` في بناء PS4، كما أن `sceKernelRename` وحده لا يضمن منع استبدال ملف موجود. الروابط الأولية:
+  - https://github.com/OpenOrbis/musl/blob/master/src/unistd/linkat.c
+  - https://github.com/OpenOrbis/musl/blob/master/src/unistd/unlinkat.c
+  - https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/blob/master/include/orbis/libkernel.h
+- يظل `download_file_backend.c` على `__ORBIS__` مقفلًا عبر `attach()=-1` وCallbacks فارغة. لا نستبدل `linkat` بـ`rename` غير مثبت أمانه.
+
+### ما لم يثبت بعد
+- `HTTP/2` أو `HTTP/1.0` غير مدعومين في هذا الـParser قصدًا؛ وعلى Adapter القادم التعامل مع 1xx/redirect/status/TLS بشكل حاسم. لا ادعاء أن استخدام SHA-256 يُثبت أصل Retail/FPKG.
+- **لا يوجد Native SceHttp/SceSsl Transport فعلي** مع Chain Validation وTimeouts وStreamed body وRange/If-Range واختبار على shadPS4 أو FW14.
+- لا يوجد مصدر مخوّل أو PKG download أو Installer حقيقي، ولا Host Resume End-to-End على 206 بعد فقد الاتصال. لا يُعرض أي تقدم وهمي.
+- الخطوة المقبلة: `TransportAdapter` قادر على طلب الاستجابة الموثوقة وقراءة body تدريجيًا، مع حد صارم للحجم وإعادة تحقق SHA256، واختبار 206/ETag/انقطاع الاتصال باستخدام Fixture محلي؛ تفعيل FW14 على Hardware آخر مرحلة فقط.
+
+---
+
 ## تحديث إضافي 10 نوفمبر 2026 — Host File Backend فعلي وPS4 Fail-closed
 
 **Verdict: MODIFY** — نواة التخزين أصبحت تملك تنفيذًا لعمليات الملفات على Host POSIX فقط؛ ما زال PS4 Backend غير مفعل.

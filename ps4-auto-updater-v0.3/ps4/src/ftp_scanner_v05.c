@@ -52,7 +52,17 @@ typedef int sock_t;
 #define NET_CLOSE close
 #endif
 
+#if defined(PS4_DIAGNOSTIC_ISOLATED)
+/* Never touch the normal app's cache, reports or inventory. */
+#define ROOT "/data/PS4AutoUpdaterProbe"
+#else
 #define ROOT "/data/PS4AutoUpdater"
+#endif
+#if defined(PS4_DIAGNOSTIC_ISOLATED) && \
+    !defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#error "An isolated diagnostic must enable only the explicit header probe"
+#endif
+
 #ifndef MAX_GAMES
 #define MAX_GAMES 256
 #endif

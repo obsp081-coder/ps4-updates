@@ -226,11 +226,27 @@ def main():
     parser.add_argument("--out", type=Path, default=Path("fpkg_review_report.json"))
     args = parser.parse_args()
 
-    def load(path):
-        return json.loads(path.read_text(encoding="utf-8")) if path else None
+    def no_duplicate_keys(pairs):
+        obj = {}
+        for name, value in pairs:
+            if name in obj:
+                raise ValueError("Duplicate FPKG review JSON key")
+            obj[name] = value
+        return obj
 
-    result = review(load(args.inventory), load(args.catalog),
-                    load(args.installed_check), args.firmware)
+    def load(path):
+        if not path:
+            return None
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("FPKG review input exceeds 2 MiB")
+        return json.loads(path.read_text(encoding="utf-8"),
+                          object_pairs_hook=no_duplicate_keys)
+
+    try:
+        result = review(load(args.inventory), load(args.catalog),
+                        load(args.installed_check), args.firmware)
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for item in result["games"]:
         print(f"{item['cusa']} | {item['status']} | {item['fpkg_candidate_version'] or '-'}")

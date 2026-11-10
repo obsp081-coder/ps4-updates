@@ -44,7 +44,7 @@ static int host_create(void *ctx,const char *leaf) {
 static int host_write(void *ctx,const uint8_t *bytes,size_t length) {
     Fixture *f=(Fixture *)ctx;
     if(f->fail_write) {
-        if(length) (void)write(f->fd,bytes,1u);
+        if(length && write(f->fd,bytes,1u)!=1)return -1;
         return -1; /* Simulate partial write followed by I/O error. */
     }
     size_t done=0;

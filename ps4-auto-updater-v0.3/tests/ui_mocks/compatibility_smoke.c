@@ -74,6 +74,20 @@ int main(void) {
     CHECK(forbidden(a));
 
     f = example();
+    f.base_kind = UI_COMPAT_RETAIL;
+    f.patch_kind = UI_COMPAT_RETAIL;
+    a = ui_compat_assess(&f);
+    CHECK(a.decision == UI_COMPAT_BLOCKED);
+    CHECK(a.blockers & UI_COMPAT_RETAIL_UNSUPPORTED);
+    CHECK(forbidden(a));
+
+    f = example();
+    f.patch_kind = UI_COMPAT_RETAIL;
+    a = ui_compat_assess(&f);
+    CHECK(a.blockers & UI_COMPAT_RETAIL_UNSUPPORTED);
+    CHECK(forbidden(a));
+
+    f = example();
     f.patch_version = "00.99";
     a = ui_compat_assess(&f);
     CHECK(a.blockers & UI_COMPAT_NOT_NEWER);
@@ -149,6 +163,8 @@ int main(void) {
 
     CHECK(strcmp(ui_compat_reason_key(UI_COMPAT_KIND_MISMATCH),
                  "RETAIL_FPKG_MISMATCH") == 0);
+    CHECK(strcmp(ui_compat_reason_key(UI_COMPAT_RETAIL_UNSUPPORTED),
+                 "RETAIL_UNSUPPORTED") == 0);
     puts("UI_COMPATIBILITY_HOST_OK");
     return 0;
 }

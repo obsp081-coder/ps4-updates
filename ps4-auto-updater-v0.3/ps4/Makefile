@@ -73,7 +73,7 @@ $(INTDIR)/download_storage.o: src/download_storage.c src/download_storage.h | $(
 
 # Portable cryptographic checksum with no OS or FS APIs.
 $(INTDIR)/download_sha256.o: src/download_sha256.c src/download_sha256.h | $(INTDIR)
-	$(CC) $(CFLAGS) -o $@
+	$(CC) $(CFLAGS) -o $@ $<
 
 $(INTDIR)/ui_navigation.o: src/ui_navigation.c src/ui_navigation.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<

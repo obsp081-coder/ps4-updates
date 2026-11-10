@@ -70,10 +70,13 @@ def _source(value):
 def ingest(document):
     """Produce a candidate catalog, never installation approval."""
 
-    if not isinstance(document, dict) or document.get("schema") != 1:
+    if (not isinstance(document, dict)
+            or type(document.get("schema")) is not int
+            or document["schema"] != 1):
         raise ValueError("input schema must be 1")
 
-    if document.get("fixture_only") is True:
+    if ("fixture_only" in document
+            and document["fixture_only"] is not False):
         raise ValueError(
             "demo fixtures cannot enter the candidate catalog"
         )
@@ -93,7 +96,7 @@ def ingest(document):
             if not isinstance(entry, dict):
                 raise ValueError("entry must be an object")
 
-            if entry.get("demo_only") is True:
+            if "demo_only" in entry and entry["demo_only"] is not False:
                 raise ValueError("demo entry rejected")
 
             if any(key in entry for key in (
@@ -101,9 +104,19 @@ def ingest(document):
                 "pkg_url",
                 "install_command",
                 "auto_install",
+                "download_allowed",
+                "install_allowed",
+                "download_enabled",
+                "install_enabled",
+                "rights_verified",
+                "source_authorized",
+                "compatibility_confirmed",
+                "fpkg_compatibility_confirmed",
+                "package_file",
+                "local_pkg_path",
             )):
                 raise ValueError(
-                    "direct download/install fields forbidden"
+                    "catalog cannot claim download/install authorization"
                 )
 
             cusa = entry.get("cusa")
@@ -205,6 +218,15 @@ def ingest(document):
     }
 
 
+
+def _no_duplicate_keys(pairs):
+    out = {}
+    for key, val in pairs:
+        if key in out:
+            raise ValueError("Duplicate catalog JSON key: " + key)
+        out[key] = val
+    return out
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__
@@ -229,7 +251,8 @@ def main():
     document = json.loads(
         args.submissions.read_text(
             encoding="utf-8"
-        )
+        ),
+        object_pairs_hook=_no_duplicate_keys
     )
 
     try:

@@ -47,6 +47,7 @@ static int complete_port(const DtPort *p) {
     return p && p->open_headers && p->read_body &&
            p->abort_request && p->close_request;
 }
+#endif /* !__ORBIS__ */
 
 static DtResult stop(DtSession *s, DtResult reason) {
     if (!s || !s->active) return reason;
@@ -55,7 +56,6 @@ static DtResult stop(DtSession *s, DtResult reason) {
     s->stopped = 1u;
     return closed == 0 ? reason : DT_CLOSE_FAILED;
 }
-#endif
 
 void dt_init(DtSession *s) {
     if (s) memset(s, 0, sizeof *s);

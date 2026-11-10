@@ -59,6 +59,7 @@ typedef struct DsPort {
     int (*flush)(void *);
     int (*close)(void *);
     int (*verify_sha256)(void *,const char *part_leaf,
+                         uint64_t expected_size,
                          const uint8_t expected_digest[32]);
     int (*publish_exclusive)(void *,const char *part_leaf,
                              const char *final_leaf);

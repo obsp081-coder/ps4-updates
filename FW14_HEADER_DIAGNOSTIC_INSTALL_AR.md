@@ -19,7 +19,16 @@
 6. انسخ PKG إلى USB وثبّتها باستخدام مسار Homebrew/Package Installer الذي سبق التأكد من عمله على GoldHEN لديك. **لا تستخدم System Firmware Update**، ولا تُزل أو تستبدل أي تطبيق حالي.
 7. شغّل `PS4 FPKG Header Probe - Read Only` وتحقق أن البرنامج يخرج إلى القائمة دون Crash. عند ظهور CE-34878-0 أو تجمد، توقف؛ لا تعيد محاولة تثبيت تحديث أو تغيير GoldHEN بسبب الفحص.
 
-ملاحظة: إذا لم يظهر خيار Run workflow لهذا الفرع، فهذا مرتبط بوجود Workflow على الفرع الافتراضي وحقوق Actions. لا تدمج Draft PR أو تغيّر إصدار Main فقط لتمكينه؛ يجب تشغيل CI يدويًا بطريقة متاحة ومصرح بها أولًا.
+ملاحظة: إذا ظهر Run workflow لكن لم يظهر خيار `fw14_header_probe_pkg` بسبب اعتماد واجهة GitHub على Workflow الموجود في `main`، **لا تختَر Run بدون الخيار**: سيُبنى التطبيق العادي فقط، ولن يُرفع Artifact التشخيصي. بديل من GitHub CLI بعد تسجيل دخولك:
+
+```sh
+gh workflow run ps4-build.yml \
+  --repo obsp081-coder/ps4-updates \
+  --ref fix/scanner-cid-and-inventory-capacity \
+  -f fw14_header_probe_pkg=true
+```
+
+ثم افتح التشغيل الناتج في GitHub Actions وحمّل Artifact بعد نجاحه. هذا يطلب **بناءًا جديدًا** وليس اختبارًا تلقائيًا على PS4. لا تدمج Draft PR أو تغيّر إصدار Main فقط لتفعيل خيار الاختبار.
 
 ## ما الذي ترسله من الجهاز؟
 باستخدام خدمة GoldHEN FTP الموجودة عندك، **انسخ للقراءة فقط**:

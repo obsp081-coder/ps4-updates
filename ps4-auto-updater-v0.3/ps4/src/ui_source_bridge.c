@@ -36,8 +36,10 @@ static int version_ok(const char *s) {
     }
     return 0;
 }
-int ui_source_publish_candidates(const UiSourceCandidate *rows,unsigned count) {
-    if(count>UI_MODEL_MAX_UPDATES||(count&&!rows))return -1;
+static int publish(const UiSourceCandidate *rows,const UiCompatFacts *facts,
+                   unsigned count,int reviewed) {
+    if(count>UI_MODEL_MAX_UPDATES||(count&&!rows)||
+       (reviewed&&count&&!facts))return -1;
     /* A native Host regression compiles this .c under C++17 as well.
      * memset is portable across C and C++, including -Werror builds. */
     UiUpdateInfo stage[UI_MODEL_MAX_UPDATES];
@@ -55,6 +57,22 @@ int ui_source_publish_candidates(const UiSourceCandidate *rows,unsigned count) {
                sizeof stage[i].content_id);
         stage[i].source_kind=source->source_kind;
         stage[i].verdict=UI_UPDATE_UNKNOWN;
+        if(reviewed) {
+            const UiCompatFacts *f=&facts[i];
+            /* Identity binding must be exact; never let an assessment
+             * about one candidate label another candidate as BLOCKED. */
+            if(!f->patch_cusa||!f->patch_content_id||!f->patch_version||
+               strcmp(f->patch_cusa,source->cusa)||
+               strcmp(f->patch_content_id,source->content_id)||
+               strcmp(f->patch_version,source->version))return -4;
+            const UiCompatAssessment a=ui_compat_assess(f);
+            stage[i].compat_blockers=a.blockers;
+            stage[i].compat_unknowns=a.unknowns;
+            /* REVIEW_ONLY is not verified compatibility. Never promote
+             * it to UI_UPDATE_VERIFIED or enable download/install. */
+            if(a.decision==UI_COMPAT_BLOCKED)
+                stage[i].verdict=UI_UPDATE_BLOCKED;
+        }
         /* Claims from HTTP/XML and user FPKG submissions do not prove
          * size or min FW. Never copy unverified numbers into native UI. */
         stage[i].size_bytes=0u;
@@ -66,4 +84,13 @@ int ui_source_publish_candidates(const UiSourceCandidate *rows,unsigned count) {
         }
     }
     return ui_model_set_updates(stage,count);
+}
+
+/* Legacy candidates without independently reviewed base facts remain unknown. */
+int ui_source_publish_candidates(const UiSourceCandidate *rows,unsigned count) {
+    return publish(rows,NULL,count,0);
+}
+int ui_source_publish_reviews(const UiSourceCandidate *rows,
+                              const UiCompatFacts *facts,unsigned count) {
+    return publish(rows,facts,count,1);
 }

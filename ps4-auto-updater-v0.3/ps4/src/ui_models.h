@@ -26,6 +26,11 @@ typedef struct UiUpdateInfo {
     UiUpdateVerdict verdict;
     UiUpdateSourceKind source_kind;
     char content_id[37];
+    /* Candidate-only explanation. No bitmask ever authorizes an action.
+     * Blockers are mutually exclusive with UNKNOWN verdict; missing proof
+     * is retained in unknowns for audit/Details. */
+    uint32_t compat_blockers;
+    uint32_t compat_unknowns;
 } UiUpdateInfo;
 typedef enum UiJobStatus {
     UI_JOB_QUEUED=0,

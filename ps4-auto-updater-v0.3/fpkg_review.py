@@ -18,6 +18,9 @@ from catalog_ingest import _source
 CUSA = re.compile(r"CUSA\d{5}\Z")
 CONTENT_ID = re.compile(r"[A-Z]{2}\d{4}-(CUSA\d{5})_\d{2}-[A-Z0-9]{16}\Z")
 VERSION = re.compile(r"\d{1,4}\.\d{1,4}\Z")
+MAX_INVENTORY_GAMES = 1024
+MAX_CATALOG_UPDATES = 1000
+BASE_CATEGORIES = frozenset(("gd", "gdO", "gdo"))
 
 # Consumer-owned access control; untrusted metadata must not carry actions.
 FORBIDDEN_ACTION_FIELDS = frozenset((
@@ -44,27 +47,32 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
     current_fw = version(firmware)
     if current_fw is None:
         raise ValueError("Firmware must look like 14.00")
-    if not isinstance(inventory, dict) or not isinstance(inventory.get("games"), list):
-        raise ValueError("Inventory must have a games list")
+    if (not isinstance(inventory, dict)
+            or not isinstance(inventory.get("games"), list)
+            or len(inventory["games"]) > MAX_INVENTORY_GAMES):
+        raise ValueError("Inventory must have at most 1024 games")
 
     if catalog is None:
         catalog = {"schema": 1, "status": "UNVERIFIED_METADATA_ONLY",
-                   "auto_install": False, "compatibility_confirmed": False,
-                   "updates": []}
+                   "fixture_only": False, "auto_install": False,
+                   "compatibility_confirmed": False, "updates": []}
     if (not isinstance(catalog, dict)
-            or catalog.get("schema") != 1
+            or type(catalog.get("schema")) is not int
+            or catalog["schema"] != 1
             or catalog.get("status") != "UNVERIFIED_METADATA_ONLY"
-            or catalog.get("fixture_only") is True
+            or catalog.get("fixture_only") is not False
             or catalog.get("auto_install") is not False
             or catalog.get("compatibility_confirmed") is not False
-            or not isinstance(catalog.get("updates"), list)):
+            or not isinstance(catalog.get("updates"), list)
+            or len(catalog["updates"]) > MAX_CATALOG_UPDATES):
         raise ValueError("Catalog must be normalized, non-demo, unverified FPKG metadata")
     _reject_action_claims(catalog)
 
     reports = {}
     if installed_check is not None:
         if (not isinstance(installed_check, dict)
-                or not isinstance(installed_check.get("games"), list)):
+                or not isinstance(installed_check.get("games"), list)
+                or len(installed_check["games"]) > MAX_INVENTORY_GAMES):
             raise ValueError("Installed-check report must have a games list")
         for item in installed_check["games"]:
             if not isinstance(item, dict):
@@ -106,8 +114,7 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
         base_cid = game.get("content_id")
         match = CONTENT_ID.fullmatch(base_cid) if isinstance(base_cid, str) else None
         if (not isinstance(ident, str) or not CUSA.fullmatch(ident)
-                or not match or match.group(1) != ident
-                or version(base_version) is None or ident in seen):
+                or ident in seen):
             raise ValueError("Invalid or duplicate game in inventory")
         seen.add(ident)
 
@@ -133,6 +140,32 @@ def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
         if game.get("package_kind") != "fpkg":
             row["status"] = "BASE_PACKAGE_KIND_UNCONFIRMED"
             continue
+
+        # The native FTP scanner correctly allows a structurally valid base
+        # SFO with missing CONTENT_ID or APP_VER. Such a game's update
+        # must be denied INDIVIDUALLY, not abort the entire inventory.
+        # An invalid nonempty Content ID is distinct from an unknown one.
+        category = game.get("category")
+        if category is not None and category not in BASE_CATEGORIES:
+            row["status"] = ("BASE_CATEGORY_UNCONFIRMED"
+                             if category == "" else "NOT_A_BASE_GAME")
+            continue
+        if base_cid is None or base_cid == "":
+            row["status"] = "BASE_CONTENT_ID_UNCONFIRMED"
+            continue
+        if match is None:
+            row["status"] = "BASE_CONTENT_ID_INVALID"
+            continue
+        if match.group(1) != ident:
+            row["status"] = "BASE_CONTENT_ID_CONFLICT"
+            continue
+        if base_version is None or base_version == "":
+            row["status"] = "BASE_VERSION_UNCONFIRMED"
+            continue
+        if version(base_version) is None:
+            row["status"] = "BASE_VERSION_INVALID"
+            continue
+
         candidates = updates.get(ident, [])
         if not candidates:
             continue

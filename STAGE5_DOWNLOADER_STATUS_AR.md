@@ -1,3 +1,21 @@
+## تحديث 10 نوفمبر 2026 — StorageAdapter Native بلا صلاحيات كتابة على PS4
+
+**Verdict: MODIFY — نجح كود إدارة ملفات النقل على Host، ولم يُفعّل على PS4.**
+
+- **Code**: `ps4/src/download_storage.h/.c` يعرّف `DsSession` و`DsPort`، وهي طبقة C99 محمولة للتمييز بين `.part` والملف النهائي. تُبنى مع OpenOrbis لاختبار التوافق فقط؛ لا يوجد `PS4 filesystem backend` في التطبيق بعد.
+- تقبل فقط `Content ID` و`Version` صالحين لتوليد اسم ملف آمن دون Slash أو Path Traversal. سقف كتلة الكتابة الواحدة **64 KiB**. كتابة حجم زائد أو نشر ملف غير مكتمل مرفوضة.
+- تعتمد على **Backend موثوق منفصل** لينفّذ `create_exclusive` و`write_all` و`flush` و`close` والتحقق من SHA-256 الفعلي للملف المخزن و`publish_exclusive` و`unlink_part`. كود Native لا يحتوي حتى الآن Backend PS4 حقيقيًا ولا خوارزمية SHA-256 محمولة.
+- لا يعتبر وصول آخر بايت نجاحًا؛ المسار الإجباري: **Full size → fsync/close → verify stored file → publish without overwrite → cleanup owned partial**. فشل أي خطوة يُبقي الحالة غير معتمدة ويحفظ الملف النهائي السابق دون تغييره.
+- لا يحذف `.part` أقدم منه عند فشل `create_exclusive`. الفشل في تنظيف ملفه الجزئي بعد نشر الملف النهائي يترك حالة `PUBLISHED + cleanup_pending` قابلة لتنظيف الجزئي فقط، دون حذف النهائي.
+- **Host backend في `tests/ui_mocks/storage_smoke.c` تجريبي POSIX**: يكتب بايتات حقيقية في مجلد مؤقت، ويرفض الاستبدال، ويختبر حالات فشل الكتابة و`fsync` و`publish` و`cleanup`، مع اختبار عدّ بايتات `Download Queue`. **مهم:** دالة `verify_sha256` في هذا الاختبار تعتمد مقارنة محتوى Fixture المعروف وToken تجريبي، **وليست تطبيقًا حقيقيًا لـSHA-256**. اختبار SHA-256 الحقيقي السابق منفصل في Python Host harness ولا يثبت Native PS4.
+- **Host CI على Code SHA `943d33ebb4095fa451c0346f9c9d362260bf9257`: 213/213 PASS** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42792501024
+- **OpenOrbis CI على SHA نفسه: PASS (Compile + PKG header verification)** — https://github.com/obsp081-coder/ps4-updates/actions/runs/42792500963
+- **لا Release رسمي جديد، ولا تم تفعيل Download/Install**. حزمة Preview تبقى Read Only. دعم `open/O_EXCL/fsync/link` على FW14، مسار تخزين التطبيق والصلاحيات، وBackend SHA-256 الحقيقي **Unverified**.
+
+**التالي:** Native File Backend آمن خاص بمجلد التطبيق بعد فحص دعم APIs والحدود، ومحقق SHA-256 فعلي، ثم HTTP/TLS Adapter موثوق وربط Queue ببايتات النقل الحقيقية. تعاد اختبارات Host وshadPS4 عند الحاجة؛ **اختبارات PS4 الحقيقي آخر مرحلة بناءً على طلب المستخدم**، وتظل أزرار التنزيل/التثبيت غير مفعلة قبلها.
+
+---
+
 ## تحديث إضافي — Native HTTP Response Safety Policy
 
 **تغيير Code:** `3970da3e9183fe4698d652ba806e7f957d7718a0` — أضيفت الوحدة `ps4/src/download_http_policy.h/.c` إلى Native PS4 Build و`tests/ui_mocks/http_policy_smoke.c` و`tests/test_download_http_policy.py`.

@@ -119,7 +119,7 @@ int main(void) {
     assert(dt_begin(&s, &p, &request) == DT_OK);
     assert(dt_read(&s, bytes, 8u, &got) == DT_OK && got == 3u);
     assert(dt_read(&s, bytes, 8u, &got) == DT_INCOMPLETE);
-    assert(dt_cancel(&s) == DT_OK && f.aborts == 1u && f.closes == 1u);
+    assert(dt_cancel(&s) == DT_INVALID && f.closes == 1u);
 
     f = fixture(OK); f.size = 7u;
     static const unsigned char EXTRA[] = "abcdefX";
@@ -128,7 +128,7 @@ int main(void) {
     assert(dt_begin(&s, &p, &request) == DT_OK);
     assert(dt_read(&s, bytes, 6u, &got) == DT_OK);
     assert(dt_finish(&s) == DT_EXTRA_DATA);
-    assert(dt_cancel(&s) == DT_OK);
+    assert(f.closes == 1u && dt_cancel(&s) == DT_INVALID);
 
     request.resume_offset = 3u;
     request.strong_etag = "\"source-v1\"";

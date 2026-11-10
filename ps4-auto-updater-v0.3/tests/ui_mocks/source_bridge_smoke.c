@@ -13,8 +13,9 @@ static UiSourceCandidate row(UiUpdateSourceKind kind){
 }
 int main(void){
     ui_model_reset();
-    UiSourceCandidate a[2]={row(UI_SOURCE_RETAIL_HTTP),
+    UiSourceCandidate a[2]={row(UI_SOURCE_FPKG_SUBMITTED),
                             row(UI_SOURCE_FPKG_SUBMITTED)};
+    strcpy(a[1].version,"01.10");
     assert(ui_source_publish_candidates(a,2)==0);
     assert(ui_model_update_count()==2);
     assert(ui_model_download_count()==0);
@@ -42,8 +43,8 @@ int main(void){
         review[i].minimum_firmware="09.00";
         review[i].patch_size_bytes=1024;
         review[i].installed=UI_COMPAT_INSTALL_YES;
-        review[i].base_kind=i?UI_COMPAT_FPKG:UI_COMPAT_RETAIL;
-        review[i].patch_kind=i?UI_COMPAT_FPKG:UI_COMPAT_RETAIL;
+        review[i].base_kind=UI_COMPAT_FPKG;
+        review[i].patch_kind=UI_COMPAT_FPKG;
         review[i].base_metadata_verified=1;
         review[i].identity_binding_verified=1;
         review[i].source_authorized=1;
@@ -92,6 +93,12 @@ int main(void){
     assert(ui_source_publish_candidates(a,2)<0);
     a[1]=row(UI_SOURCE_RETAIL_HTTP);
     assert(ui_source_publish_candidates(a,2)<0);
+    assert(ui_model_update_count()==2);
+    a[0]=row(UI_SOURCE_RETAIL_HTTP);
+    a[1]=row(UI_SOURCE_FPKG_SUBMITTED);
+    strcpy(a[1].version,"01.10");
+    assert(ui_source_publish_candidates(a,2)<0);
+    a[0]=row(UI_SOURCE_FPKG_SUBMITTED);
     a[1]=row(UI_SOURCE_FPKG_SUBMITTED);
     strcpy(a[1].version,"01.99999");
     assert(ui_source_publish_candidates(a,2)<0);

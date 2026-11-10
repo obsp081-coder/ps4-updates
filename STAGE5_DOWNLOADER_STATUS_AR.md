@@ -1,3 +1,36 @@
+## تحديث 10 نوفمبر 2026 — SceHttp/SceSsl Code Audit + Timeout/Cancel Host Gate
+
+**Verdict: MODIFY — إضافات Native C مع اختبارات Host، وNative PS4 HTTPS يبقى DEFER/Disabled.**
+
+**Code SHA:** 037246bfc1690b5cf86855a84ceb06663b003132
+**Host CI:** 256/256 PASS — https://github.com/obsp081-coder/ps4-updates/actions/runs/42838374516
+**OpenOrbis:** PC Simulation PASS وBuild PS4 Package PASS على نفس Code SHA — https://github.com/obsp081-coder/ps4-updates/actions/runs/42838374364
+**مراجعة المصدر:** PS4_HTTPS_NATIVE_AUDIT_2026-11-10_AR.md
+
+### ما تم تغييره
+
+- **download_transport.h/.c:** أضفنا رمز Adapter داخلي DT_PORT_TIMED_OUT وحالات DT_TIMED_OUT وDT_ABORT_FAILED. الآن يميز dt_begin وdt_read وdt_finish فشل Timeout عن خطأ الاتصال العام، ويغلق جلسة النقل بدل إكمالها. كما يفصل dt_cancel فشل abort عن فشل close ويمنع أي استخدام للجلسة بعد توقفها. رموز Callback ليست PS4 SDK Error Codes؛ يجب على أي Backend تصنيف الخطأ الحقيقي قبل إرجاعها.
+- **tests/ui_mocks/transport_policy_smoke.c:** اختبارات موثقة للTimeout في open وBody وEOF؛ وفشل abort وclose؛ والإلغاء الناجح؛ والتأكد من منع استخدام الجلسة بعد الإغلاق.
+- **tests/test_download_https_verified.py:** تجربة TLS محلية حقيقية مع شهادة CA اختبارية وHostname Validation، بالإضافة إلى Slow Headers وSlow Body وSocket Timeout فعلي، ثم توصيل error code إلى محرك Native C عبر ctypes. لا Network خارجي أو ملفات PKG.
+- **النتيجة:** 256/256 Host Tests PASS، وOpenOrbis compile/link+PKG header check PASS. النجاح على الكمبيوتر أو المحاكي لا يثبت SceSsl/FW14.
+
+### نتائج تدقيق OpenOrbis/shadPS4
+
+- OpenOrbis net_http يعيد HTTP_SUCCESS في skipSslCallback دون رفض verifyErr، فلا يصح نسخه.
+- shadPS4 libSceHttp الحالي يعرّف sceHttpsSetSslCallback كـSTUBBED، ويسمح بتجاوز Certificate Verification عند استعمال custom CA contexts؛ لذلك لا يصلح اختبار shadPS4 لإثبات TLS Certificate Trust على PS4 الحقيقي.
+- شملت المراجعة Header declarations لـsceHttpsEnableOption وsceHttpAbortRequest وTimeout/Redirect. بعض API declarations في OpenOrbis غير مكتملة المعاملات، خاصة sceHttpSetRecvTimeOut وsceHttpSetAutoRedirect. لا نحدد ABI أو SSL Flag Values لFirmware 14.00 بالاعتماد على Emulator.
+- شاهد تقرير PS4_HTTPS_NATIVE_AUDIT_2026-11-10_AR.md للمصفوفة والأدلة: https://github.com/obsp081-coder/ps4-updates/blob/fix/scanner-cid-and-inventory-capacity/PS4_HTTPS_NATIVE_AUDIT_2026-11-10_AR.md
+
+### بوابات الأمان التالية
+
+- **لا يوجد Native SceHttp/SceSsl Adapter موثوق على FW14**؛ تبقى dt_begin تحت __ORBIS__ معطلة بإرجاع DT_UNAVAILABLE ولا يتم استدعاء أي Socket/Callback من التطبيق.
+- **No-overwrite PS4 Storage + حقوق المصدر + Retail/FPKG Compatibility + Installer** ما زالت غير مثبتة.
+- اختبار PS4 Hardware مؤجل للنهاية حسب الاتفاق. لا Merge لـPR #1 ولا Release نهائي.
+
+**Next:** فصل Native SceSsl API Evidence عن إجراءات التشغيل؛ إثبات Chain/Hostname/Timeout/Redirect/Cancel/Resource Lifetime على FW14 بواسطة Diagnostic آمنة Read Only عند توفر الجهاز، مع الاستمرار في اختبارات Host المستقلة دون تخطي بوابات Download أو Install.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — HTTPS Verified Host Fixture مع Native C Transport Policy
 
 **Verdict: MODIFY — إثبات TLS حقيقي على Host فقط، وبقاء PS4 Native Downloader مغلقًا.**

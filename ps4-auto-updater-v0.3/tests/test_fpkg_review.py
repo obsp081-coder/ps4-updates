@@ -258,12 +258,84 @@ class FpkgReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
-    def test_invalid_comparison_is_rejected(self):
-        self.inventory["games"][0][
-            "app_ver"
-        ] = "invalid"
+    def test_invalid_comparison_is_rejected_for_only_that_game(self):
+        self.inventory["games"][0]["app_ver"] = "invalid"
+        report = self.check()
+        self.assertEqual(report["games"][0]["status"], "BASE_VERSION_INVALID")
+        self.assertFalse(report["download_enabled"])
+        self.assertFalse(report["install_enabled"])
+
+    def test_incomplete_native_inventory_does_not_discard_other_games(self):
+        valid = dict(self.inventory["games"][0], category="gd")
+        incomplete = dict(valid, cusa="CUSA00001", content_id="",
+                          app_ver="", name="Missing SFO fields")
+        unknown = dict(valid, cusa="CUSA00002",
+                       content_id="EP9000-CUSA00002_00-TEST000000000000",
+                       app_ver="01.00", package_kind="unknown")
+        self.inventory = {"schema": 6, "metadata_only": True,
+                          "scan_complete": False,
+                          "download_enabled": False,
+                          "install_enabled": False,
+                          "games": [incomplete, valid, unknown]}
+        report = self.check()
+        self.assertEqual([row["status"] for row in report["games"]], [
+            "BASE_CONTENT_ID_UNCONFIRMED",
+            "MANUAL_REVIEW_REQUIRED",
+            "BASE_PACKAGE_KIND_UNCONFIRMED",
+        ])
+        self.assertFalse(report["install_enabled"])
+        self.assertFalse(report["download_enabled"])
+
+    def test_known_invalid_base_identity_is_blocked_not_ignored(self):
+        for cid, status in (
+            (None, "BASE_CONTENT_ID_UNCONFIRMED"),
+            ("", "BASE_CONTENT_ID_UNCONFIRMED"),
+            ("bad", "BASE_CONTENT_ID_INVALID"),
+            ("EP9000-CUSA00001_00-TEST000000000000",
+             "BASE_CONTENT_ID_CONFLICT"),
+        ):
+            with self.subTest(cid=cid):
+                self.inventory["games"][0]["content_id"] = cid
+                self.assertEqual(self.status(), status)
+
+    def test_missing_or_invalid_version_is_blocked(self):
+        for app_ver, status in (
+            (None, "BASE_VERSION_UNCONFIRMED"),
+            ("", "BASE_VERSION_UNCONFIRMED"),
+            ("01.xx", "BASE_VERSION_INVALID"),
+        ):
+            with self.subTest(app_ver=app_ver):
+                self.inventory["games"][0]["app_ver"] = app_ver
+                self.assertEqual(self.status(), status)
+
+    def test_native_patch_or_dlc_category_cannot_pose_as_base(self):
+        for category, status in (
+            ("gp", "NOT_A_BASE_GAME"),
+            ("ac", "NOT_A_BASE_GAME"),
+            ("", "BASE_CATEGORY_UNCONFIRMED"),
+        ):
+            with self.subTest(category=category):
+                self.inventory["games"][0]["category"] = category
+                self.assertEqual(self.status(), status)
+
+    def test_false_schema_bool_and_missing_fixture_flag_rejected(self):
+        catalog = self.catalog()
+        catalog["schema"] = True
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+        catalog = self.catalog()
+        del catalog["fixture_only"]
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_bounded_inventory_and_install_reports(self):
+        over = [dict(self.inventory["games"][0])] * 1025
+        with self.assertRaises(ValueError):
+            review({"games": over})
+        self.installed["games"] = [{"cusa": CUSA, "installed": True}] * 1025
         with self.assertRaises(ValueError):
             self.check()
+
 
     def test_cli_writes_report_without_altering_inputs(self):
         with tempfile.TemporaryDirectory() as temp:

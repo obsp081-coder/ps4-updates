@@ -72,44 +72,53 @@ def parse_sfo(data):
 
 
 def read_pkg_metadata(path):
-    """Read just the header, entry table and bounded plaintext param.sfo."""
+    """Read PS4 PKG metadata via an ordinary read-only local file path."""
     with Path(path).open("rb") as stream:
-        stream.seek(0, 2)
-        total_size = stream.tell()
-        stream.seek(0)
-        header = stream.read(0x80)
-        if len(header) < 0x80 or header[:4] != PKG_MAGIC:
-            raise ValueError("Not a recognizable PS4 PKG header")
-        entry_count = struct.unpack_from(">I", header, 0x10)[0]
-        table_at = struct.unpack_from(">I", header, 0x18)[0]
-        raw_id = header[0x40:0x64].partition(b"\0")[0]
-        try:
-            header_id = raw_id.decode("ascii")
-        except UnicodeDecodeError as error:
-            raise ValueError("Non-ASCII PKG content ID") from error
-        if not CONTENT_ID.fullmatch(header_id):
-            raise ValueError("Malformed PKG content ID")
-        if not (0 < entry_count <= MAX_ENTRIES and
-                0x80 <= table_at <= total_size and
-                entry_count * 32 <= total_size - table_at):
-            raise ValueError("Invalid PKG file table bounds")
+        return read_pkg_metadata_stream(stream)
 
-        stream.seek(table_at)
-        table = stream.read(entry_count * 32)
-        matches = []
-        for index in range(entry_count):
-            entry_id, _filename_off, flags1, _flags2, pos, size, _pad = \
-                struct.unpack_from(">IIIIIIQ", table, index * 32)
-            if entry_id == 0x1000:
-                matches.append((flags1, pos, size))
-        if len(matches) != 1:
-            raise ValueError("Expected exactly one param.sfo entry")
-        flags1, pos, size = matches[0]
-        if not (0 < size <= MAX_SFO and pos <= total_size and
-                size <= total_size - pos):
-            raise ValueError("Invalid param.sfo bounds")
-        stream.seek(pos)
-        sfo = parse_sfo(stream.read(size))
+
+def read_pkg_metadata_stream(stream):
+    """Inspect the already-open seekable PKG file: no new path lookup.
+
+    This is needed when a caller holds a no-follow regular-file descriptor
+    for metadata+SHA-256 review. Header/SFO do not prove signed/FPKG status.
+    """
+    stream.seek(0, 2)
+    total_size = stream.tell()
+    stream.seek(0)
+    header = stream.read(0x80)
+    if len(header) < 0x80 or header[:4] != PKG_MAGIC:
+        raise ValueError("Not a recognizable PS4 PKG header")
+    entry_count = struct.unpack_from(">I", header, 0x10)[0]
+    table_at = struct.unpack_from(">I", header, 0x18)[0]
+    raw_id = header[0x40:0x64].partition(b"\0")[0]
+    try:
+        header_id = raw_id.decode("ascii")
+    except UnicodeDecodeError as error:
+        raise ValueError("Non-ASCII PKG content ID") from error
+    if not CONTENT_ID.fullmatch(header_id):
+        raise ValueError("Malformed PKG content ID")
+    if not (0 < entry_count <= MAX_ENTRIES and
+            0x80 <= table_at <= total_size and
+            entry_count * 32 <= total_size - table_at):
+        raise ValueError("Invalid PKG file table bounds")
+
+    stream.seek(table_at)
+    table = stream.read(entry_count * 32)
+    matches = []
+    for index in range(entry_count):
+        entry_id, _filename_off, flags1, _flags2, pos, size, _pad = \
+            struct.unpack_from(">IIIIIIQ", table, index * 32)
+        if entry_id == 0x1000:
+            matches.append((flags1, pos, size))
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one param.sfo entry")
+    flags1, pos, size = matches[0]
+    if not (0 < size <= MAX_SFO and pos <= total_size and
+            size <= total_size - pos):
+        raise ValueError("Invalid param.sfo bounds")
+    stream.seek(pos)
+    sfo = parse_sfo(stream.read(size))
 
     sfo_id = sfo.get("CONTENT_ID")
     category = sfo.get("CATEGORY")
@@ -122,7 +131,7 @@ def read_pkg_metadata(path):
         "title": sfo.get("TITLE"),
         "category": category,
         "package_kind_from_category": (
-            "update" if category in ("gp", "gdp") else
+            "update" if category == "gp" else
             "base_game" if category in ("gd", "gda", "gdo") else
             "dlc" if category == "ac" else "unknown"
         ),

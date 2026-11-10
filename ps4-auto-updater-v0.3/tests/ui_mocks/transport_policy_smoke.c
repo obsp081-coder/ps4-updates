@@ -11,6 +11,7 @@ typedef struct Fixture {
     unsigned chain, hostname, range, if_range;
     unsigned opens, aborts, closes;
     int open_result;
+    int read_result, abort_result, close_result;
 } Fixture;
 
 static int open_mock(void *arg, const DtRequest *r, char *dst, size_t cap,
@@ -31,6 +32,7 @@ static int open_mock(void *arg, const DtRequest *r, char *dst, size_t cap,
 }
 static int read_mock(void *arg, uint8_t *dst, size_t cap, size_t *got) {
     Fixture *f = (Fixture *)arg;
+    if (f->read_result) return f->read_result;
     const size_t left = f->size - f->offset;
     *got = cap < left ? cap : left;
     if (*got) memcpy(dst, f->data + f->offset, *got);
@@ -38,12 +40,14 @@ static int read_mock(void *arg, uint8_t *dst, size_t cap, size_t *got) {
     return 0;
 }
 static int abort_mock(void *arg) {
-    ((Fixture *)arg)->aborts++;
-    return 0;
+    Fixture *f = (Fixture *)arg;
+    f->aborts++;
+    return f->abort_result;
 }
 static int close_mock(void *arg) {
-    ((Fixture *)arg)->closes++;
-    return 0;
+    Fixture *f = (Fixture *)arg;
+    f->closes++;
+    return f->close_result;
 }
 static const char *OK =
     "HTTP/1.1 200 OK\r\nContent-Length: 6\r\n"
@@ -111,6 +115,11 @@ int main(void) {
     assert(dt_begin(&s, &p, &request) == DT_CONNECT_FAILED);
     assert(f.opens == 1u && f.closes == 1u);
 
+    f = fixture(OK); f.open_result = DT_PORT_TIMED_OUT;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_TIMED_OUT);
+    assert(f.opens == 1u && f.closes == 1u);
+
     f = fixture(OK); f.chain = 0u;
     p = port(&f); dt_init(&s);
     assert(dt_begin(&s, &p, &request) == DT_TLS_UNVERIFIED);
@@ -131,6 +140,40 @@ int main(void) {
     assert(dt_read(&s, bytes, 8u, &got) == DT_OK && got == 3u);
     assert(dt_read(&s, bytes, 8u, &got) == DT_INCOMPLETE);
     assert(dt_cancel(&s) == DT_INVALID && f.closes == 1u);
+
+    /* Timeouts are backend facts. Policy closes and never claims success. */
+    f = fixture(OK); f.read_result = DT_PORT_TIMED_OUT;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_OK);
+    assert(dt_read(&s, bytes, 6u, &got) == DT_TIMED_OUT);
+    assert(f.closes == 1u && s.stopped == 1u);
+    assert(dt_read(&s, bytes, 6u, &got) == DT_INVALID);
+
+    f = fixture(OK);
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_OK);
+    assert(dt_read(&s, bytes, 6u, &got) == DT_OK);
+    f.read_result = DT_PORT_TIMED_OUT;
+    assert(dt_finish(&s) == DT_TIMED_OUT && f.closes == 1u);
+
+    f = fixture(OK); f.abort_result = -1;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_OK);
+    assert(dt_cancel(&s) == DT_ABORT_FAILED);
+    assert(f.aborts == 1u && f.closes == 1u && s.stopped == 1u);
+
+    f = fixture(OK); f.close_result = -1;
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_OK);
+    assert(dt_cancel(&s) == DT_CLOSE_FAILED);
+    assert(f.aborts == 1u && f.closes == 1u && s.stopped == 1u);
+
+    f = fixture(OK);
+    p = port(&f); dt_init(&s);
+    assert(dt_begin(&s, &p, &request) == DT_OK);
+    assert(dt_cancel(&s) == DT_OK);
+    assert(f.aborts == 1u && f.closes == 1u);
+    assert(dt_finish(&s) == DT_INVALID);
 
     f = fixture(OK); f.size = 7u;
     static const unsigned char EXTRA[] = "abcdefX";

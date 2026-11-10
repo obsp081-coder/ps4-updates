@@ -7,6 +7,7 @@ response range/ETag and final SHA-256 must all match.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -27,6 +28,7 @@ FIXTURE_VERSION = "01.09"
 CHECKPOINT_KEYS = {
     "source", "filename", "total", "offset", "full_sha256",
     "partial_sha256", "etag", "content_id", "version",
+    "checkpoint_version", "part_dev", "part_ino",
 }
 
 
@@ -109,9 +111,11 @@ def response_identity(response, expected_status, expected_length):
     return tag
 
 
-def hash_fd(fd, expected_length):
+def hash_fd(fd, expected_length, *, allow_extra=False, max_links=1):
     st = os.fstat(fd)
-    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or st.st_size != expected_length:
+    if (not stat.S_ISREG(st.st_mode) or not 1 <= st.st_nlink <= max_links
+            or (st.st_size < expected_length if allow_extra
+                else st.st_size != expected_length)):
         raise ResumeFixtureError("partial file type, link count or size changed")
     os.lseek(fd, 0, os.SEEK_SET)
     digest = hashlib.sha256()
@@ -148,11 +152,14 @@ def start_interrupted_fixture(url, directory, filename, total, full_sha,
     if final.exists() or final.is_symlink():
         raise ResumeFixtureError("destination exists")
     own_part = own_meta = False
+    part_identity = meta_identity = None
     completed_checkpoint = False
     fd = None
     try:
         fd = open_exclusive(part)
         own_part = True
+        st = os.fstat(fd)
+        part_identity = (st.st_dev, st.st_ino)
         opener = build_opener(ProxyHandler({}), NoRedirect())
         request = Request(url, headers={"Accept-Encoding": "identity"})
         with opener.open(request, timeout=4) as response:
@@ -172,6 +179,8 @@ def start_interrupted_fixture(url, directory, filename, total, full_sha,
         os.close(fd)
         fd = None
         payload = {
+            "checkpoint_version": 2,
+            "part_dev": part_identity[0], "part_ino": part_identity[1],
             "source": url, "filename": filename, "total": total,
             "offset": received, "full_sha256": full_sha,
             "partial_sha256": digest.hexdigest(), "etag": etag,
@@ -179,6 +188,8 @@ def start_interrupted_fixture(url, directory, filename, total, full_sha,
         }
         meta_fd = open_exclusive(meta)
         own_meta = True
+        st = os.fstat(meta_fd)
+        meta_identity = (st.st_dev, st.st_ino)
         with os.fdopen(meta_fd, "w", encoding="utf-8") as dest:
             json.dump(payload, dest, sort_keys=True, separators=(",", ":"))
             dest.flush()
@@ -195,9 +206,30 @@ def start_interrupted_fixture(url, directory, filename, total, full_sha,
             os.close(fd)
         if not completed_checkpoint:
             if own_meta:
-                meta.unlink(missing_ok=True)
+                unlink_if_same(meta, meta_identity)
             if own_part:
-                part.unlink(missing_ok=True)
+                unlink_if_same(part, part_identity)
+
+
+def unlink_if_same(path, identity):
+    """Never remove a replaced leaf, including symlinks or foreign inodes."""
+    if identity is None:
+        return
+    try:
+        st = path.lstat()
+        if (st.st_dev, st.st_ino) == identity and stat.S_ISREG(st.st_mode):
+            path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ResumeFixtureError("duplicate checkpoint key")
+        result[key] = value
+    return result
 
 
 def load_checkpoint(meta):
@@ -212,28 +244,36 @@ def load_checkpoint(meta):
     finally:
         os.close(fd)
     try:
-        payload = json.loads(raw)
+        payload = json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
     except (UnicodeDecodeError, ValueError) as exc:
         raise ResumeFixtureError("malformed checkpoint") from exc
-    if type(payload) is not dict or set(payload) != CHECKPOINT_KEYS:
+    if (type(payload) is not dict or set(payload) != CHECKPOINT_KEYS
+            or type(payload["checkpoint_version"]) is not int
+            or payload["checkpoint_version"] != 2
+            or any(type(payload[key]) is not int or payload[key] < 0
+                   for key in ("part_dev", "part_ino"))):
         raise ResumeFixtureError("checkpoint schema changed")
     return payload
 
 
-def resume_fixture(url, directory, filename, total, full_sha, *,
+def _resume_locked(url, directory, filename, total, full_sha, *,
                    native_reviewer=None):
-    """One safe resume attempt; failed appends require a fresh explicit reset.
+    """Resume after validating a durable checkpoint and the actual inode.
 
-    On validation failure keep existing partial/checkpoint untouched. After
-    partial write failure, the checkpoint deliberately stays stale, so no
-    second resume can trust the changed file automatically.
+    If a previous attempt left a longer .part, discard ONLY its unverified
+    suffix after hashing the independently checkpointed prefix. This may
+    redownload tail bytes but never trusts them without a fresh HTTP 206.
     """
     root = validate(url, directory, filename, total, full_sha)
     part, meta, final = names(root, filename)
     if final.exists() or final.is_symlink():
-        raise ResumeFixtureError("destination exists")
+        if final.is_symlink() or not verified_existing_final(final, total, full_sha):
+            raise ResumeFixtureError("destination exists")
+        disk_sync(root)
+        return final
     cp = load_checkpoint(meta)
     if (cp["source"] != url or cp["filename"] != filename or
+            cp["checkpoint_version"] != 2 or
             cp["content_id"] != FIXTURE_CONTENT_ID or
             cp["version"] != FIXTURE_VERSION or
             type(cp["total"]) is not int or cp["total"] != total or
@@ -247,9 +287,21 @@ def resume_fixture(url, directory, filename, total, full_sha, *,
     fd = os.open(part, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0))
     try:
         initial = os.fstat(fd)
+        identity = (initial.st_dev, initial.st_ino)
         if (initial.st_uid != os.geteuid() or initial.st_nlink != 1
-                or hash_fd(fd, offset) != cp["partial_sha256"]):
+                or identity != (cp["part_dev"], cp["part_ino"])
+                or initial.st_size > total or initial.st_size < offset
+                or not same_inode(part, identity)
+                or hash_fd(fd, offset, allow_extra=True) != cp["partial_sha256"]):
             raise ResumeFixtureError("partial prefix fingerprint changed")
+        if initial.st_size == total and hash_fd(fd, total) == full_sha:
+            return publish_verified(root, part, meta, final, fd,
+                                    identity, total, full_sha)
+        if initial.st_size > offset:
+            # ftruncate works on the already-verified open inode, never a
+            # path selected by the checkpoint. Keep the old durable marker.
+            os.ftruncate(fd, offset)
+            os.fsync(fd)
         opener = build_opener(ProxyHandler({}), NoRedirect())
         request = Request(url, headers={
             "Accept-Encoding": "identity", "Range": f"bytes={offset}-",
@@ -291,20 +343,94 @@ def resume_fixture(url, directory, filename, total, full_sha, *,
         os.fsync(fd)
         if hash_fd(fd, total) != full_sha:
             raise ResumeFixtureError("final SHA-256 mismatch")
-        # All writes and verified hash refer to the same inode, kept open.
-        current_stat = part.lstat()
-        if ((current_stat.st_dev, current_stat.st_ino) !=
-                (initial.st_dev, initial.st_ino)):
-            raise ResumeFixtureError("partial inode replaced")
-        os.link(part, final, follow_symlinks=False)
-        disk_sync(root)
-        part.unlink()
-        meta.unlink()
-        disk_sync(root)
-        return final
+        return publish_verified(root, part, meta, final, fd,
+                                identity, total, full_sha)
     except ResumeFixtureError:
         raise
     except (OSError, ValueError) as exc:
         raise ResumeFixtureError("resume transfer or publication failed") from exc
     finally:
         os.close(fd)
+
+
+def same_inode(path, identity):
+    try:
+        st = path.lstat()
+    except FileNotFoundError:
+        return False
+    return (stat.S_ISREG(st.st_mode) and
+            (st.st_dev, st.st_ino) == identity)
+
+
+def verified_existing_final(final, total, digest):
+    """Recover an already-published complete file without modifying it."""
+    try:
+        fd = os.open(final, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return False
+    try:
+        st = os.fstat(fd)
+        if (st.st_uid != os.geteuid() or not 1 <= st.st_nlink <= 2
+                or not same_inode(final, (st.st_dev, st.st_ino))):
+            return False
+        return hash_fd(fd, total, max_links=2) == digest
+    except (OSError, ResumeFixtureError):
+        return False
+    finally:
+        os.close(fd)
+
+
+def publish_verified(root, part, meta, final, fd, identity, total, digest):
+    """Publish only the verified inode, with exclusive hardlink creation.
+
+    If the process dies after link(), the next resume detects and verifies
+    the final file. A failed cleanup must not delete or replace the final.
+    """
+    os.fsync(fd)
+    if (not same_inode(part, identity) or
+            hash_fd(fd, total) != digest):
+        raise ResumeFixtureError("partial changed before publication")
+    meta_stat = meta.lstat()
+    if not stat.S_ISREG(meta_stat.st_mode) or meta_stat.st_nlink != 1:
+        raise ResumeFixtureError("checkpoint replaced before publication")
+    os.link(part, final, follow_symlinks=False)
+    if not same_inode(final, identity):
+        raise ResumeFixtureError("published inode mismatch")
+    disk_sync(root)
+    unlink_if_same(part, identity)
+    unlink_if_same(meta, (meta_stat.st_dev, meta_stat.st_ino))
+    disk_sync(root)
+    return final
+
+
+def resume_fixture(url, directory, filename, total, full_sha, *,
+                   native_reviewer=None):
+    """Exclusive Host recovery; persistent flock survives process crashes.
+
+    Only one cooperative Host fixture worker can recover a checkpoint.
+    Lock files remain present to avoid an unlink/recreate lock race.
+    This is NOT a PS4 storage or TLS implementation.
+    """
+    root = validate(url, directory, filename, total, full_sha)
+    lock = root / (filename + ".resume.lock")
+    fd = None
+    try:
+        fd = os.open(lock, os.O_RDWR | os.O_CREAT |
+                     getattr(os, "O_NOFOLLOW", 0), 0o600)
+        st = os.fstat(fd)
+        if (not stat.S_ISREG(st.st_mode) or st.st_uid != os.geteuid()
+                or st.st_nlink != 1 or st.st_mode & 0o077):
+            raise ResumeFixtureError("untrusted resume lock")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ResumeFixtureError("resume already active") from exc
+        return _resume_locked(url, root, filename, total, full_sha,
+                              native_reviewer=native_reviewer)
+    except ResumeFixtureError:
+        raise
+    except OSError as exc:
+        raise ResumeFixtureError("resume lock or storage failed") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)

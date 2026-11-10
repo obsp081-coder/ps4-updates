@@ -867,6 +867,30 @@ int main() {
     assert(ui_model_update(0)->verdict==UI_UPDATE_UNKNOWN);
     assert(ui_model_update(0)->minimum_fw[0]==0);
     assert(ui_model_update(0)->size_bytes==0);
+    /* Host-only conflict fixture: render a blocked candidate and its
+     * reason with all actual download/install controls still disabled. */
+    UiCompatFacts review = {};
+    review.base_cusa=update.cusa;
+    review.patch_cusa=update.cusa;
+    review.base_content_id=update.content_id;
+    review.patch_content_id=update.content_id;
+    review.base_version="01.07";
+    review.patch_version=update.version;
+    review.required_base_version="01.07";
+    review.console_firmware="14.00";
+    review.minimum_firmware="15.00";
+    review.patch_size_bytes=1024;
+    review.installed=UI_COMPAT_INSTALL_YES;
+    review.base_kind=UI_COMPAT_RETAIL;
+    review.patch_kind=UI_COMPAT_RETAIL;
+    review.base_metadata_verified=1;
+    review.identity_binding_verified=1;
+    review.source_authorized=1;
+    review.integrity_verified=1;
+    assert(ui_source_publish_reviews(&update,&review,1)==0);
+    assert(ui_model_update(0)->verdict==UI_UPDATE_BLOCKED);
+    assert(ui_model_update(0)->compat_blockers &
+           UI_COMPAT_FIRMWARE_TOO_LOW);
     scanner_ui_results(entries,3,2,0,1,1);
     assert(saw_job_progress);
     assert(saw_job_scroll);

@@ -862,7 +862,7 @@ int main() {
     std::strcpy(update.content_id,
                 "EP9000-CUSA02343_00-UNCHARTEDTRILOGY");
     std::strcpy(update.version,"01.09");
-    update.source_kind=UI_SOURCE_RETAIL_HTTP;
+    update.source_kind=UI_SOURCE_FPKG_SUBMITTED;
     assert(ui_source_publish_candidates(&update,1) == 0);
     assert(ui_model_update(0)->verdict==UI_UPDATE_UNKNOWN);
     assert(ui_model_update(0)->minimum_fw[0]==0);
@@ -881,8 +881,8 @@ int main() {
     review.minimum_firmware="15.00";
     review.patch_size_bytes=1024;
     review.installed=UI_COMPAT_INSTALL_YES;
-    review.base_kind=UI_COMPAT_RETAIL;
-    review.patch_kind=UI_COMPAT_RETAIL;
+    review.base_kind=UI_COMPAT_FPKG;
+    review.patch_kind=UI_COMPAT_FPKG;
     review.base_metadata_verified=1;
     review.identity_binding_verified=1;
     review.source_authorized=1;

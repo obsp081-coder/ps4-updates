@@ -1,3 +1,17 @@
+## تحديث إضافي — Native HTTP Response Safety Policy
+
+**تغيير Code:** `3970da3e9183fe4698d652ba806e7f957d7718a0` — أضيفت الوحدة `ps4/src/download_http_policy.h/.c` إلى Native PS4 Build و`tests/ui_mocks/http_policy_smoke.c` و`tests/test_download_http_policy.py`.
+
+- يفحص **Metadata من Parser موثوق لاحقًا** ولا ينشئ HTTP/TLS Session. لا يقبل `tls_authenticated` المفقود، والتطبيق ليس لديه TLS adapter حقيقي حتى الآن.
+- يمنع Response غير `200` للتنزيل من الصفر، ويشترط `206` مع Range/If-Range وStrong ETag مطابق للاستكمال.
+- يتحقق من `Content-Range` الدقيق من Offset إلى نهاية الحجم الموثوق ومن `Content-Length` المتبقي. يرفض `Transfer-Encoding`، Content Encoding، التوجيهات، وETag الضعيف أو المحقون.
+- الاختبارات Native C اصطناعية، لا تثبت HTTPS مصدّقًا أو تحميلًا على الجهاز.
+- **الحالة:** تنفيذ وبناء Host المحلي للدالة تم، ونتيجة CI لآخر Code SHA يجب التحقق منها قبل اعتماد نجاح OpenOrbis. إنتاج التطبيق يبقى `Read Only`.
+
+**المتبقي:** Parser حقيقي لترويسات HTTP، وتحقق سلسلة شهادات TLS، ومستودع مصدر مخوّل، وNative StorageAdapter وHash/Partial-state recovery؛ لا يوجد Resume حقيقي أو تنزيل PKG على PS4.
+
+---
+
 ## تحديث 10 نوفمبر 2026 — نقل HTTP محلي فعلي للتحقق على Host
 
 **الحالة:** تم إضافة `tests/host_fixture_transfer.py` و`tests/test_host_fixture_transfer.py` كـ**اختبار تكامل على الكمبيوتر فقط**. هذا ليس كود Downloader يعمل على PS4، ولم يُفعّل تنزيل تحديثات ألعاب أو تثبيت PKG.

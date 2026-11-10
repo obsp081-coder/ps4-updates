@@ -83,11 +83,14 @@ DtResult dt_begin(DtSession *s, const DtPort *port,
     size_t n = 0u;
     DtPeerFacts peer = {0};
     memset(raw, 0, sizeof raw);
-    if (port->open_headers(port->context, request, raw, sizeof raw,
-                           &n, &peer) != 0) {
+    const int opened = port->open_headers(port->context, request, raw,
+                                           sizeof raw, &n, &peer);
+    if (opened != 0) {
         /* Backend close must be safe even if open only partially succeeded. */
-        (void)port->close_request(port->context);
-        return DT_CONNECT_FAILED;
+        const int closed = port->close_request(port->context);
+        if (closed != 0) return DT_CLOSE_FAILED;
+        return opened == DT_PORT_TLS_VERIFY_FAILED ?
+               DT_TLS_UNVERIFIED : DT_CONNECT_FAILED;
     }
 
     s->port = *port;

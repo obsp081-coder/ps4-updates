@@ -71,7 +71,7 @@ class NativeUiSmokeTests(unittest.TestCase):
                     str(UI_SOURCE), str(UI_NAV), str(UI_TITLE_LAYOUT),
                     str(UI_IMAGE),
                     str(UI_ICON_CACHE), str(UI_MODELS), str(UI_SOURCE_BRIDGE),
-                    str(MOCK_TEST),
+                    str(UI_COMPATIBILITY), str(MOCK_TEST),
                     "-o", str(binary),
                     "-lm",
                 ],

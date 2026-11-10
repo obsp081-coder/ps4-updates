@@ -16,7 +16,8 @@
 typedef enum PkgHeaderObservation {
     PKG_OBS_NOT_PROBED = 0,
     PKG_OBS_OPEN_FAILED,
-    PKG_OBS_NOFOLLOW_UNAVAILABLE,
+    PKG_OBS_SAFE_OPEN_UNAVAILABLE,
+    PKG_OBS_STAT_UNAVAILABLE,
     PKG_OBS_NOT_REGULAR,
     PKG_OBS_SHORT_READ,
     PKG_OBS_BAD_MAGIC,
@@ -69,7 +70,8 @@ static inline const char *pkg_header_observation_name(
     switch(value) {
         case PKG_OBS_NOT_PROBED: return "NOT_PROBED";
         case PKG_OBS_OPEN_FAILED: return "OPEN_FAILED";
-        case PKG_OBS_NOFOLLOW_UNAVAILABLE: return "NOFOLLOW_UNAVAILABLE";
+        case PKG_OBS_SAFE_OPEN_UNAVAILABLE: return "SAFE_OPEN_UNAVAILABLE";
+        case PKG_OBS_STAT_UNAVAILABLE: return "STAT_UNAVAILABLE";
         case PKG_OBS_NOT_REGULAR: return "NOT_REGULAR";
         case PKG_OBS_SHORT_READ: return "SHORT_READ";
         case PKG_OBS_BAD_MAGIC: return "BAD_MAGIC";

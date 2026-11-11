@@ -264,13 +264,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Branch-only verification build. It can compile on push, but ONLY a
-      # manually requested run can publish a diagnostic ZIP artifact.
-      # The normal package is built and staged before this clean rebuild.
-      # the main branch, or default workflow_dispatch. First compile the
-      # normal package, then clean all build outputs before changing Title ID.
-      # No release is created; the user decides whether to install the
-      # isolated diagnostic only after checking their console/title IDs.
+      # The diagnostic variant is built independently after the normal one.
+      # It is NEVER distributed as a GitHub Release.
+      # For one controlled PS4 hardware smoke test, a single commit carrying
+      # [fw14-artifact] may publish an Actions ZIP. Other pushes do not.
+      # Manual branch workflow_dispatch remains available with explicit input.
+      # User must verify Title ID collision and checksum before installation.
       - name: Verify isolated read-only FW14 header probe PKG (not published by push)
         if: ${{ github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
         shell: bash
@@ -326,7 +325,7 @@ jobs:
           PY
 
       - name: Upload opt-in FW14 diagnostic (NOT a release)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true && github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
+        if: ${{ github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' && ((github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[fw14-artifact]'))) }}
         uses: actions/upload-artifact@v4
         with:
           name: fw14-readonly-header-probe-${{ github.sha }}

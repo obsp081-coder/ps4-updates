@@ -1,7 +1,9 @@
 
 """Conservative, offline FPKG candidate review for PS4 Auto Updater.
 
-Inputs: a historical identity comparison and optional *unverified* FPKG metadata.
+Inputs: local inventory and optional *unverified* FPKG patch metadata.
+No Sony/Retail lookup is used. Inventory 'package_kind' is a declaration,
+NOT independently verified console FPKG identification.
 No network requests, PKG downloads, verification, or installs are performed.
 Passing a metadata check NEVER means a patch is safe to install.
 """
@@ -11,9 +13,28 @@ import json
 import re
 from pathlib import Path
 
+from catalog_ingest import _source
+
 CUSA = re.compile(r"CUSA\d{5}\Z")
 CONTENT_ID = re.compile(r"[A-Z]{2}\d{4}-(CUSA\d{5})_\d{2}-[A-Z0-9]{16}\Z")
 VERSION = re.compile(r"\d{1,4}\.\d{1,4}\Z")
+MAX_INVENTORY_GAMES = 1024
+MAX_CATALOG_UPDATES = 1000
+BASE_CATEGORIES = frozenset(("gd", "gdO", "gdo"))
+
+# Consumer-owned access control; untrusted metadata must not carry actions.
+FORBIDDEN_ACTION_FIELDS = frozenset((
+    "download_url", "pkg_url", "package_url", "install_command",
+    "download_allowed", "install_allowed", "download_enabled",
+    "install_enabled", "rights_verified", "source_authorized",
+    "compatibility_verified", "fpkg_compatibility_confirmed",
+))
+
+
+def _reject_action_claims(row):
+    if any(key in row for key in FORBIDDEN_ACTION_FIELDS):
+        raise ValueError("Catalog metadata cannot carry action authorization")
+
 
 
 def version(value):
@@ -22,28 +43,36 @@ def version(value):
     return tuple(map(int, value.split(".")))
 
 
-def review(comparison, catalog=None, installed_check=None, firmware="14.00"):
+def review(inventory, catalog=None, installed_check=None, firmware="14.00"):
     current_fw = version(firmware)
     if current_fw is None:
         raise ValueError("Firmware must look like 14.00")
-    if not isinstance(comparison, dict) or not isinstance(comparison.get("games"), list):
-        raise ValueError("Comparison must have a games list")
+    if (not isinstance(inventory, dict)
+            or not isinstance(inventory.get("games"), list)
+            or len(inventory["games"]) > MAX_INVENTORY_GAMES):
+        raise ValueError("Inventory must have at most 1024 games")
 
     if catalog is None:
-        catalog = {"schema": 1, "status": "UNVERIFIED_METADATA_ONLY", "updates": []}
+        catalog = {"schema": 1, "status": "UNVERIFIED_METADATA_ONLY",
+                   "fixture_only": False, "auto_install": False,
+                   "compatibility_confirmed": False, "updates": []}
     if (not isinstance(catalog, dict)
-            or catalog.get("schema") != 1
+            or type(catalog.get("schema")) is not int
+            or catalog["schema"] != 1
             or catalog.get("status") != "UNVERIFIED_METADATA_ONLY"
-            or catalog.get("fixture_only") is True
-            or catalog.get("auto_install") is True
-            or catalog.get("compatibility_confirmed") is True
-            or not isinstance(catalog.get("updates"), list)):
+            or catalog.get("fixture_only") is not False
+            or catalog.get("auto_install") is not False
+            or catalog.get("compatibility_confirmed") is not False
+            or not isinstance(catalog.get("updates"), list)
+            or len(catalog["updates"]) > MAX_CATALOG_UPDATES):
         raise ValueError("Catalog must be normalized, non-demo, unverified FPKG metadata")
+    _reject_action_claims(catalog)
 
     reports = {}
     if installed_check is not None:
         if (not isinstance(installed_check, dict)
-                or not isinstance(installed_check.get("games"), list)):
+                or not isinstance(installed_check.get("games"), list)
+                or len(installed_check["games"]) > MAX_INVENTORY_GAMES):
             raise ValueError("Installed-check report must have a games list")
         for item in installed_check["games"]:
             if not isinstance(item, dict):
@@ -60,38 +89,41 @@ def review(comparison, catalog=None, installed_check=None, firmware="14.00"):
     for item in catalog["updates"]:
         if not isinstance(item, dict):
             raise ValueError("Malformed FPKG catalog record")
+        _reject_action_claims(item)
         ident = item.get("cusa")
         cid = item.get("content_id")
         match = CONTENT_ID.fullmatch(cid) if isinstance(cid, str) else None
         if (not isinstance(ident, str) or not CUSA.fullmatch(ident)
                 or not match or match.group(1) != ident
                 or item.get("declared_package_kind") != "fpkg_patch"
+                or item.get("patch_compatibility_confirmed") is not False
                 or version(item.get("version")) is None
                 or version(item.get("min_fw")) is None
-                or not isinstance(item.get("source_page"), str)
-                or not item["source_page"].startswith("https://")):
+                or not isinstance(item.get("source_page"), str)):
             raise ValueError("Malformed FPKG metadata or source_page")
+        _source(item["source_page"])  # no rights or compatibility grant
         updates.setdefault(ident, []).append(item)
 
     rows = []
     seen = set()
-    for game in comparison["games"]:
+    for game in inventory["games"]:
         if not isinstance(game, dict):
-            raise ValueError("Malformed comparison record")
+            raise ValueError("Malformed inventory record")
         ident = game.get("cusa")
-        base_version = game.get("last_scan_app_ver")
-        base_cid = game.get("console_content_id")
+        base_version = game.get("app_ver")
+        base_cid = game.get("content_id")
+        match = CONTENT_ID.fullmatch(base_cid) if isinstance(base_cid, str) else None
         if (not isinstance(ident, str) or not CUSA.fullmatch(ident)
-                or not isinstance(base_cid, str)
-                or version(base_version) is None or ident in seen):
-            raise ValueError("Invalid or duplicate game in comparison")
+                or ident in seen):
+            raise ValueError("Invalid or duplicate game in inventory")
         seen.add(ident)
 
         row = {
             "cusa": ident,
             "name": game.get("name", ""),
             "last_scan_version": base_version,
-            "retail_latest_version": game.get("retail_latest_version"),
+            "declared_base_kind": game.get("package_kind"),
+            "base_kind_independently_verified": False,
             "fpkg_candidate_version": None,
             "status": "NOT_IN_FPKG_CATALOG",
             "installed_confirmed": False,
@@ -100,11 +132,46 @@ def review(comparison, catalog=None, installed_check=None, firmware="14.00"):
         }
         rows.append(row)
 
+        # Do not infer FPKG from CUSA, param.sfo, GoldHEN or a submitted label.
+        # Retail titles never enter review; unknown kind remains unconfirmed.
+        if game.get("package_kind") == "retail":
+            row["status"] = "RETAIL_UNSUPPORTED"
+            continue
+        if game.get("package_kind") != "fpkg":
+            row["status"] = "BASE_PACKAGE_KIND_UNCONFIRMED"
+            continue
+
+        # The native FTP scanner correctly allows a structurally valid base
+        # SFO with missing CONTENT_ID or APP_VER. Such a game's update
+        # must be denied INDIVIDUALLY, not abort the entire inventory.
+        # An invalid nonempty Content ID is distinct from an unknown one.
+        category = game.get("category")
+        if category is not None:
+            if not isinstance(category, str):
+                row["status"] = "BASE_CATEGORY_INVALID"
+                continue
+            if category not in BASE_CATEGORIES:
+                row["status"] = ("BASE_CATEGORY_UNCONFIRMED"
+                                 if category == "" else "NOT_A_BASE_GAME")
+                continue
+        if base_cid is None or base_cid == "":
+            row["status"] = "BASE_CONTENT_ID_UNCONFIRMED"
+            continue
+        if match is None:
+            row["status"] = "BASE_CONTENT_ID_INVALID"
+            continue
+        if match.group(1) != ident:
+            row["status"] = "BASE_CONTENT_ID_CONFLICT"
+            continue
+        if base_version is None or base_version == "":
+            row["status"] = "BASE_VERSION_UNCONFIRMED"
+            continue
+        if version(base_version) is None:
+            row["status"] = "BASE_VERSION_INVALID"
+            continue
+
         candidates = updates.get(ident, [])
         if not candidates:
-            continue
-        if game.get("content_id_match") is not True:
-            row["status"] = "RETAIL_IDENTITY_NOT_CONFIRMED"
             continue
 
         same_cid = [i for i in candidates if i["content_id"] == base_cid]
@@ -138,10 +205,10 @@ def review(comparison, catalog=None, installed_check=None, firmware="14.00"):
             # Do not turn this into confirmed compatibility or permission to install.
 
     return {
-        "schema": 1,
+        "schema": 2,
         "mode": "offline_fpkg_candidate_review",
+        "package_policy": "fpkg_only",
         "firmware": firmware,
-        "retail_metadata_is_not_fpkg": True,
         "install_enabled": False,
         "download_enabled": False,
         "fpkg_compatibility_confirmed": False,
@@ -152,18 +219,34 @@ def review(comparison, catalog=None, installed_check=None, firmware="14.00"):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("comparison", type=Path)
+    parser.add_argument("inventory", type=Path)
     parser.add_argument("--catalog", type=Path)
     parser.add_argument("--installed-check", type=Path)
     parser.add_argument("--firmware", default="14.00")
     parser.add_argument("--out", type=Path, default=Path("fpkg_review_report.json"))
     args = parser.parse_args()
 
-    def load(path):
-        return json.loads(path.read_text(encoding="utf-8")) if path else None
+    def no_duplicate_keys(pairs):
+        obj = {}
+        for name, value in pairs:
+            if name in obj:
+                raise ValueError("Duplicate FPKG review JSON key")
+            obj[name] = value
+        return obj
 
-    result = review(load(args.comparison), load(args.catalog),
-                    load(args.installed_check), args.firmware)
+    def load(path):
+        if not path:
+            return None
+        if path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("FPKG review input exceeds 2 MiB")
+        return json.loads(path.read_text(encoding="utf-8"),
+                          object_pairs_hook=no_duplicate_keys)
+
+    try:
+        result = review(load(args.inventory), load(args.catalog),
+                        load(args.installed_check), args.firmware)
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
     args.out.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for item in result["games"]:
         print(f"{item['cusa']} | {item['status']} | {item['fpkg_candidate_version'] or '-'}")

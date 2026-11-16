@@ -25,7 +25,7 @@ def sfo(title_id, name="Test Game", version="01.04", category="gd",
         ("TITLE", name),
         ("APP_VER", version),
         ("CONTENT_ID", content_id if content_id is not None else
-         "IV0000-" + title_id + "_00-SCANNER00000000"),
+         "IV0000-" + title_id + "_00-SCANNER000000000"),
         ("CATEGORY", category),
     ]
     if include_title_id:
@@ -46,6 +46,37 @@ def sfo(title_id, name="Test Game", version="01.04", category="gd",
     return header + entries + keys + values
 
 
+def sfo_corruption_repro(title_id="CUSA02343"):
+    """23-entry valid PSF with exactly one LF in TITLE_ID length at entry 20.
+
+    Mirrors the user-observed 23-entry/entry-20 0x0a0d symptom.
+    Its byte layout is synthetic: not a console-file fixture.
+    """
+    fields = [("K%02d" % i, b"TEST", 0x0404) for i in range(20)]
+    fields.extend([
+        ("TITLE_ID", title_id.encode("ascii") + b"\0", 0x0204),
+        ("CATEGORY", b"gd\0", 0x0204),
+        ("APP_VER", b"01.07\0", 0x0204),
+    ])
+    keys = bytearray()
+    vals = bytearray()
+    index = bytearray()
+    for key, raw, fmt in fields:
+        kpos = len(keys)
+        vpos = len(vals)
+        keys.extend(key.encode("ascii") + b"\0")
+        vals.extend(raw)
+        index.extend(struct.pack("<HHIII", kpos, fmt, len(raw),
+                                 16 if key == "TITLE_ID" else len(raw), vpos))
+    header = struct.pack("<IIIII", 0x46535000, 0x101,
+                         20 + len(index), 20 + len(index) + len(keys),
+                         len(fields))
+    original = header + index + keys + vals
+    assert len(fields) == 23
+    assert original.count(b"\n") == 1, original.count(b"\n")
+    return original
+
+
 class MockHandler(socketserver.StreamRequestHandler):
     def respond(self, text):
         # Original FTPS4 often terminates control replies with LF only.
@@ -57,7 +88,7 @@ class MockHandler(socketserver.StreamRequestHandler):
         self.request.settimeout(5)
         data_socket = None
         logged_in = not self.server.require_login
-        self.respond("220 mock FTP ready")
+        self.respond(self.server.greeting)
         try:
             while True:
                 if self.server.packet_strict:
@@ -112,7 +143,7 @@ class MockHandler(socketserver.StreamRequestHandler):
                         if argument == "/system_data/priv/appmeta":
                             payload = self.server.listing
                         elif argument == "/system_data/priv/appmeta/external":
-                            payload = b""
+                            payload = self.server.external_listing
                     else:
                         prefix = "/system_data/priv/appmeta/"
                         suffix = "/param.sfo"
@@ -151,6 +182,7 @@ class MockFTP(socketserver.TCPServer):
         super().__init__(("127.0.0.1", 0), MockHandler)
         self.listing = listing
         self.metadata = metadata
+        self.external_listing = b""
         self.commands = []
         self.pasv_advertisement = "127,0,0,1"
         self.deny_login = False
@@ -159,6 +191,7 @@ class MockFTP(socketserver.TCPServer):
         self.type_unknown = False
         self.packet_strict = False
         self.lf_only_replies = False
+        self.greeting = "220 mock FTP ready"
 
 
 class ScannerFTPTests(unittest.TestCase):
@@ -168,18 +201,23 @@ class ScannerFTPTests(unittest.TestCase):
             raise unittest.SkipTest("C compiler unavailable")
         cls.temp = tempfile.TemporaryDirectory()
         cls.executable = str(Path(cls.temp.name) / "ftp-scanner")
-        subprocess.run(
-            ["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O2",
-             "-o", cls.executable, str(SCANNER)],
-            check=True, capture_output=True, text=True,
-        )
+        cls.limited_executable = str(Path(cls.temp.name) / "ftp-scanner-cap2")
+        for binary, extra_flags in (
+            (cls.executable, []),
+            (cls.limited_executable, ["-DMAX_GAMES=2"]),
+        ):
+            subprocess.run(
+                ["cc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-O2",
+                 *extra_flags, "-o", binary, str(SCANNER)],
+                check=True, capture_output=True, text=True,
+            )
 
     @classmethod
     def tearDownClass(cls):
         if hasattr(cls, "temp"):
             cls.temp.cleanup()
 
-    def run_client(self, port):
+    def run_client(self, port, executable=None):
         with tempfile.TemporaryDirectory() as directory:
             inv = Path(directory) / "inventory.json"
             diagnostic = Path(directory) / "diagnostic.txt"
@@ -188,24 +226,52 @@ class ScannerFTPTests(unittest.TestCase):
                        PS4_FTP_TEST_OUT=str(inv),
                        PS4_FTP_TEST_REPORT=str(diagnostic))
             proc = subprocess.run(
-                [self.executable], env=env, text=True,
+                [executable or self.executable], env=env, text=True,
                 capture_output=True, timeout=20,
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             return json.loads(inv.read_text()), diagnostic.read_text()
 
-    def with_server(self, listing, metadata, *, passthrough=None):
+    def with_server(self, listing, metadata, *, passthrough=None,
+                    executable=None):
         with MockFTP(listing, metadata) as server:
             if passthrough:
                 passthrough(server)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             try:
-                inventory, diagnostic = self.run_client(server.server_address[1])
+                inventory, diagnostic = self.run_client(
+                    server.server_address[1], executable=executable)
                 return inventory, diagnostic, list(server.commands)
             finally:
                 server.shutdown()
                 thread.join(timeout=4)
+
+    def test_invalid_ftp_greeting_delimiter_is_not_authenticated(self):
+        """220X is not a valid success response, even with three digits."""
+        listing = b"drwxr-xr-x 1 root root 0 CUSA02343\r\n"
+        data, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343")},
+            passthrough=lambda s: setattr(s, "greeting", "220X invalid")
+        )
+        self.assertFalse(data["scan_complete"])
+        self.assertEqual(data["games"], [])
+        self.assertIn("FTP_GREETING_CODE: -1", diagnostic)
+        self.assertNotIn("PASV", commands)
+
+    def test_multiline_ftp_greeting_with_short_text_is_parsed_safely(self):
+        """A short intermediate line must not be read as the final code."""
+        data, diagnostic, commands = self.with_server(
+            b"",
+            {},
+            passthrough=lambda s: setattr(
+                s, "greeting", "220-welcome\nx\n220 ready"
+            )
+        )
+        self.assertTrue(data["scan_complete"])
+        self.assertEqual(data["games"], [])
+        self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
+        self.assertIn("PASV", commands)
 
     def test_two_games_ignore_dlc_and_duplicates(self):
         listing = (
@@ -221,15 +287,19 @@ class ScannerFTPTests(unittest.TestCase):
              "CUSA00411": sfo("CUSA00411", "Other Game", "02.04"),
              "CUSA99999": sfo("CUSA99999", "DLC", "01.00", "ac")},
         )
-        self.assertEqual(inventory["schema"], 5)
+        self.assertEqual(inventory["schema"], 6)
         self.assertEqual(
             [c["cusa"] for c in inventory["directory_candidates"]],
             ["CUSA02343", "CUSA00411", "CUSA99999"]
         )
         self.assertEqual(
             [c["metadata_verified"] for c in inventory["directory_candidates"]],
-            [True, True, False]
+            [True, True, True]
         )
+        self.assertEqual([item["metadata_kind"]
+                          for item in inventory["metadata_records"]],
+                         ["base_game", "base_game", "dlc_metadata"])
+        self.assertEqual(len(inventory["metadata_records"]), 3)
         self.assertTrue(inventory["scan_complete"])
         self.assertEqual([g["cusa"] for g in inventory["games"]],
                          ["CUSA02343", "CUSA00411"])
@@ -237,7 +307,10 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertEqual(inventory["games"][0]["install_state"], "UNKNOWN")
         self.assertFalse(inventory["download_enabled"])
         self.assertFalse(inventory["install_enabled"])
-        self.assertIn("Metadata records: 2", diagnostic)
+        # Three SFO identities were verified: two base games and one DLC.
+        # The diagnostic must not mislabel the base-game count as all metadata.
+        self.assertIn("Metadata records: 3", diagnostic)
+        self.assertIn("Base-game records: 2", diagnostic)
         self.assertIn("FTP_GREETING_ACCEPTED: 1", diagnostic)
         self.assertIn("FTP_GREETING_CODE: 220", diagnostic)
         self.assertIn("FTP_COMMAND_MODE (0=PASV-first, no TYPE): 0", diagnostic)
@@ -247,6 +320,86 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertNotIn("PASS", commands)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
         self.assertEqual(commands.count("RETR"), 3)
+
+    def test_installed_sfo_never_proves_fpkg_on_fw14(self):
+        """GoldHEN FTP SFO and even a clean scan are not PKG type proof."""
+        listing = b"drwxr-xr-x root root 0 CUSA02343\r\n"
+        inv, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", "Synthetic Base", "01.00")}
+        )
+        self.assertTrue(inv["scan_complete"])
+        self.assertFalse(inv["fpkg_detection_confirmed"])
+        self.assertEqual(inv["pkg_header_probe_mode"], "DISABLED")
+        self.assertEqual(len(inv["games"]), 1)
+        base = inv["games"][0]
+        self.assertEqual(base["package_kind"], "unknown")
+        self.assertIs(base["fpkg_confirmed"], False)
+        self.assertEqual(base["package_kind_evidence"], "SFO_NOT_PROOF")
+        self.assertEqual(base["pkg_header_observation"], "NOT_PROBED")
+        self.assertIsNone(base["pkg_header_flags_observed"])
+        self.assertEqual(base["pkg_header_location"], "not_available")
+        self.assertEqual(inv["metadata_records"][0]["package_kind"], "unknown")
+        self.assertFalse(inv["metadata_records"][0]["fpkg_confirmed"])
+        self.assertIn("PKG_HEADER_PROBE_DISABLED_DEFAULT: 1", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS))
+
+        # Consume the real scanner JSON; the FPKG reviewer must deny
+        # candidates before considering Sony or submitted release metadata.
+        import sys
+        project = SCANNER.parents[2]
+        sys.path.insert(0, str(project))
+        from fpkg_review import review
+        checked = review(inv)
+        self.assertEqual(checked["games"][0]["status"],
+                         "BASE_PACKAGE_KIND_UNCONFIRMED")
+        self.assertFalse(checked["download_enabled"])
+        self.assertFalse(checked["install_enabled"])
+
+    def test_ascii_mode_sfo_newlines_are_restored_safely(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        original = sfo("CUSA02343", "Recovered Game", "01.07")
+        damaged = original.replace(b"\n", b"\r\n")
+        self.assertGreater(len(damaged), len(original))
+        inventory, diagnostic, commands = self.with_server(
+            listing, {"CUSA02343": damaged})
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertEqual(inventory["games"][0]["name"], "Recovered Game")
+        self.assertTrue(inventory["scan_complete"])
+        self.assertIn("SFO ASCII_RECOVERED CUSA02343", diagnostic)
+        self.assertNotIn("TYPE", commands)
+
+    def test_exact_entry_twenty_ascii_expansion_safely_recovers(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        original = sfo_corruption_repro()
+        expanded = original.replace(b"\n", b"\r\n")
+        self.assertEqual(len(expanded), len(original) + 1)
+        # Entry 20's original string length 10 is converted to 0x0a0d.
+        self.assertEqual(struct.unpack_from("<I", expanded, 20 + 20*16 + 4)[0],
+                         0x0a0d)
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": expanded})
+        self.assertTrue(inventory["scan_complete"])
+        self.assertEqual(inventory["games"][0]["cusa"], "CUSA02343")
+        self.assertEqual(inventory["games"][0]["app_ver"], "01.07")
+        self.assertIn("SFO ASCII_RECOVERED CUSA02343", diagnostic)
+
+    def test_ascii_recovery_cannot_accept_wrong_content_id(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        damaged = sfo("CUSA02343", content_id=(
+            "IV0000-CUSA99999_00-SCANNER000000000")).replace(b"\n", b"\r\n")
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": damaged})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertNotIn("SFO ASCII_RECOVERED", diagnostic)
+
+    def test_missing_category_is_not_a_confirmed_game(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", category="")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -37", diagnostic)
 
     def test_corrupt_sfo_is_not_counted(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
@@ -277,6 +430,15 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertNotIn("Metadata records: 1", diagnostic)
         self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
 
+
+    def test_external_listing_unavailable_is_explicitly_incomplete(self):
+        inventory, diagnostic, _ = self.with_server(
+            b"", {}, passthrough=lambda server: setattr(
+                server, "external_listing", None))
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("LIST external: -13", diagnostic)
+        self.assertIn("External listing available: 0", diagnostic)
+        self.assertIn("Primary listing available: 1", diagnostic)
 
     def test_empty_listing_is_valid_and_complete(self):
         inventory, diagnostic, commands = self.with_server(b"", {})
@@ -441,7 +603,7 @@ class ScannerFTPTests(unittest.TestCase):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
         inventory, diagnostic, _ = self.with_server(
             listing, {"CUSA02343": sfo("CUSA02343",
-                                       content_id="IV0000-CUSA99999_00-SCANNER00000000")})
+                                       content_id="IV0000-CUSA99999_00-SCANNER000000000")})
         self.assertEqual(inventory["games"], [])
         self.assertFalse(inventory["scan_complete"])
         self.assertIn("SFO CUSA02343: -35", diagnostic)
@@ -466,8 +628,36 @@ class ScannerFTPTests(unittest.TestCase):
             listing, {"CUSA02343": sfo("CUSA02343", category="gp")})
         self.assertEqual(inventory["games"], [])
         self.assertTrue(inventory["scan_complete"])
+        self.assertEqual(len(inventory["metadata_records"]), 1)
+        self.assertTrue(inventory["directory_candidates"][0]["metadata_verified"])
+        patch = inventory["metadata_records"][0]
+        self.assertEqual(patch["metadata_kind"], "patch_metadata")
+        self.assertEqual(patch["app_ver"], "01.04")
+        self.assertFalse(patch["installed_confirmed"])
         self.assertIn("SFO FIELDS CUSA02343", diagnostic)
         self.assertIn("SFO invalid: 0", diagnostic)
+
+    def test_non_base_metadata_keeps_separate_cusa_and_category(self):
+        ids = ["CUSA02343", "CUSA00411", "CUSA08032"]
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 " + cusa + "\r\n").encode()
+            for cusa in ids
+        )
+        inventory, diagnostic, _ = self.with_server(listing, {
+            "CUSA02343": sfo("CUSA02343", "Sample Base", "01.07", "gd"),
+            "CUSA00411": sfo("CUSA00411", "Sample Patch", "02.01", "gpe"),
+            "CUSA08032": sfo("CUSA08032", "Sample Add-on", "01.01", "ac"),
+        })
+        self.assertEqual([x["cusa"] for x in inventory["games"]],
+                         ["CUSA02343"])
+        self.assertEqual([x["metadata_kind"] for x in inventory["metadata_records"]],
+                         ["base_game", "patch_metadata", "dlc_metadata"])
+        self.assertEqual([x["metadata_verified"]
+                          for x in inventory["directory_candidates"]],
+                         [True, True, True])
+        self.assertEqual(inventory["metadata_records"][1]["app_ver"], "02.01")
+        self.assertIn("SFO metadata verified: 3", diagnostic)
+        self.assertIn("Base-game records: 1", diagnostic)
 
     def test_malformed_sfo_offsets_are_diagnosed_without_guessing(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
@@ -480,23 +670,102 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertFalse(inventory["scan_complete"])
 
 
-    def test_ps4_playable_categories_are_accepted(self):
-        listing = (
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
-            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA08032\r\n"
+    def test_ps4_library_keeps_ps2_classics_but_not_system_or_video_apps(self):
+        # gdO = PS2 Classic; gda = system app; gde = non-game native app.
+        # All valid SFO records remain observable in metadata_records.
+        ids = ["CUSA02343", "CUSA00411", "CUSA08032", "CUSA99999"]
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 " + cusa + "\r\n").encode()
+            for cusa in ids
         )
-        inventory, diagnostic, _ = self.with_server(
+        inventory, diagnostic, commands = self.with_server(
             listing, {
-                "CUSA02343": sfo("CUSA02343", category="gda"),
-                "CUSA00411": sfo("CUSA00411", category="gdo"),
-                "CUSA08032": sfo("CUSA08032", category="gde"),
+                "CUSA02343": sfo("CUSA02343", category="gd"),
+                "CUSA00411": sfo("CUSA00411", category="gdO"),
+                "CUSA08032": sfo("CUSA08032", category="gda"),
+                "CUSA99999": sfo("CUSA99999", category="gde"),
             })
         self.assertEqual(
             [g["cusa"] for g in inventory["games"]],
-            ["CUSA02343", "CUSA00411", "CUSA08032"]
+            ["CUSA02343", "CUSA00411"]
         )
+        self.assertEqual(
+            [g["metadata_kind"] for g in inventory["metadata_records"]],
+            ["base_game", "base_game", "other_metadata", "other_metadata"]
+        )
+        self.assertEqual(
+            [g["category"] for g in inventory["metadata_records"]],
+            ["gd", "gdO", "gda", "gde"]
+        )
+        self.assertEqual(len(inventory["directory_candidates"]), 4)
         self.assertTrue(inventory["scan_complete"])
+        self.assertIn("Base-game records: 2", diagnostic)
+        self.assertIn("Metadata records: 4", diagnostic)
+        self.assertTrue(set(commands).issubset(READ_ONLY_COMMANDS), commands)
+
+    def test_lowercase_legacy_ps2_classic_category_is_not_lost(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
+        inventory, _, _ = self.with_server(
+            listing, {"CUSA00411": sfo("CUSA00411", category="gdo")}
+        )
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertEqual(
+            inventory["metadata_records"][0]["metadata_kind"], "base_game"
+        )
+
+    def test_truncated_content_id_does_not_restore_missing_title_id(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo(
+                "CUSA02343", include_title_id=False,
+                content_id="IV0000-CUSA02343_")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -33", diagnostic)
+
+    def test_invalid_content_id_suffix_is_rejected(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo(
+                "CUSA02343", content_id="IV0000-CUSA02343_00-0123456789ABC_EF")})
+        self.assertEqual(inventory["games"], [])
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("SFO CUSA02343: -35", diagnostic)
+
+    def test_listing_over_capacity_cannot_claim_complete_scan(self):
+        listing = b"".join(
+            ("drwxr-xr-x root root 0 Nov 08 12:00 CUSA%05d\r\n" % i).encode()
+            for i in (2343, 411, 8032)
+        )
+        metadata = {
+            "CUSA02343": sfo("CUSA02343"),
+            "CUSA00411": sfo("CUSA00411"),
+            "CUSA08032": sfo("CUSA08032"),
+        }
+        inventory, diagnostic, _ = self.with_server(
+            listing, metadata, executable=self.limited_executable)
+        self.assertEqual(len(inventory["directory_candidates"]), 2)
+        self.assertEqual(len(inventory["games"]), 2)
+        self.assertFalse(inventory["scan_complete"])
+        self.assertIn("LIST_TRUNCATED: 1", diagnostic)
+
+    def test_combined_root_capacity_overflow_reports_incomplete_scan(self):
+        internal = (
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+            b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA00411\r\n"
+        )
+        external = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA08032\r\n"
+        def configure(server):
+            server.external_listing = external
+        inventory, diagnostic, _ = self.with_server(
+            internal,
+            {"CUSA02343": sfo("CUSA02343"),
+             "CUSA00411": sfo("CUSA00411"),
+             "CUSA08032": sfo("CUSA08032")},
+            executable=self.limited_executable, passthrough=configure)
+        self.assertFalse(inventory["scan_complete"])
+        self.assertEqual(len(inventory["directory_candidates"]), 2)
+        self.assertIn("CANDIDATE_CAPACITY_EXCEEDED: 1", diagnostic)
 
     def test_content_id_substring_cannot_impersonate_title(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
@@ -537,6 +806,19 @@ class ScannerFTPTests(unittest.TestCase):
         self.assertIn("SFO invalid: 9", diagnostic)
         self.assertEqual(diagnostic.count("magic=0x21444142"), 9)
         self.assertEqual(commands.count("RETR"), 9)
+
+    def test_utf8_title_truncation_preserves_valid_json(self):
+        listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"
+        # SFO title length can exceed our inventory's fixed-size field.
+        title = "A" * 190 + "\u20ac" * 20
+        inventory, diagnostic, _ = self.with_server(
+            listing, {"CUSA02343": sfo("CUSA02343", title)})
+        self.assertEqual(len(inventory["games"]), 1)
+        self.assertTrue(inventory["games"][0]["name"].startswith("A" * 190))
+        self.assertLessEqual(
+            len(inventory["games"][0]["name"].encode("utf8")), 191)
+        self.assertTrue(inventory["scan_complete"])
+        self.assertNotIn("SFO CUSA02343:", diagnostic)
 
     def test_game_name_with_quotes_produces_valid_json(self):
         listing = b"drwxr-xr-x root root 0 Nov 08 12:00 CUSA02343\r\n"

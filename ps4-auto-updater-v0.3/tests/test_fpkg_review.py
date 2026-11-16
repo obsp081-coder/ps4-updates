@@ -24,16 +24,15 @@ CONTENT_ID = "EP9000-CUSA02343_00-UNCHARTEDTRILOGY"
 
 class FpkgReviewTests(unittest.TestCase):
     def setUp(self):
-        self.comparison = {
-            "schema": 1,
-            "catalog_is_official_retail_not_fpkg": True,
+        self.inventory = {
+            "schema": 4,
             "games": [{
                 "cusa": CUSA,
                 "name": "Fictional test game",
-                "last_scan_app_ver": "01.00",
-                "retail_latest_version": "01.02",
-                "console_content_id": CONTENT_ID,
-                "content_id_match": True,
+                "app_ver": "01.00",
+                "content_id": CONTENT_ID,
+                # A fictional kind declaration is NOT actual PS4 proof.
+                "package_kind": "fpkg",
             }],
         }
         self.entry = {
@@ -64,13 +63,13 @@ class FpkgReviewTests(unittest.TestCase):
             catalog = self.catalog()
         if installed is None:
             installed = self.installed
-        return review(self.comparison, catalog, installed, firmware)
+        return review(self.inventory, catalog, installed, firmware)
 
     def status(self, **kwargs):
         return self.check(**kwargs)["games"][0]["status"]
 
     def test_empty_catalog_no_fpkg_updates_claimed(self):
-        report = review(self.comparison)
+        report = review(self.inventory)
         self.assertEqual(
             report["games"][0]["status"],
             "NOT_IN_FPKG_CATALOG"
@@ -100,7 +99,7 @@ class FpkgReviewTests(unittest.TestCase):
     def test_without_install_confirmation_is_blocked(self):
         self.assertEqual(
             review(
-                self.comparison,
+                self.inventory,
                 self.catalog()
             )["games"][0]["status"],
             "INSTALL_UNCONFIRMED",
@@ -120,12 +119,24 @@ class FpkgReviewTests(unittest.TestCase):
             "INSTALL_UNCONFIRMED"
         )
 
-    def test_identity_mismatch_is_blocked(self):
-        self.comparison["games"][0]["content_id_match"] = False
+    def test_unknown_kind_never_gets_an_fpkg_candidate(self):
+        self.inventory["games"][0]["package_kind"] = "unknown"
         self.assertEqual(
             self.status(),
-            "RETAIL_IDENTITY_NOT_CONFIRMED"
+            "BASE_PACKAGE_KIND_UNCONFIRMED"
         )
+
+    def test_missing_kind_never_gets_an_fpkg_candidate(self):
+        del self.inventory["games"][0]["package_kind"]
+        self.assertEqual(self.status(), "BASE_PACKAGE_KIND_UNCONFIRMED")
+
+    def test_retail_base_excluded_even_if_fpkg_catalog_has_same_cusa(self):
+        self.inventory["games"][0]["package_kind"] = "retail"
+        report = self.check()
+        self.assertEqual(report["games"][0]["status"], "RETAIL_UNSUPPORTED")
+        self.assertIsNone(report["games"][0]["fpkg_candidate_version"])
+        self.assertFalse(report["download_enabled"])
+        self.assertFalse(report["install_enabled"])
 
     def test_content_id_mismatch_is_blocked(self):
         self.entry["content_id"] = (
@@ -201,6 +212,44 @@ class FpkgReviewTests(unittest.TestCase):
                 "updates": []
             })
 
+    def test_forged_download_install_claims_are_rejected(self):
+        for key, value in (
+            ("download_url", "https://example.org/x.pkg"),
+            ("install_allowed", True),
+            ("source_authorized", True),
+            ("rights_verified", True),
+            ("fpkg_compatibility_confirmed", True),
+        ):
+            with self.subTest(key=key):
+                catalog = self.catalog()
+                catalog["updates"][0][key] = value
+                with self.assertRaises(ValueError):
+                    self.check(catalog=catalog)
+
+    def test_missing_false_permissions_and_retained_catalog_flags(self):
+        catalog = self.catalog()
+        del catalog["auto_install"]
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+        catalog = self.catalog()
+        catalog["compatibility_confirmed"] = "false"
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_forged_source_page_is_not_a_trusted_download_source(self):
+        catalog = self.catalog()
+        catalog["updates"][0]["source_page"] = "http://example.org/patch"
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_user_claimed_fpkg_kind_is_still_unverified(self):
+        report = self.check()
+        self.assertEqual(report["package_policy"], "fpkg_only")
+        self.assertFalse(report["games"][0]["base_kind_independently_verified"])
+        self.assertFalse(report["fpkg_compatibility_confirmed"])
+        self.assertFalse(report["install_enabled"])
+        self.assertFalse(report["download_enabled"])
+
     def test_duplicate_install_reports_are_rejected(self):
         self.installed["games"].append({
             "cusa": CUSA,
@@ -209,18 +258,117 @@ class FpkgReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
-    def test_invalid_comparison_is_rejected(self):
-        self.comparison["games"][0][
-            "last_scan_app_ver"
-        ] = "invalid"
+    def test_invalid_comparison_is_rejected_for_only_that_game(self):
+        self.inventory["games"][0]["app_ver"] = "invalid"
+        report = self.check()
+        self.assertEqual(report["games"][0]["status"], "BASE_VERSION_INVALID")
+        self.assertFalse(report["download_enabled"])
+        self.assertFalse(report["install_enabled"])
+
+    def test_incomplete_native_inventory_does_not_discard_other_games(self):
+        valid = dict(self.inventory["games"][0], category="gd")
+        incomplete = dict(valid, cusa="CUSA00001", content_id="",
+                          app_ver="", name="Missing SFO fields")
+        unknown = dict(valid, cusa="CUSA00002",
+                       content_id="EP9000-CUSA00002_00-TEST000000000000",
+                       app_ver="01.00", package_kind="unknown")
+        self.inventory = {"schema": 6, "metadata_only": True,
+                          "scan_complete": False,
+                          "download_enabled": False,
+                          "install_enabled": False,
+                          "games": [incomplete, valid, unknown]}
+        report = self.check()
+        self.assertEqual([row["status"] for row in report["games"]], [
+            "BASE_CONTENT_ID_UNCONFIRMED",
+            "MANUAL_REVIEW_REQUIRED",
+            "BASE_PACKAGE_KIND_UNCONFIRMED",
+        ])
+        self.assertFalse(report["install_enabled"])
+        self.assertFalse(report["download_enabled"])
+
+    def test_known_invalid_base_identity_is_blocked_not_ignored(self):
+        for cid, status in (
+            (None, "BASE_CONTENT_ID_UNCONFIRMED"),
+            ("", "BASE_CONTENT_ID_UNCONFIRMED"),
+            ("bad", "BASE_CONTENT_ID_INVALID"),
+            ("EP9000-CUSA00001_00-TEST000000000000",
+             "BASE_CONTENT_ID_CONFLICT"),
+        ):
+            with self.subTest(cid=cid):
+                self.inventory["games"][0]["content_id"] = cid
+                self.assertEqual(self.status(), status)
+
+    def test_missing_or_invalid_version_is_blocked(self):
+        for app_ver, status in (
+            (None, "BASE_VERSION_UNCONFIRMED"),
+            ("", "BASE_VERSION_UNCONFIRMED"),
+            ("01.xx", "BASE_VERSION_INVALID"),
+        ):
+            with self.subTest(app_ver=app_ver):
+                self.inventory["games"][0]["app_ver"] = app_ver
+                self.assertEqual(self.status(), status)
+
+    def test_native_patch_or_dlc_category_cannot_pose_as_base(self):
+        for category, status in (
+            ("gp", "NOT_A_BASE_GAME"),
+            ("ac", "NOT_A_BASE_GAME"),
+            ("", "BASE_CATEGORY_UNCONFIRMED"),
+            (["gd"], "BASE_CATEGORY_INVALID"),
+        ):
+            with self.subTest(category=category):
+                self.inventory["games"][0]["category"] = category
+                self.assertEqual(self.status(), status)
+
+    def test_false_schema_bool_and_missing_fixture_flag_rejected(self):
+        catalog = self.catalog()
+        catalog["schema"] = True
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+        catalog = self.catalog()
+        del catalog["fixture_only"]
+        with self.assertRaises(ValueError):
+            self.check(catalog=catalog)
+
+    def test_bounded_inventory_and_install_reports(self):
+        over = [dict(self.inventory["games"][0])] * 1025
+        with self.assertRaises(ValueError):
+            review({"games": over})
+        self.installed["games"] = [{"cusa": CUSA, "installed": True}] * 1025
         with self.assertRaises(ValueError):
             self.check()
+
+
+    def test_cli_rejects_duplicate_json_keys_and_oversize(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            input_file = root / "inventory.json"
+            output_file = root / "report.json"
+            command = [
+                sys.executable, str(PROJECT / "fpkg_review.py"),
+                str(input_file), "--out", str(output_file),
+            ]
+            input_file.write_text(
+                '{"games":[],"games":[]}', encoding="utf-8"
+            )
+            proc = subprocess.run(
+                command, capture_output=True, text=True, timeout=15
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("Duplicate FPKG review JSON key", proc.stderr)
+            self.assertFalse(output_file.exists())
+            input_file.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+            proc = subprocess.run(
+                command, capture_output=True, text=True, timeout=15
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("exceeds 2 MiB", proc.stderr)
+            self.assertFalse(output_file.exists())
 
     def test_cli_writes_report_without_altering_inputs(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             sources = {
-                "comparison.json": self.comparison,
+                "inventory.json": self.inventory,
                 "catalog.json": self.catalog(),
                 "installed.json": self.installed,
             }
@@ -240,7 +388,7 @@ class FpkgReviewTests(unittest.TestCase):
             command = [
                 sys.executable,
                 str(PROJECT / "fpkg_review.py"),
-                str(root / "comparison.json"),
+                str(root / "inventory.json"),
                 "--catalog",
                 str(root / "catalog.json"),
                 "--installed-check",

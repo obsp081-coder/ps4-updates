@@ -14,7 +14,7 @@ import hmac
 import json
 import re
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request, HTTPRedirectHandler, build_opener
 from xml.etree import ElementTree as ET
 
 CUSA_RE = re.compile(r"CUSA[0-9]{5}\Z")
@@ -61,16 +61,33 @@ def patch_url(cusa):
     )
 
 
-def read_xml(url):
-    """Request generated PlayStation metadata URL only."""
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "PS4-Auto-Updater-Metadata/0.4"
-        }
-    )
+class _RejectRedirect(HTTPRedirectHandler):
+    """Never follow an untrusted redirect from the HTTP metadata endpoint."""
 
-    with urlopen(request, timeout=12) as response:
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        return None
+
+
+def read_xml(url):
+    """Request only the exact generated Sony URL; never follow redirects.
+
+    Sony's historical endpoint uses plaintext HTTP. Data from it is
+    **unauthenticated metadata**, never installation/download approval.
+    """
+    if not isinstance(url, str):
+        raise ValueError("Sony metadata URL must be a string")
+    match = re.fullmatch(
+        re.escape(ENDPOINT) + r"/(CUSA[0-9]{5})/[a-f0-9]{64}/"
+        + r"(CUSA[0-9]{5})-ver\.xml",
+        url,
+    )
+    if not match or match.group(1) != match.group(2) or url != patch_url(match.group(1)):
+        raise ValueError("Refusing non-Sony or altered patch metadata URL")
+
+    request = Request(url, headers={
+        "User-Agent": "PS4-Auto-Updater-Metadata/0.4"
+    })
+    with build_opener(_RejectRedirect()).open(request, timeout=12) as response:
         data = response.read(MAX_XML + 1)
 
     if len(data) > MAX_XML:
@@ -90,6 +107,12 @@ def parse_patch_xml(data, cusa):
             "Invalid XML data length"
         )
 
+    # ET is a metadata parser, not an entity expansion service.
+    # Refuse DTD/entity declarations even when present in an otherwise
+    # well-formed untrusted HTTP document.
+    if b"<!DOCTYPE" in data.upper() or b"<!ENTITY" in data.upper():
+        raise ValueError("DTD/entity declarations are unsupported")
+
     try:
         root = ET.fromstring(data)
     except ET.ParseError as error:
@@ -103,6 +126,7 @@ def parse_patch_xml(data, cusa):
         )
 
     candidates = []
+    seen = set()
 
     for pkg in root.iter("package"):
         version = pkg.get("version")
@@ -118,6 +142,13 @@ def parse_patch_xml(data, cusa):
             and match.group(1) == cusa
         ):
             continue
+
+        identity = (version, content_id)
+        if identity in seen:
+            continue
+        if len(candidates) >= 128:
+            raise ValueError("Too many patch metadata entries")
+        seen.add(identity)
 
         name = (
             pkg.findtext("./paramsfo/title")
@@ -139,12 +170,24 @@ def parse_patch_xml(data, cusa):
             "No matching version and content_id"
         )
 
-    _, version, content_id, name = max(candidates)
+    # A Sony response can list one or several versions. Do not invent
+    # historical versions absent from this exact response. Distinct Content
+    # IDs for one version are retained as separate *metadata candidates*.
+    candidates.sort(reverse=True)
+    _, version, content_id, name = candidates[0]
 
     return {
         "latest_retail_version": version,
         "content_id": content_id,
-        "title": name
+        "title": name,
+        "observed_retail_versions": [
+            {"version": item_version, "content_id": item_content_id}
+            for _, item_version, item_content_id, _ in candidates
+        ],
+        "history_complete": False,
+        "metadata_transport_authenticated": False,
+        "package_size_verified": False,
+        "minimum_firmware_verified": False,
     }
 
 
@@ -155,7 +198,12 @@ def inspect_title(cusa, fetcher=read_xml):
         "cusa": cusa,
         "status": "LOOKUP_FAILED",
         "source": "sony-retail-patch-xml",
-        "metadata_url": url
+        "metadata_url": url,
+        "transport_authenticated": False,
+        "rights_verified": False,
+        "fpkg_compatibility_confirmed": False,
+        "install_enabled": False,
+        "downloads_enabled": False,
     }
 
     try:

@@ -43,6 +43,7 @@ class UpdateMatcherTests(unittest.TestCase):
                 "content_id": DEMO_CONTENT_ID,
                 "version": "01.02",
                 "min_fw": "11.00",
+                "required_base_version": "01.00",
             }]
         }
 
@@ -73,6 +74,29 @@ class UpdateMatcherTests(unittest.TestCase):
         self.assertFalse(report["auto_install"])
         self.assertFalse(report["compatibility_confirmed"])
 
+    def test_duplicate_inventory_cusa_is_not_actionable(self):
+        self.inventory["games"].append(dict(self.inventory["games"][0]))
+        rows = self.result()["results"]
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(item["status"] == "DUPLICATE_GAME_RECORD"
+                            and item["candidate_version"] is None
+                            for item in rows))
+
+    def test_duplicate_best_patch_version_is_not_actionable(self):
+        self.catalog["updates"].append(dict(self.catalog["updates"][0]))
+        self.assertEqual(self.status(), "AMBIGUOUS_UPDATE_METADATA")
+        self.assertIsNone(self.result()["results"][0]["candidate_version"])
+
+    def test_unauthorized_catalog_install_flag_is_rejected(self):
+        for flag in ("auto_install", "install_enabled",
+                     "downloads_enabled", "compatibility_confirmed",
+                     "fpkg_compatibility_confirmed"):
+            with self.subTest(flag=flag):
+                self.catalog[flag] = True
+                with self.assertRaises(ValueError):
+                    self.result()
+                del self.catalog[flag]
+
     def test_not_installed_is_filtered(self):
         self.check["games"][0]["installed"] = False
 
@@ -88,6 +112,16 @@ class UpdateMatcherTests(unittest.TestCase):
             self.status(),
             "INSTALL_UNCONFIRMED"
         )
+
+    def test_duplicate_install_records_never_confirm_presence(self):
+        self.check["games"].append({
+            "cusa": "CUSA02343", "installed": False
+        })
+        self.assertEqual(self.status(), "INSTALL_UNCONFIRMED")
+
+    def test_invalid_install_type_is_ignored(self):
+        self.check["games"][0]["installed"] = "yes"
+        self.assertEqual(self.status(), "INSTALL_UNCONFIRMED")
 
     def test_missing_install_record_is_unconfirmed(self):
         self.check["games"] = []
@@ -154,8 +188,13 @@ class UpdateMatcherTests(unittest.TestCase):
 
         self.assertEqual(
             self.status(),
-            "BASE_VERSION_MISMATCH"
+            "BASE_VERSION_NOT_CONFIRMED"
         )
+
+    def test_missing_base_requirement_never_counts_as_review_eligible(self):
+        del self.catalog["updates"][0]["required_base_version"]
+        self.assertEqual(self.status(), "BASE_VERSION_NOT_CONFIRMED")
+        self.assertIsNone(self.result()["results"][0]["candidate_version"])
 
     def test_choose_highest_eligible_not_highest_unsupported(self):
         self.catalog["updates"].append({

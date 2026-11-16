@@ -14,12 +14,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include "ui_local_art_probe.h"
+#include "pkg_header_evidence.h"
+
+/* Direct installed PKG reads are EXPERIMENTAL and disabled by default.
+ * No attempt is made to use an installer, unpack PFS, or modify game data. */
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #ifdef __ORBIS__
 #include <orbis/Net.h>
 #include <orbis/Sysmodule.h>
 #include <orbis/AppInstUtil.h>
 #include <orbis/libkernel.h>
+#include "scanner_ui.h"
+#include "ui_snapshot.h"
+#include "ui_png_transport.h"
+#include "ui_image.h"
+#include "ui_icon_cache.h"
+#include "ps4_shell_exit.h"
 typedef OrbisNetId sock_t;
 #define NET_BAD (-1)
 #define NET_RECV sceNetRecv
@@ -37,8 +52,20 @@ typedef int sock_t;
 #define NET_CLOSE close
 #endif
 
+#if defined(PS4_DIAGNOSTIC_ISOLATED)
+/* Never touch the normal app's cache, reports or inventory. */
+#define ROOT "/data/PS4AutoUpdaterProbe"
+#else
 #define ROOT "/data/PS4AutoUpdater"
+#endif
+#if defined(PS4_DIAGNOSTIC_ISOLATED) && \
+    !defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#error "An isolated diagnostic must enable only the explicit header probe"
+#endif
+
+#ifndef MAX_GAMES
 #define MAX_GAMES 256
+#endif
 #define MAX_SFO (256 * 1024)
 #define MAX_LIST (128 * 1024)
 #define FTP_PORT 2121
@@ -52,15 +79,21 @@ typedef struct {
     char category[12];
     char source[12];
     int installed;
+    PkgHeaderEvidence pkg_header;
+    unsigned pkg_header_location; /* 0 none, 1 internal, 2 ext0, 3 ext1 */
 } Game;
 
 static Game games[MAX_GAMES];
 static unsigned found;
+/* All validated metadata, including gp/gpe/ac. Not install proof. */
+static Game metadata_records[MAX_GAMES];
+static unsigned metadata_found;
 static FILE *report;
 static int errors;
 static int api_stage = -1;
 static int ftp_login_ok = 0;
 static int primary_listing_ok = 0;
+static int external_listing_ok = 0;
 static unsigned directory_candidates = 0;
 static unsigned sfo_invalid = 0;
 typedef struct {
@@ -69,12 +102,72 @@ typedef struct {
 } DirectoryCandidate;
 static DirectoryCandidate candidate_list[MAX_GAMES];
 static unsigned candidate_count = 0;
+static int candidate_overflow = 0;
+
+#ifdef __ORBIS__
+/* Single producer (FTP worker) / single consumer (VideoOut main thread).
+ * Only scan_status/scan_abort are shared while scanning.
+ * Completed game records are consumed AFTER scePthreadJoin. */
+static volatile uint32_t scan_status;
+static volatile int scan_abort;
+static int scan_native_ui;
+static int scan_run_rc;
+static int scan_inventory_saved;
+static int scan_inventory_complete;
+static ScannerUiEntry ui_items[MAX_GAMES];
+
+/* One-slot SPSC mailbox: UI owns requests and LRU; cover worker owns
+ * FTP, CRC and decode. State is published with release/acquire atomics.
+ * 0 idle, 1 requested, 2 worker decoding, 3 result ready. No heap. */
+static volatile uint32_t cover_state;
+static volatile uint32_t cover_stop;
+static volatile uint32_t cover_online; /* 0 starting, 1 ready, 2 stopped */
+static unsigned cover_index;
+static int cover_result;
+static uint32_t cover_pixels[UI_ICON_PIXELS];
+static unsigned char cover_failed[MAX_GAMES]; /* UI thread only */
+
+static int scan_should_abort(void) {
+    return __atomic_load_n(&scan_abort,__ATOMIC_ACQUIRE)!=0;
+}
+static void scan_publish_progress(unsigned current,unsigned total) {
+    const uint32_t packed=((current & 0x7FFFu)<<16) | (total & 0xFFFFu);
+    __atomic_store_n(&scan_status,packed,__ATOMIC_RELEASE);
+}
+#endif
 
 static void logmsg(const char *name, int value) {
     if (report) {
         fprintf(report, "%s: %d\n", name, value);
         fflush(report);
     }
+}
+
+static int metadata_index(const char *cusa) {
+    for (unsigned i = 0; i < metadata_found; ++i)
+        if (strcmp(metadata_records[i].cusa, cusa) == 0)
+            return (int)i;
+    return -1;
+}
+
+/* Conservative PS4 PARAM.SFO classification: gd is a game and gdO
+ * is used for PS2 Classics. Keep the old lowercase gdo spelling for
+ * compatibility with earlier metadata, but do not treat gda (system app)
+ * or gde (non-game video/native app) as playable base games.
+ * Unknown categories stay in metadata_records, never in the game library.
+ * Classification alone still does NOT establish installation. */
+static const char *metadata_kind(const char *category) {
+    if (!strcmp(category, "gd") || !strcmp(category, "gdO") ||
+        !strcmp(category, "gdo"))
+        return "base_game";
+    if (!strcmp(category, "gp") || !strcmp(category, "gpc") ||
+        !strcmp(category, "gpd") || !strcmp(category, "gpe") ||
+        !strcmp(category, "gpk") || !strcmp(category, "gpl") ||
+        !strcmp(category, "gdp"))
+        return "patch_metadata";
+    if (!strcmp(category, "ac"))
+        return "dlc_metadata";
+    return "other_metadata";
 }
 
 static int valid_id(const char *s) {
@@ -92,7 +185,9 @@ static int valid_id(const char *s) {
  * XX0000-CUSA12345_00-XXXXXXXXXXXXXXXX. A substring elsewhere is
  * not reliable proof that the metadata belongs to this title. */
 static int content_id_matches(const char *cid, const char *id) {
-    if (strlen(cid) < 17 || !valid_id(id))
+    /* A valid PS4 Content ID is exactly 36 characters:
+       XX0000-CUSA12345_00-XXXXXXXXXXXXXXXX. */
+    if (strlen(cid) != 36 || !valid_id(id))
         return 0;
     if (!isupper((unsigned char)cid[0]) ||
         !isupper((unsigned char)cid[1]) ||
@@ -100,8 +195,14 @@ static int content_id_matches(const char *cid, const char *id) {
         !isdigit((unsigned char)cid[3]) ||
         !isdigit((unsigned char)cid[4]) ||
         !isdigit((unsigned char)cid[5]) ||
-        cid[6] != '-' || cid[16] != '_')
+        cid[6] != '-' || cid[16] != '_' ||
+        !isdigit((unsigned char)cid[17]) ||
+        !isdigit((unsigned char)cid[18]) || cid[19] != '-')
         return 0;
+    for (size_t i = 20; i < 36; ++i)
+        if (!isupper((unsigned char)cid[i]) &&
+            !isdigit((unsigned char)cid[i]))
+            return 0;
     return memcmp(cid + 7, id, 9) == 0;
 }
 
@@ -111,8 +212,14 @@ static void remember_candidate(const char *id, const char *source) {
         if (!strcmp(candidate_list[i].cusa, id))
             return;
 
-    if (candidate_count == MAX_GAMES)
+    if (candidate_count == MAX_GAMES) {
+        if (!candidate_overflow) {
+            candidate_overflow = 1;
+            ++errors;
+            logmsg("CANDIDATE_CAPACITY_EXCEEDED", 1);
+        }
         return;
+    }
 
     DirectoryCandidate *c = &candidate_list[candidate_count++];
     memcpy(c->cusa, id, 10);
@@ -148,27 +255,52 @@ static int bounds(
     return off <= size && len <= size - off;
 }
 
-static void value(
-    char *dst,
-    size_t cap,
-    const unsigned char *v,
-    size_t n
-) {
-    size_t i = 0;
-    if (!cap) return;
+/* Preserve JSON-valid UTF-8 even if a long title must be truncated.
+ * Invalid UTF-8 becomes '?'; never split a multibyte code point. */
+static size_t utf8_size(const unsigned char *p, size_t n) {
+    if (n == 0 || p[0] == 0) return 0;
+    if (p[0] < 0x80) return 1;
+    size_t l = 0;
+    if (p[0] >= 0xC2 && p[0] <= 0xDF) l = 2;
+    else if (p[0] >= 0xE0 && p[0] <= 0xEF) l = 3;
+    else if (p[0] >= 0xF0 && p[0] <= 0xF4) l = 4;
+    else return 0;
+    if (l > n) return 0;
+    for (size_t i = 1; i < l; ++i)
+        if (p[i] < 0x80 || p[i] > 0xBF) return 0;
+    if (l == 3 && p[0] == 0xE0 && p[1] < 0xA0) return 0;
+    if (l == 3 && p[0] == 0xED && p[1] >= 0xA0) return 0;
+    if (l == 4 && p[0] == 0xF0 && p[1] < 0x90) return 0;
+    if (l == 4 && p[0] == 0xF4 && p[1] >= 0x90) return 0;
+    return l;
+}
 
-    while (i < n && i + 1 < cap && v[i]) {
-        dst[i] = (char)v[i];
-        ++i;
+static void value(
+    char *dst, size_t cap, const unsigned char *v, size_t n
+) {
+    size_t i = 0, written = 0;
+    if (!cap) return;
+    while (i < n && v[i] && written + 1 < cap) {
+        size_t len = utf8_size(v + i, n - i);
+        if (!len) {
+            dst[written++] = '?';
+            ++i;
+            continue;
+        }
+        if (written + len >= cap) break;
+        memcpy(dst + written, v + i, len);
+        written += len;
+        i += len;
     }
-    dst[i] = 0;
+    dst[written] = 0;
 }
 
 /*
  * 1=game, 2=valid non-game/patch, 3=duplicate.
  * Negative: -30 empty, -31 bad magic, -32 bad header offsets,
  * -33 missing/invalid ID, -34 title-id mismatch, -35 content mismatch,
- * -36 inventory capacity.
+ * -36 inventory capacity, -37 missing CATEGORY,
+ * -38 duplicate/conflicting metadata from different roots.
  * Presence of an SFO does NOT confirm that an app is installed.
  */
 static int parse_sfo(
@@ -249,23 +381,34 @@ static int parse_sfo(
     if (strcmp(g.cusa, id)) return -34;
     if (g.cid[0] && !content_id_matches(g.cid, id)) return -35;
 
-    /* Keep playable base-game categories aligned with the project's
-       PKG inspector: gd, gda and gdo. gde is a demo, also playable.
-       gp/gdp are patches; ac is an add-on, not a base game. */
-    if (
-        g.category[0] &&
-        strcmp(g.category, "gd") &&
-        strcmp(g.category, "gda") &&
-        strcmp(g.category, "gdo") &&
-        strcmp(g.category, "gde")
-    ) return 2;
-
-    if (found >= MAX_GAMES) return -36;
-    if (duplicate(id)) return 3;
-
+    /* Validate category for every record. Do not falsely describe
+     * patch/add-on metadata as missing or invalid simply because it
+     * is not a playable base-game category. */
+    if (!g.category[0]) return -37;
+    if (metadata_index(id) >= 0) return -38;
+    if (metadata_found >= MAX_GAMES) return -36;
     snprintf(g.source, sizeof g.source, "%s", source);
-    games[found++] = g;
-    return 1;
+    if (!strcmp(metadata_kind(g.category), "base_game")) {
+        if (found >= MAX_GAMES) return -36;
+        if (duplicate(id)) return -38;
+        games[found++] = g;
+    }
+    metadata_records[metadata_found++] = g;
+    return !strcmp(metadata_kind(g.category), "base_game") ? 1 : 2;
+}
+
+/* Recover CRLF-expanded SFO only after raw validation fails.
+ * This preserves console files and revalidates every recovered record. */
+static size_t unexpand_ascii_newlines(
+    const unsigned char *src, size_t size, unsigned char *dst
+) {
+    size_t written = 0;
+    for (size_t i = 0; i < size; ++i) {
+        if (src[i] == '\r' && i + 1 < size && src[i + 1] == '\n')
+            continue;
+        dst[written++] = src[i];
+    }
+    return written;
 }
 
 static void json_str(FILE *fp, const char *s) {
@@ -430,14 +573,17 @@ static int reply(
     char *line,
     size_t cap
 ) {
-    /* A numeric FTP reply needs three digits and a delimiter. */
+    /* A numeric FTP reply needs three digits and a valid delimiter.
+     * Accepting 220X or reusing leftover bytes from a short multiline
+     * response could falsely report a successful handshake. */
     if (readline(fd, line, cap) < 4)
         return -1;
 
     if (
         !isdigit((unsigned char)line[0]) ||
         !isdigit((unsigned char)line[1]) ||
-        !isdigit((unsigned char)line[2])
+        !isdigit((unsigned char)line[2]) ||
+        (line[3] != ' ' && line[3] != '-')
     ) return -1;
 
     int code =
@@ -447,8 +593,11 @@ static int reply(
 
     if (line[3] == '-') {
         for (int i = 0; i < 60; ++i) {
-            if (readline(fd, line, cap) < 0)
+            const int line_length=readline(fd, line, cap);
+            if (line_length < 0)
                 return -1;
+            if (line_length < 4)
+                continue; /* Legal intermediate text, never a final code. */
 
             if (
                 line[0] == (char)('0' + code / 100) &&
@@ -537,6 +686,11 @@ static int anonymous_auth(sock_t fd) {
  * when PASV responds with 530. The initial control request is PASV.
  */
 static int login(sock_t fd) {
+    /* Authentication is per FTP control connection. A successful metadata
+     * scan and the later lazy-cover worker use different sockets: an
+     * anonymous USER attempt on the first must not suppress a needed USER
+     * on the second. The scan worker is joined before covers start. */
+    ftp_auth_attempted=0;
     char line[512];
     int code = reply(fd, line, sizeof line);
     if (code == 120) {
@@ -647,12 +801,21 @@ static int transfer(
     int fail = 0;
     size_t discarded = 0;
     unsigned char discard[2048];
+#ifdef __ORBIS__
+    int cancelled = 0;
+#endif
 
     /*
      * Read until EOF. Never interpret a truncated LIST or SFO, and
      * cap the amount discarded after the caller's buffer fills.
      */
     for (;;) {
+#ifdef __ORBIS__
+        if(scan_should_abort()) {
+            cancelled=1;
+            break;
+        }
+#endif
         unsigned char *destination;
         size_t available;
 
@@ -684,6 +847,9 @@ static int transfer(
 
     NET_CLOSE(data);
 
+#ifdef __ORBIS__
+    if(cancelled)return -18; /* Closing control on abort is caller's job. */
+#endif
     code = reply(control, line, sizeof line);
     if (report) {
         fprintf(report, "FTP_READ_END_CODE: %d\n", code);
@@ -703,12 +869,15 @@ static int transfer(
 static int listing_names(
     const unsigned char *data,
     size_t size,
-    char ids[MAX_GAMES][10]
+    char ids[MAX_GAMES][10],
+    int *truncated
 ) {
     size_t off = 0;
     int count = 0;
+    *truncated = 0;
 
-    while (off < size && count < MAX_GAMES) {
+    /* Continue parsing after reaching capacity to detect a partial scan. */
+    while (off < size) {
         size_t end = off;
 
         while (end < size && data[end] != '\n')
@@ -742,8 +911,12 @@ static int listing_names(
                         seen = 1;
 
                 if (!seen) {
-                    memcpy(ids[count], s, 10);
-                    ++count;
+                    if (count == MAX_GAMES) {
+                        *truncated = 1;
+                    } else {
+                        memcpy(ids[count], s, 10);
+                        ++count;
+                    }
                 }
             }
         }
@@ -761,6 +934,9 @@ static int scan_root(
     int optional
 ) {
     static unsigned char listing[MAX_LIST];
+#ifdef __ORBIS__
+    if(scan_should_abort())return -1;
+#endif
     size_t bytes = 0;
     char cmd[320];
 
@@ -789,14 +965,22 @@ static int scan_root(
         return -1;
     }
 
-    if (!optional)
+    if (optional)
+        external_listing_ok = 1;
+    else
         primary_listing_ok = 1;
 
     static char ids[MAX_GAMES][10];
 
+    int truncated = 0;
     int count = listing_names(
-        listing, bytes, ids
+        listing, bytes, ids, &truncated
     );
+    if (truncated) {
+        /* Never report an incomplete subset as a full inventory. */
+        ++errors;
+        logmsg("LIST_TRUNCATED", 1);
+    }
 
     if (report)
         fprintf(
@@ -814,6 +998,10 @@ static int scan_root(
     static unsigned char sfo[MAX_SFO];
 
     for (int i = 0; i < count; ++i) {
+#ifdef __ORBIS__
+        if(scan_should_abort())return -1;
+        scan_publish_progress((unsigned)i+1u,(unsigned)count);
+#endif
         if (duplicate(ids[i]))
             continue;
 
@@ -854,6 +1042,29 @@ static int scan_root(
             }
 
             int parsed = parse_sfo(sfo, bytes, ids[i], source);
+            if (parsed < 0 && bytes >= 20 &&
+                u32(sfo) == 0x46535000u) {
+                /* Require a valid SFO for the same CUSA after recovery. */
+                static unsigned char decoded[MAX_SFO];
+                size_t clean_size = unexpand_ascii_newlines(
+                    sfo, bytes, decoded
+                );
+                if (clean_size < bytes) {
+                    int recovered = parse_sfo(
+                        decoded, clean_size, ids[i], source
+                    );
+                    if (recovered >= 0) {
+                        parsed = recovered;
+                        if (report) {
+                            fprintf(report,
+                                "SFO ASCII_RECOVERED %s original=%lu cleaned=%lu\n",
+                                ids[i], (unsigned long)bytes,
+                                (unsigned long)clean_size);
+                            fflush(report);
+                        }
+                    }
+                }
+            }
             if (parsed < 0) {
                 status = parsed;
                 ++sfo_invalid;
@@ -876,28 +1087,165 @@ static int scan_root(
     return count;
 }
 
-static void confirm_games(void) {
+
 #ifdef __ORBIS__
-    uint32_t load =
-        sceSysmoduleLoadModuleInternal(
-            ORBIS_SYSMODULE_INTERNAL_APP_INST_UTIL
-        );
+/* Read-only GoldHEN FTP icon retrieval. A single PNG is decoded in the
+ * background thread, and its 128x128 pixels remain private until READY.
+ * GoldHEN variants may not support TYPE I: match scanner's PASV-first
+ * transfer path. PNG CRC and optional ASCII newline recovery protect the
+ * icon cache from corrupt transport data. */
+static int fetch_local_icon(sock_t control,unsigned index,uint32_t *out) {
+    if(index>=found || !out || scan_should_abort())return -1;
+    const Game *g=&games[index];
+    if(!valid_id(g->cusa))return -2;
+    const char *root=strcmp(g->source,"external")==0
+        ? "/system_data/priv/appmeta/external"
+        : "/system_data/priv/appmeta";
+    char cmd[320];
+    const int len=snprintf(cmd,sizeof cmd,"RETR %s/%s/icon0.png",
+                           root,g->cusa);
+    if(len<0 || len>=(int)sizeof cmd)return -3;
+    static unsigned char png[UI_ICON_MAX_PNG];
+    size_t bytes=0;
+    const int read_rc=transfer(control,cmd,png,sizeof png,&bytes);
+    if(read_rc!=0)return read_rc;
+    const int valid=ui_png_ftp_validate(png,&bytes);
+    if(valid<0)return valid;
+    if(valid==1)logmsg("ICON_FTP_ASCII_CRC_RECOVERED",1);
+    return ui_image_thumbnail(png,bytes,out,UI_ICON_PIXELS);
+}
 
-    if (report)
-        fprintf(
-            report,
-            "AppInstUtil module load: 0x%08x\n",
-            load
-        );
-
-    if (load != 0) {
-        /* 0x80020008 = kernel ENOEXEC; do not claim app absent. */
-        if (load == 0x80020008u)
-            logmsg("AppInstUtil ENOEXEC", 1);
-        api_stage = 1;
+/* Deliberately disabled in production. Enabling this compile-time opt-in
+ * performs exactly ONE read-only directory listing for a verified base-game
+ * CUSA. It does not RETR pic1, write storage, or imply FW14 compatibility.
+ * A listing hit is merely a candidate pending physical-console validation. */
+#ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
+static void probe_pic1_candidate(void) {
+    if(!found || scan_should_abort())return;
+    char cmd[96];
+    if(!ui_art_probe_path(cmd,sizeof cmd,games[0].cusa)) {
+        logmsg("WIDE_ART_INVALID_TITLE",1);
         return;
     }
+    /* A separate connection prevents an unsupported or oversized LIST
+     * response from desynchronizing the proven icon0 transfer session. */
+    sock_t diagnostic=connect_local(FTP_PORT);
+    if(diagnostic==NET_BAD) {
+        logmsg("WIDE_ART_CONNECT_FAILED",1);
+        return;
+    }
+    if(!login(diagnostic)) {
+        logmsg("WIDE_ART_GREETING_FAILED",1);
+        NET_CLOSE(diagnostic);
+        return;
+    }
+    unsigned char listing[8192];
+    size_t len=0;
+    const int rc=transfer(diagnostic,cmd,listing,sizeof listing,&len);
+    logmsg("WIDE_ART_LIST_RC",rc);
+    if(rc==0)
+        logmsg("WIDE_ART_PIC1_LISTED",
+               ui_art_probe_mentions_pic1(listing,len));
+    /* Always close the isolated diagnostic control channel, even if the
+     * FTP server sends unexpected replies. The legacy anonymous-auth
+     * guard is process-global, not per socket: reset it so a USER attempt
+     * on this diagnostic socket cannot suppress the FIRST USER attempt
+     * on the still-unused normal icon0 socket. */
+    NET_CLOSE(diagnostic);
+    ftp_auth_attempted=0;
+}
+#endif
 
+static void *cover_worker_entry(void *unused) {
+    (void)unused;
+    sock_t control=connect_local(FTP_PORT);
+    if(control==NET_BAD) {
+        logmsg("ICON_CONTROL_CONNECT_FAILED",1);
+        __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+        return NULL;
+    }
+    if(!login(control)) {
+        logmsg("ICON_FTP_GREETING_FAILED",1);
+        NET_CLOSE(control);
+        __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+        return NULL;
+    }
+    /* Do not probe TYPE I here. Some PS4 FTP implementations reject it
+     * and desynchronize subsequent PASV requests. The read-only scanner
+     * already uses PASV first; the cover worker must do the same. */
+    logmsg("ICON_FTP_PASV_FIRST",1);
+#ifdef PS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE
+    probe_pic1_candidate();
+#endif
+    __atomic_store_n(&cover_online,1u,__ATOMIC_RELEASE);
+    while(!scan_should_abort() &&
+          !__atomic_load_n(&cover_stop,__ATOMIC_ACQUIRE)) {
+        if(__atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)==1u) {
+            const unsigned index=cover_index; /* request published */
+            __atomic_store_n(&cover_state,2u,__ATOMIC_RELEASE);
+            cover_result=fetch_local_icon(control,index,cover_pixels);
+            logmsg("ICON_LAZY_FETCH_RC",cover_result);
+            __atomic_store_n(&cover_state,3u,__ATOMIC_RELEASE);
+        } else {
+            (void)sceKernelUsleep(30000);
+        }
+    }
+    /* An interrupted FTP transfer may have an unread final response:
+     * close instead of sending QUIT on the stale command stream. */
+    NET_CLOSE(control);
+    __atomic_store_n(&cover_online,2u,__ATOMIC_RELEASE);
+    return NULL;
+}
+
+/* This callback is invoked by scanner_ui_results on the Pad owner thread.
+ * Never block here; the single-slot mailbox accepts only one request.
+ * Previously failed icons remain explicit placeholders for this session. */
+static int cover_ui_tick(const char *cusa) {
+    int changed=0;
+    if(__atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)==3u) {
+        const unsigned index=cover_index;
+        if(index<found) {
+            if(cover_result==0 &&
+               scanner_ui_offer_thumbnail(games[index].cusa,cover_pixels,
+                                          UI_ICON_PIXELS)==0) {
+                changed=1;
+            } else {
+                cover_failed[index]=1;
+            }
+        }
+        __atomic_store_n(&cover_state,0u,__ATOMIC_RELEASE);
+    }
+    if(!cusa || scan_should_abort() ||
+       __atomic_load_n(&cover_online,__ATOMIC_ACQUIRE)!=1u ||
+       __atomic_load_n(&cover_state,__ATOMIC_ACQUIRE)!=0u ||
+       ui_icon_cache_find(cusa)!=NULL)return changed;
+    for(unsigned i=0;i<found;++i) {
+        if(!cover_failed[i] && strcmp(games[i].cusa,cusa)==0) {
+            cover_index=i;
+            __atomic_store_n(&cover_state,1u,__ATOMIC_RELEASE);
+            break;
+        }
+    }
+    return changed;
+}
+#endif
+
+/* The fw14 hardware crash after the scan is under investigation.
+ * AppInstUtil direct init is EXPERIMENTAL and disabled in official builds.
+ * Without a safe lookup, all installation states stay UNKNOWN. */
+static void confirm_games(void) {
+#ifdef __ORBIS__
+#ifndef PS4_ENABLE_EXPERIMENTAL_APPINSTUTIL
+    api_stage = 3;
+    logmsg("AppInstUtil skipped (unverified on firmware 14)", 1);
+    return;
+#else
+    /* ItemzFlow's read-only AppExists path initializes the linked
+     * AppInstUtil import directly. Our old sysmodule load attempt
+     * returned 0x80020008 on firmware 14.00 and prevented this call
+     * from running at all. That load failure is NOT evidence that the
+     * already-linked API is unavailable. No install API is called. */
+    logmsg("AppInstUtil direct initialization attempted", 1);
     int32_t init = sceAppInstUtilInitialize();
 
     if (report)
@@ -922,8 +1270,14 @@ static void confirm_games(void) {
             &exists
         );
 
-        if (rc == 0)
-            games[i].installed = exists ? 1 : 0;
+        if (rc == 0 && (exists == 0 || exists == 1)) {
+            games[i].installed = exists;
+        } else if (report) {
+            fprintf(report,
+                    "AppInstUtil exists %s: rc=0x%08x state=%d\n",
+                    games[i].cusa, (uint32_t)rc, (int)exists);
+            fflush(report);
+        }
     }
 
     int32_t done = sceAppInstUtilTerminate();
@@ -934,27 +1288,134 @@ static void confirm_games(void) {
             "AppInstUtil term: 0x%08x\n",
             (uint32_t)done
         );
+#endif /* PS4_ENABLE_EXPERIMENTAL_APPINSTUTIL */
 #else
     api_stage = -1;
 #endif
 }
 
-static int save_inventory(const char *path) {
-    FILE *fp = fopen(path, "wb");
+/* Independent read-only diagnostic of *installed base* app.pkg headers.
+ * Based on ItemzFlow's publicly documented read path, not yet proven to
+ * be accessible in OUR FW14 homebrew sandbox. A header flag observation
+ * is NOT equivalent to authenticated FPKG, ownership or compatibility.
+ *
+ * Never enabled for the ordinary release; tests exercise the pure
+ * pkg_header_observe parser separately. Failing to open an installed
+ * package is an explicit UNKNOWN, never evidence of Retail or FPKG. */
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+/* Only known, fixed title IDs from validated native inventory or the
+ * explicit probe app itself may reach the filesystem. Header is NOT a
+ * verification of FPKG authenticity, ownership or patch compatibility. */
+static void probe_header_target(const char *title_id,
+                                PkgHeaderEvidence *evidence,
+                                unsigned *observed_location) {
+    if(!title_id || !evidence || !observed_location)return;
+    *observed_location=0u;
+    *evidence=(PkgHeaderEvidence){PKG_OBS_NOT_PROBED,0u,0u};
+#if !defined(O_NOFOLLOW) || !defined(O_NONBLOCK)
+    evidence->observation=PKG_OBS_SAFE_OPEN_UNAVAILABLE;
+#else
+    const char *roots[]={
+        "/user/app",
+        "/mnt/ext0/user/app",
+        "/mnt/ext1/user/app"
+    };
+    evidence->observation=PKG_OBS_OPEN_FAILED;
+    for(unsigned location=0; location<3u; ++location) {
+        char path[128];
+        const int n=snprintf(path,sizeof path,"%s/%s/app.pkg",
+                             roots[location],title_id);
+        if(n<=0 || (size_t)n>=sizeof path)continue;
+        /* Require both flags: no FIFO block, no followed leaf symlink. */
+        int flags=O_RDONLY|O_NOFOLLOW|O_NONBLOCK;
+#ifdef O_CLOEXEC
+        flags|=O_CLOEXEC;
+#endif
+        const int fd=open(path,flags);
+        if(fd<0)continue;
+        *observed_location=location+1u;
+        struct stat st;
+        if(fstat(fd,&st)!=0) {
+            evidence->observation=PKG_OBS_STAT_UNAVAILABLE;
+            (void)close(fd);
+            break;
+        }
+        if(!S_ISREG(st.st_mode)) {
+            evidence->observation=PKG_OBS_NOT_REGULAR;
+            (void)close(fd);
+            break;
+        }
+        unsigned char raw[8];
+        const ssize_t got=read(fd,raw,sizeof raw);
+        (void)close(fd);
+        *evidence=(got==8) ?
+            pkg_header_observe(raw,sizeof raw) :
+            pkg_header_observe(NULL,0u);
+        break;
+    }
+#endif
+}
+#endif
 
+static void probe_installed_pkg_headers(void) {
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+#if defined(PS4_DIAGNOSTIC_ISOLATED)
+    /* First target is our own diagnostic app, never a user's game:
+     * this isolated Title ID is controlled by our Makefile.
+     * Failure is an observable UNKNOWN, not a fallback to Retail. */
+    PkgHeaderEvidence self_header={PKG_OBS_NOT_PROBED,0u,0u};
+    unsigned self_location=0u;
+    probe_header_target("BREW01998",&self_header,&self_location);
+    if(report)
+        fprintf(report,"PKG_SELF_HEADER BREW01998 observation=%s "
+                "location=%u header_read=%u flags=0x%08x (UNVERIFIED)\n",
+                pkg_header_observation_name(self_header.observation),
+                self_location,self_header.header_read,
+                (unsigned)self_header.flags_be);
+#endif
+    for(unsigned i=0; i<found; ++i) {
+        Game *g=&games[i];
+        if(scan_should_abort())break;
+        if(!valid_id(g->cusa))continue;
+        probe_header_target(g->cusa,&g->pkg_header,&g->pkg_header_location);
+        if(report)
+            fprintf(report,"PKG_HEADER %s observation=%s location=%u "
+                    "header_read=%u flags=0x%08x (UNVERIFIED)\n",
+                    g->cusa,
+                    pkg_header_observation_name(g->pkg_header.observation),
+                    g->pkg_header_location,g->pkg_header.header_read,
+                    (unsigned)g->pkg_header.flags_be);
+    }
+#else
+    logmsg("PKG_HEADER_PROBE_DISABLED_DEFAULT",1);
+#endif
+}
+
+static int save_inventory(const char *path) {
+    char tmp[1024];
+    int n = snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof tmp)
+        return -1;
+    FILE *fp = fopen(tmp, "wb");
     if (!fp)
         return -1;
 
     fputs(
         "{\n"
-        "  \"schema\":5,\n"
-        "  \"source\":\"ftp_loopback_readonly_v061\",\n"
+        "  \"schema\":6,\n"
+        "  \"source\":\"ftp_loopback_readonly_v065\",\n"
         "  \"metadata_only\":true,\n"
+        "  \"fpkg_detection_confirmed\":false,\n"
+#if defined(__ORBIS__) && defined(PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE)
+        "  \"pkg_header_probe_mode\":\"EXPERIMENTAL_READ_ONLY\",\n"
+#else
+        "  \"pkg_header_probe_mode\":\"DISABLED\",\n"
+#endif
         "  \"scan_complete\":",
         fp
     );
     fputs(
-        ftp_login_ok && primary_listing_ok && errors == 0
+        ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0
             ? "true" : "false",
         fp
     );
@@ -973,11 +1434,30 @@ static int save_inventory(const char *path) {
         json_str(fp, candidate_list[i].cusa);
         fputs(",\"source\":", fp);
         json_str(fp, candidate_list[i].source);
-        fputs(duplicate(candidate_list[i].cusa)
+        fputs(metadata_index(candidate_list[i].cusa) >= 0
                   ? ",\"metadata_verified\":true}"
                   : ",\"metadata_verified\":false}", fp);
     }
 
+    fputs("\n  ],\n  \"metadata_records\":[\n", fp);
+    for (unsigned i = 0; i < metadata_found; ++i) {
+        const Game *g = &metadata_records[i];
+        if (i) fputs(",\n", fp);
+        fputs("    {\"cusa\":", fp); json_str(fp, g->cusa);
+        fputs(",\"name\":", fp); json_str(fp, g->name);
+        fputs(",\"app_ver\":", fp); json_str(fp, g->version);
+        fputs(",\"content_id\":", fp); json_str(fp, g->cid);
+        fputs(",\"content_id_verified\":", fp);
+        fputs(g->cid[0] && content_id_matches(g->cid, g->cusa)
+                  ? "true" : "false", fp);
+        fputs(",\"category\":", fp); json_str(fp, g->category);
+        fputs(",\"metadata_kind\":", fp);
+        json_str(fp, metadata_kind(g->category));
+        fputs(",\"source\":", fp); json_str(fp, g->source);
+        fputs(",\"installed_confirmed\":false", fp);
+        fputs(",\"package_kind\":\"unknown\"",fp);
+        fputs(",\"fpkg_confirmed\":false}",fp);
+    }
     fputs("\n  ],\n  \"games\":[\n", fp);
 
     for (unsigned i = 0; i < found; ++i) {
@@ -1000,6 +1480,23 @@ static int save_inventory(const char *path) {
 
         fputs(",\"category\":", fp);
         json_str(fp, g->category);
+
+        /* Existing SFO, known CUSA, or AppInstUtil AppExists do not
+         * reveal installed Retail/FPKG authenticity. Never infer it. */
+        fputs(",\"package_kind\":\"unknown\"", fp);
+        fputs(",\"fpkg_confirmed\":false", fp);
+        fputs(",\"package_kind_evidence\":\"SFO_NOT_PROOF\"", fp);
+        fputs(",\"pkg_header_observation\":", fp);
+        json_str(fp,pkg_header_observation_name(g->pkg_header.observation));
+        fputs(",\"pkg_header_flags_observed\":", fp);
+        if(g->pkg_header.header_read)
+            fprintf(fp,"\"0x%08x\"", (unsigned)g->pkg_header.flags_be);
+        else fputs("null",fp);
+        fputs(",\"pkg_header_location\":",fp);
+        json_str(fp,
+             g->pkg_header_location==1u ? "internal" :
+             g->pkg_header_location==2u ? "ext0" :
+             g->pkg_header_location==3u ? "ext1" : "not_available");
 
         fputs(",\"source\":", fp);
         json_str(fp, g->source);
@@ -1030,22 +1527,21 @@ static int save_inventory(const char *path) {
     if (fclose(fp) != 0)
         ok = 0;
 
-    return ok ? 0 : -1;
+    if (!ok || rename(tmp, path) != 0) {
+        (void)remove(tmp);
+        return -1;
+    }
+    return 0;
 }
 
-int main(void) {
+static int scan_readonly(void) {
 #ifdef __ORBIS__
-    if (
-        mkdir(ROOT, 0777) != 0 &&
-        errno != EEXIST
-    ) return 2;
-
     /* Keep v0.5 diagnostics intact for side-by-side comparison. */
     const char *outpath =
-        ROOT "/inventory_v061.json";
+        ROOT "/inventory_v065.json";
 
     const char *reportpath =
-        ROOT "/diagnostic_v061.txt";
+        ROOT "/diagnostic_v065.txt";
 
     int netstatus = sceNetInit();
     int pool = -1;
@@ -1081,7 +1577,7 @@ int main(void) {
     if (report) {
         fprintf(
             report,
-            "PS4 Auto Updater v0.6.1 FTP loopback READ ONLY\n"
+            "PS4 Auto Updater v0.6.5 FTP loopback READ ONLY\n"
             "Network initialize: 0x%08x\n"
             "Network pool: %d\n",
             (unsigned)netstatus,
@@ -1089,6 +1585,10 @@ int main(void) {
         );
         fflush(report);
     }
+
+#ifdef __ORBIS__
+    logmsg("NATIVE_UI_AVAILABLE",scan_native_ui);
+#endif
 
     if (pool < 0) {
         logmsg("NET_UNAVAILABLE", pool);
@@ -1115,7 +1615,13 @@ int main(void) {
         }
 #endif
 
-        sock_t control = connect_local(port);
+#ifdef __ORBIS__
+        if(scan_should_abort()) {
+            logmsg("SCAN_ABORT_BEFORE_CONNECT",1);
+            pool = -1;
+        }
+#endif
+        sock_t control = pool < 0 ? NET_BAD : connect_local(port);
 
         if (control == NET_BAD) {
             logmsg("CONTROL_CONNECT_FAILED", -1);
@@ -1137,32 +1643,96 @@ int main(void) {
                     0
                 );
 
+#ifdef __ORBIS__
+                if(!scan_should_abort())
+#endif
                 scan_root(
                     control,
                     "/system_data/priv/appmeta/external",
                     "external",
                     1
                 );
+/* Covers are now requested lazily by the UI after the scan.
+                 * The initial metadata pass does not wait for artwork. */
             } else {
                 ++errors;
             }
 
-            char line[512];
-
-            (void)command(
-                control,
-                line,
-                sizeof line,
-                "QUIT"
-            );
-
+            /* transfer() may stop halfway through a data stream when
+             * Cancel is requested; its control reply is then unread.
+             * Never issue QUIT on an out-of-sync command stream. */
+#ifdef __ORBIS__
+            if(!scan_should_abort()) {
+#endif
+                char line[512];
+                (void)command(control,line,sizeof line,"QUIT");
+#ifdef __ORBIS__
+            } else {
+                logmsg("FTP_CANCEL_SKIP_QUIT",1);
+            }
+#endif
             NET_CLOSE(control);
         }
     }
 
+    logmsg("SCAN_STAGE_FINISHED", 1);
+#ifdef __ORBIS__
+    logmsg("UI_SCAN_CANCEL_REQUESTED",scan_should_abort());
+#endif
     confirm_games();
+    logmsg("SCAN_STAGE_CONFIRM_DONE", 1);
+    probe_installed_pkg_headers();
+    logmsg("SCAN_STAGE_PKG_HEADER_PROBE_DONE", 1);
 
-    int saved = save_inventory(outpath);
+#ifdef __ORBIS__
+    /* Critical cache invariant: never erase an existing, valid library
+     * with a partial scan. A successful internal scan combined with a
+     * failed optional external LIST may otherwise lose all external games
+     * after restarting the UI. A partial first scan can seed a snapshot
+     * only when there is no valid previous cache at all. */
+    const int base_verified=ftp_login_ok && primary_listing_ok &&
+        errors==0 && sfo_invalid==0 && !candidate_overflow &&
+        !scan_should_abort();
+    const int complete_scan=base_verified && external_listing_ok;
+    const int partial_seed=base_verified && found>0u;
+    int prior_valid=0;
+    if(!complete_scan && partial_seed) {
+        static UiSnapshotGame prior[MAX_GAMES];
+        unsigned prior_count=0;
+        const int status=ui_snapshot_load(
+            ROOT "/snapshot_v1.bin",prior,MAX_GAMES,&prior_count);
+        prior_valid=(status==1); /* valid empty snapshot still counts */
+        logmsg("UI_CACHE_PRIOR_LOAD_RC",status);
+    }
+    if(ui_snapshot_should_save(complete_scan,partial_seed,prior_valid)) {
+        static UiSnapshotGame current[MAX_GAMES];
+        for(unsigned i=0;i<found;++i) {
+            memset(&current[i],0,sizeof current[i]);
+            memcpy(current[i].cusa,games[i].cusa,
+                   sizeof current[i].cusa);
+            memcpy(current[i].title,games[i].name,
+                   sizeof current[i].title);
+            memcpy(current[i].version,games[i].version,
+                   sizeof current[i].version);
+            memcpy(current[i].category,games[i].category,
+                   sizeof current[i].category);
+        }
+        if(!complete_scan)logmsg("UI_CACHE_PARTIAL_FIRST_SNAPSHOT",1);
+        logmsg("UI_CACHE_WRITE_RC",ui_snapshot_save(
+            ROOT "/snapshot_v1.bin",current,found));
+    } else {
+        logmsg("UI_CACHE_PRESERVED_DUE_TO_INCOMPLETE_SCAN",1);
+    }
+#endif
+
+    int saved;
+#ifdef __ORBIS__
+    /* An aborted partial scan must not overwrite the old inventory. */
+    saved=scan_should_abort() ? -2 : save_inventory(outpath);
+#else
+    saved=save_inventory(outpath);
+#endif
+    logmsg("SCAN_STAGE_INVENTORY_SAVE_RETURNED", saved);
 
     unsigned confirmed = 0;
     unsigned unknown = 0;
@@ -1178,22 +1748,178 @@ int main(void) {
     logmsg("Directory candidates", (int)candidate_count);
     logmsg("Directory listings observed", (int)directory_candidates);
     logmsg("SFO invalid", (int)sfo_invalid);
-    logmsg("Metadata records", (int)found);
+    logmsg("Base-game records", (int)found);
+    logmsg("SFO metadata verified", (int)metadata_found);
+    /* Counts across base games, patches and DLC; not only games[]. */
+    logmsg("Metadata records", (int)metadata_found);
     logmsg("Installed confirmed", (int)confirmed);
     logmsg("Installation unknown", (int)unknown);
 
     logmsg(
-        "AppInstUtil status (0=OK,-1=unavailable)",
+        "AppInstUtil status (0=OK,2=init failed,3=skipped,-1=host)",
         api_stage
     );
 
     logmsg("Scan errors", errors);
     logmsg("Primary listing available", primary_listing_ok);
-    logmsg("Scan complete", ftp_login_ok && primary_listing_ok && errors == 0);
+    logmsg("External listing available", external_listing_ok);
+    logmsg("Scan complete", ftp_login_ok && primary_listing_ok && external_listing_ok && errors == 0);
     logmsg("Inventory saved (0=OK)", saved);
 
-    if (report)
-        fclose(report);
+    logmsg("SCAN_STAGE_RESULTS_NEXT", 1);
 
+#ifdef __ORBIS__
+    /* UI library lists validated BASE games only. Directory candidates,
+     * Patch and DLC remain separate in the read-only diagnostic inventory.
+     * Metadata verification is NOT installation confirmation. */
+    for (unsigned i = 0; i < found; ++i) {
+        const Game *g = &games[i];
+        ui_items[i].cusa = g->cusa;
+        ui_items[i].title = g->name;
+        ui_items[i].version = g->version;
+        ui_items[i].metadata_verified = 1;
+        ui_items[i].install_state = g->installed;
+        ui_items[i].category = g->category;
+    }
+    scan_inventory_saved=(saved==0);
+    scan_inventory_complete=ftp_login_ok && primary_listing_ok &&
+        external_listing_ok && errors==0 && !scan_should_abort();
+    logmsg("UI_RESULTS_STAGED",(int)found);
+#endif
+
+#ifdef __ORBIS__
     return saved == 0 ? 0 : 1;
+#else
+    logmsg("APP_MAIN_RETURNING", saved == 0 ? 0 : 1);
+    if (report) {
+        fflush(report);
+        fclose(report);
+        report = NULL;
+    }
+    return saved == 0 ? 0 : 1;
+#endif
 }
+
+#ifdef __ORBIS__
+static void *scan_worker_entry(void *unused) {
+    (void)unused;
+    scan_run_rc=scan_readonly();
+    /* Release publishes scanner completion. The main UI thread still joins
+     * before consuming games[], ui_items[] and diagnostic state. */
+    __atomic_store_n(&scan_status,SCANNER_UI_SCAN_DONE,__ATOMIC_RELEASE);
+    return NULL;
+}
+
+int main(void) {
+    if (mkdir(ROOT,0777)!=0 && errno!=EEXIST)
+        ps4_shell_exit(2,NULL);
+
+    scan_native_ui=scanner_ui_begin();
+    /* Keep the safe headless diagnostic path if VideoOut is unavailable. */
+    if(!scan_native_ui) {
+        const int rc=scan_readonly();
+        ps4_shell_exit(rc,logmsg);
+    }
+
+    static UiSnapshotGame previous_games[MAX_GAMES];
+    static ScannerUiEntry previous_items[MAX_GAMES];
+    unsigned previous_count=0;
+    const int previous_status=ui_snapshot_load(
+        ROOT "/snapshot_v1.bin",previous_games,MAX_GAMES,&previous_count);
+    if(previous_status==1 && previous_count) {
+        for(unsigned i=0;i<previous_count;++i) {
+            previous_items[i].cusa=previous_games[i].cusa;
+            previous_items[i].title=previous_games[i].title;
+            previous_items[i].version=previous_games[i].version;
+            previous_items[i].category=previous_games[i].category;
+            previous_items[i].metadata_verified=0;
+            previous_items[i].install_state=-1;
+        }
+        (void)scanner_ui_preview_snapshot(previous_items,previous_count);
+    }
+
+    /* Verified OpenOrbis libkernel API. Stack deliberately larger than the
+     * default scePthread stack; FTP data buffers themselves are static. */
+    OrbisPthreadAttr attributes;
+    int rc=scePthreadAttrInit(&attributes);
+    const int attributes_valid=(rc==0);
+    if(rc==0)rc=scePthreadAttrSetstacksize(&attributes,256u*1024u);
+    OrbisPthread worker;
+    if(rc==0)
+        rc=scePthreadCreate(&worker,&attributes,scan_worker_entry,NULL,
+                            "ps4auto_scan");
+    if(attributes_valid)(void)scePthreadAttrDestroy(&attributes);
+    if(rc!=0) {
+        /* A failed worker must never fall back to a blocking network scan
+         * on the UI thread or present a false list as freshly verified. */
+        FILE *failure=fopen(ROOT "/diagnostic_v065.txt","wb");
+        if(failure) {
+            fprintf(failure,"SCAN_THREAD_CREATE_FAILED: 0x%08x\n",
+                    (unsigned)rc);
+            fclose(failure);
+        }
+        scanner_ui_results(NULL,0,0,1,0,0);
+        scanner_ui_shutdown(NULL);
+        ps4_shell_exit(3,NULL);
+    }
+
+    const int user_exit=scanner_ui_wait_for_scan(&scan_status);
+    if(user_exit)
+        __atomic_store_n(&scan_abort,1,__ATOMIC_RELEASE);
+    const int join_rc=scePthreadJoin(worker,NULL);
+    if(join_rc!=0) {
+        /* Worker ownership could not be confirmed; do not access its
+         * output, game state, thumbnails, or log FILE*. */
+        scanner_ui_shutdown(NULL);
+        ps4_shell_exit(4,NULL);
+    }
+
+    if(!user_exit) {
+        /* A failed optional artwork thread must not block navigation.
+         * No FTP work or PNG decoding is ever performed by VideoOut. */
+        OrbisPthread cover_worker;
+        OrbisPthreadAttr cover_attr;
+        int attr_rc=scePthreadAttrInit(&cover_attr);
+        const int attr_valid=(attr_rc==0);
+        if(attr_rc==0)
+            attr_rc=scePthreadAttrSetstacksize(&cover_attr,256u*1024u);
+        int cover_started=0;
+        if(attr_rc==0) {
+            memset(cover_failed,0,sizeof cover_failed);
+            __atomic_store_n(&cover_state,0u,__ATOMIC_RELEASE);
+            __atomic_store_n(&cover_stop,0u,__ATOMIC_RELEASE);
+            __atomic_store_n(&cover_online,0u,__ATOMIC_RELEASE);
+            const int create_rc=scePthreadCreate(
+                &cover_worker,&cover_attr,cover_worker_entry,NULL,
+                "ps4auto_covers");
+            if(create_rc==0) {
+                cover_started=1;
+                scanner_ui_set_cover_tick(cover_ui_tick);
+            } else logmsg("ICON_WORKER_CREATE_FAILED",create_rc);
+        } else logmsg("ICON_WORKER_ATTR_FAILED",attr_rc);
+        if(attr_valid)(void)scePthreadAttrDestroy(&cover_attr);
+
+        scanner_ui_results(ui_items,found,found,(unsigned)errors,
+                            scan_inventory_complete,scan_inventory_saved);
+        scanner_ui_set_cover_tick(NULL);
+        if(cover_started) {
+            __atomic_store_n(&cover_stop,1u,__ATOMIC_RELEASE);
+            __atomic_store_n(&scan_abort,1,__ATOMIC_RELEASE);
+            if(scePthreadJoin(cover_worker,NULL)!=0) {
+                /* Never release shared worker memory while it may run. */
+                scanner_ui_shutdown(NULL);
+                ps4_shell_exit(5,NULL);
+            }
+        }
+    }
+    logmsg("UI_RESULTS_RETURNED",1);
+    scanner_ui_shutdown(logmsg);
+    logmsg("UI_SHUTDOWN_RETURNED",1);
+    /* Never return to PS4 musl's _exit trampoline. */
+    ps4_shell_exit(scan_run_rc,logmsg);
+}
+#else
+int main(void) {
+    return scan_readonly();
+}
+#endif

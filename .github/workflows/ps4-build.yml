@@ -3,6 +3,12 @@ name: PS4 Native Scanner Build (Experimental)
 
 on:
   workflow_dispatch:
+    inputs:
+      fw14_header_probe_pkg:
+        description: "Build separate read-only BREW01998 header diagnostic PKG (FW14 UNTESTED)"
+        required: false
+        type: boolean
+        default: false
   push:
     paths:
       - "ps4-auto-updater-v0.3/**"
@@ -10,6 +16,11 @@ on:
 
 permissions:
   contents: read
+
+# One toolchain download per branch; avoid saturating release-asset CDN.
+concurrency:
+  group: ps4-native-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   host-tests:
@@ -20,12 +31,28 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
+      - name: Install Arabic bitmap build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pil fonts-noto-core
+
       - name: Run all automatic tests
+        env:
+          UI_PREVIEW_EXPORT_DIR: ps4-auto-updater-v0.3/ui-previews
         run: |
           python3 -m unittest discover \
             -s ps4-auto-updater-v0.3/tests \
             -p 'test_*.py' \
             -v
+
+      - name: Upload host-rendered UI previews (NOT PS4 screenshots)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-native-host-previews
+          path: ps4-auto-updater-v0.3/ui-previews/*.png
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Host checks completed
         run: |
@@ -54,13 +81,44 @@ jobs:
             curl \
             ca-certificates \
             python3 \
+            python3-pil \
+            fonts-noto-core \
             libicu-dev
 
-      - name: Download OpenOrbis Toolchain
+      - name: Restore verified OpenOrbis archive from CI cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/openorbis.tar.gz
+          key: openorbis-v0.5.4-sha256-3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526
+
+      - name: Download and verify OpenOrbis Toolchain
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          curl -fL --retry 3 \
-            https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz \
-            -o /tmp/openorbis.tar.gz
+          set -euo pipefail
+          EXPECTED='3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526'
+          ASSET='/tmp/openorbis.tar.gz'
+          # Even cached archives are checked before execution.
+          if ! echo "$EXPECTED  $ASSET" | sha256sum --check --status; then
+            rm -f "$ASSET"
+            # Try the public release URL first; API asset negotiation is an
+            # alternative origin when GitHub's release CDN returns HTTP 504.
+            if ! curl -fL --retry 3 --retry-all-errors --retry-delay 5 \
+               --connect-timeout 20 --max-time 300 \
+               'https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz' \
+               -o "$ASSET"; then
+              rm -f "$ASSET"
+              curl -fL --retry 3 --retry-all-errors --retry-delay 5 \
+                --connect-timeout 20 --max-time 300 \
+                -H 'Accept: application/octet-stream' \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                'https://api.github.com/repos/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/assets/356303789' \
+                -o "$ASSET"
+            fi
+          fi
+          # SHA-256 published by the official OpenOrbis release (v0.5.4).
+          echo "$EXPECTED  $ASSET" | sha256sum --check
 
           mkdir -p "$RUNNER_TEMP/openorbis"
 
@@ -78,6 +136,24 @@ jobs:
       - name: Compile PS4 Package
         run: |
           make -C ps4-auto-updater-v0.3/ps4
+
+      # Build-time proof only: compile the opt-in 8-byte installed-app
+      # header probe, but NEVER link it into the default PKG or upload it.
+      # Firmware 14 sandbox read rights remain unverified.
+      - name: Compile optional PKG header diagnostic (NOT packaged)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd ps4-auto-updater-v0.3/ps4
+          clang -D__ORBIS__ -DPS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE \
+            -include stdbool.h -Wall -Wextra -Werror \
+            --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+            -isysroot "$OO_PS4_TOOLCHAIN" \
+            -isystem "$OO_PS4_TOOLCHAIN/include" \
+            -o build/experimental_pkg_header_probe_only.o \
+            src/ftp_scanner_v05.c
+          test -s build/experimental_pkg_header_probe_only.o
+          echo "Optional probe object COMPILED ONLY; not linked into eboot."
 
       - name: Verify PS4 package header and publish SHA256
         run: |
@@ -108,7 +184,7 @@ jobs:
 
           manifest = (
               "PS4 Scanner experimental — NOT tested on console\n"
-              "Build version: 01.10\n"
+              "Build version: 01.14\n"
               f"Filename: {pkg.name}\n"
               f"Content ID: {actual_id}\n"
               f"Size bytes: {pkg.stat().st_size}\n"
@@ -118,7 +194,149 @@ jobs:
           print(manifest)
           PY
 
+      # Targeted emulator-only ZIP on this draft development branch:
+      # produce the SAME assembled app files as the successful native build,
+      # but do not release/upload the PS4-installable .pkg from this branch.
+      # shadPS4's core accepts a direct eboot.bin path even if the Qt game
+      # discovery UI does not support this BREW title ID.
+      - name: Stage read-only shadPS4 extracted app
+        if: github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='ps4-auto-updater-v0.3/ps4'
+          TARGET="${RUNNER_TEMP}/shadps4-smoke/BREW00197"
+          mkdir -p "$TARGET/sce_sys/about" "$TARGET/sce_module"
+          install -m 0644 "$APP/eboot.bin" "$TARGET/eboot.bin"
+          install -m 0644 "$APP/sce_sys/param.sfo" "$TARGET/sce_sys/param.sfo"
+          install -m 0644 "$APP/sce_sys/icon0.png" "$TARGET/sce_sys/icon0.png"
+          install -m 0644 "$APP/sce_sys/about/right.sprx" "$TARGET/sce_sys/about/right.sprx"
+          install -m 0644 "$APP/sce_module/libc.prx" "$TARGET/sce_module/libc.prx"
+          install -m 0644 "$APP/sce_module/libSceFios2.prx" "$TARGET/sce_module/libSceFios2.prx"
+          install -m 0644 'ps4-auto-updater-v0.3/SHADPS4_SMOKE_TEST_AR.md' \
+            "${RUNNER_TEMP}/shadps4-smoke/README_AR.md"
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "shadps4-smoke"
+          target = root / "BREW00197"
+          required = [
+              "eboot.bin",
+              "sce_sys/param.sfo",
+              "sce_sys/icon0.png",
+              "sce_sys/about/right.sprx",
+              "sce_module/libc.prx",
+              "sce_module/libSceFios2.prx",
+          ]
+          for rel in required:
+              path = target / rel
+              assert path.is_file() and path.stat().st_size > 0, f"missing {rel}"
+          assert (target / "eboot.bin").read_bytes()[:4] != b"", "empty eboot"
+          expected_pkg = list(Path("ps4-auto-updater-v0.3/ps4").glob("*.pkg"))
+          assert len(expected_pkg) == 1, "this app must match the validated single-PKG build"
+          meta = "\n".join([
+              "shadPS4 extracted-app smoke fixture ONLY",
+              "COMMIT: " + os.environ["GITHUB_SHA"],
+              "BUILD: OpenOrbis, read-only scanner UI",
+              "APP ID: BREW00197",
+              "PKG: intentionally NOT included; draft release gate remains closed",
+              "RUN: shadPS4 /absolute/path/to/BREW00197/eboot.bin",
+              "EXPECTED: UI/input only; localhost GoldHEN FTP and installed games absent",
+              "UNKNOWN: shadPS4 support for this app; NOT tested on physical PS4",
+              "",
+          ]) + "\n"
+          (root / "SMOKE_MANIFEST.txt").write_text(meta, encoding="utf-8")
+          (root / "EBoot_SHA256.txt").write_text(
+              hashlib.sha256((target / "eboot.bin").read_bytes()).hexdigest()
+              + "  BREW00197/eboot.bin\n",
+              encoding="utf-8",
+          )
+          print(meta)
+          PY
+
+      - name: Upload shadPS4-only smoke artifact (NOT PKG release)
+        if: github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadps4-readonly-smoke-${{ github.sha }}
+          path: ${{ runner.temp }}/shadps4-smoke/
+          if-no-files-found: error
+          retention-days: 7
+
+      # The diagnostic variant is built independently after the normal one.
+      # It is NEVER distributed as a GitHub Release.
+      # For one controlled PS4 hardware smoke test, a single commit carrying
+      # [fw14-artifact] may publish an Actions ZIP. Other pushes do not.
+      # Manual branch workflow_dispatch remains available with explicit input.
+      # User must verify Title ID collision and checksum before installation.
+      - name: Verify isolated read-only FW14 header probe PKG (not published by push)
+        if: ${{ github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP='ps4-auto-updater-v0.3/ps4'
+          make -C "$APP" clean
+          make -C "$APP" FW14_DIAGNOSTIC=1
+          python3 - <<'PY'
+          import hashlib
+          import os
+          from pathlib import Path
+          app = Path("ps4-auto-updater-v0.3/ps4")
+          expected = "IV0000-BREW01998_00-FW14HEADERPROBE0"
+          diagnostic = app / (expected + ".pkg")
+          assert diagnostic.is_file(), "Isolated diagnostic PKG not built"
+          assert list(app.glob("*.pkg")) == [diagnostic], (
+              "Mixed diagnostic/normal build artifacts"
+          )
+          with diagnostic.open("rb") as handle:
+              data = handle.read(0x1000)
+          assert len(data) == 0x1000 and data[:4] == bytes.fromhex("7f434e54"), (
+              "Invalid PS4 PKG header"
+          )
+          cid = data[0x40:0x64].split(bytes([0]), 1)[0].decode("ascii")
+          assert cid == expected, f"Wrong diagnostic Content ID: {cid!r}"
+          assert diagnostic.stat().st_size >= 1024 * 1024
+          digest = hashlib.sha256()
+          with diagnostic.open("rb") as handle:
+              for block in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(block)
+          dest = Path(os.environ["RUNNER_TEMP"]) / "fw14-header-probe"
+          dest.mkdir(parents=True, exist_ok=True)
+          import shutil
+          shutil.copyfile(diagnostic, dest / diagnostic.name)
+          manifest = chr(10).join([
+              "ISOLATED READ-ONLY FW14 PKG HEADER DIAGNOSTIC — UNTESTED ON HARDWARE",
+              "Commit: " + os.environ["GITHUB_SHA"],
+              "Title ID: BREW01998",
+              "Content ID: " + expected,
+              "Not the normal BREW00197 application",
+              "Only reports at /data/PS4AutoUpdaterProbe",
+              "Probe: installed app.pkg first 8 bytes, O_RDONLY, default off",
+              "No download/install source or user-game modifications",
+              "SHA256: " + digest.hexdigest(),
+              "Size: " + str(diagnostic.stat().st_size),
+              ""
+          ])
+          (dest / "DIAGNOSTIC_MANIFEST.txt").write_text(
+              manifest, encoding="utf-8"
+          )
+          print(manifest)
+          PY
+
+      - name: Upload opt-in FW14 diagnostic (NOT a release)
+        if: ${{ github.ref == 'refs/heads/fix/scanner-cid-and-inventory-capacity' && ((github.event_name == 'workflow_dispatch' && inputs.fw14_header_probe_pkg == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[fw14-artifact]'))) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: fw14-readonly-header-probe-${{ github.sha }}
+          path: ${{ runner.temp }}/fw14-header-probe/
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload PS4 Package
+        # Do not distribute unverified test packages from draft feature branches.
+        # A green CI only proves host tests/build, not PS4 firmware support.
+        if: github.ref == 'refs/heads/main' && vars.ENABLE_PS4_ARTIFACTS == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ps4-scanner-experimental
@@ -129,7 +347,7 @@ jobs:
           retention-days: 14
 
       - name: Publish prerelease with direct PKG download
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && vars.ENABLE_PS4_RELEASE == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -142,8 +360,8 @@ jobs:
             exit 0
           fi
 
-          TAG="scanner-v0.6.1"
-          ASSET="PS4-Auto-Updater-v0.6.1.pkg"
+          TAG="scanner-v0.6.5"
+          ASSET="PS4-Auto-Updater-v0.6.5.pkg"
           ROOT="ps4-auto-updater-v0.3/ps4"
           PKG="$ROOT/IV0000-BREW00197_00-PS4SCANNERTEST00.pkg"
           MANIFEST="$ROOT/BUILD_MANIFEST.txt"
@@ -158,7 +376,7 @@ jobs:
           gh release create "$TAG" "$ASSET" "$MANIFEST" \
             --target "$GITHUB_SHA" \
             --prerelease \
-            --title "PS4 Auto Updater v0.6.1 — SFO diagnostics & scanner fixes (experimental)" \
-            --notes "Read-only PS4 scanner v0.6.1 (PKG 01.10): FTP scanning fixed, detailed SFO reason codes/header checks, playable category detection and separate unverified CUSA directory candidates. New /data/PS4AutoUpdater/diagnostic_v061.txt. Hardware SFO metadata recognition is not yet verified. No downloads or game installation. SHA256 manifest included."
+            --title "PS4 Auto Updater v0.6.5 — SystemService shell exit fix (experimental)" \
+            --notes "READ-ONLY experimental build (PKG 01.14). v0.6.4 real PS4 diagnostic reached APP_MAIN_RETURNING 0 before CE-34878-0. v0.6.5 requests shell termination using SystemService to avoid musl _exit; logs at /data/PS4AutoUpdater/diagnostic_v065.txt. Firmware 14.00 hardware exit retest pending. No updates downloaded or installed."
 
           echo "Direct PKG: https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

@@ -20,12 +20,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libsqlite3-dev python3
+          sudo apt-get install -y build-essential libsqlite3-dev python3 python3-pil fonts-noto-core
 
       - name: Build game scanner
         working-directory: ps4-auto-updater-v0.2/native
         run: make -f Makefile.host
 
-      - name: Run tests
+      - name: Run legacy v0.2 tests
         working-directory: ps4-auto-updater-v0.2
         run: python3 -m unittest discover -s tests -v
+
+      - name: Run active v0.3/native scanner tests
+        working-directory: ps4-auto-updater-v0.3
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v

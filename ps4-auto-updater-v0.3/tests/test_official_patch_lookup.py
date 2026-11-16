@@ -15,7 +15,9 @@ from official_patch_lookup import (
     discover,
     inspect_title,
     parse_patch_xml,
-    patch_url
+    patch_url,
+    read_xml,
+    _RejectRedirect,
 )
 
 
@@ -32,6 +34,32 @@ EXAMPLE = b"""<titlepatch><tag>
 
 
 class OfficialPatchLookupTests(unittest.TestCase):
+
+    def test_reject_noncanonical_metadata_urls_before_network(self):
+        valid = patch_url("CUSA02343")
+        for bad in (
+            "https://evil.example/CUSA02343/patch.xml",
+            valid.replace("http://", "https://", 1),
+            valid.replace("CUSA02343-ver.xml", "CUSA02343-ver.xml?redirect=1"),
+            valid.replace("/CUSA02343/", "/CUSA99999/", 1),
+            valid.replace("-ver.xml", "-verXxml"),
+            1234,
+        ):
+            with self.subTest(url=bad):
+                with self.assertRaises(ValueError):
+                    read_xml(bad)
+
+    def test_sony_redirect_handler_refuses_following(self):
+        handler = _RejectRedirect()
+        self.assertIsNone(handler.redirect_request(None, None, 302, "", {},
+                                                   "http://127.0.0.1/foo"))
+
+    def test_http_metadata_never_grants_download_or_install(self):
+        row = inspect_title("CUSA02343", lambda url: EXAMPLE)
+        for key in ("transport_authenticated", "rights_verified",
+                    "install_enabled", "downloads_enabled",
+                    "fpkg_compatibility_confirmed"):
+            self.assertIs(row[key], False)
 
     def test_known_url_hmac(self):
         self.assertIn(
@@ -50,6 +78,47 @@ class OfficialPatchLookupTests(unittest.TestCase):
             result["latest_retail_version"],
             "01.09"
         )
+
+    def test_preserves_only_versions_actually_listed_in_xml(self):
+        r = parse_patch_xml(EXAMPLE, "CUSA02343")
+        self.assertEqual(
+            [x["version"] for x in r["observed_retail_versions"]],
+            ["01.09", "01.02"],
+        )
+        self.assertIs(r["history_complete"], False)
+        self.assertIs(r["metadata_transport_authenticated"], False)
+        self.assertIs(r["package_size_verified"], False)
+        self.assertIs(r["minimum_firmware_verified"], False)
+        self.assertNotIn("download_url", r)
+
+    def test_deduplicates_exact_package_entries(self):
+        duplicated = EXAMPLE.replace(
+            b"</tag></titlepatch>",
+            b'<package version="01.09" '
+            b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>'
+            b"</tag></titlepatch>",
+        )
+        r = parse_patch_xml(duplicated, "CUSA02343")
+        self.assertEqual(len(r["observed_retail_versions"]), 2)
+
+    def test_rejects_xml_entity_declarations(self):
+        bad = (b'<!DOCTYPE titlepatch [<!ENTITY x "TEST">]>'
+               b'<titlepatch><tag><package version="01.09" '
+               b'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY">'
+               b'<paramsfo><title>&x;</title></paramsfo>'
+               b'</package></tag></titlepatch>')
+        with self.assertRaises(ValueError):
+            parse_patch_xml(bad, "CUSA02343")
+
+    def test_rejects_too_many_unique_packages(self):
+        packages = b"".join(
+            (f'<package version="{i:02}.00" '
+             'content_id="EP9000-CUSA02343_00-UNCHARTEDTRILOGY"/>').encode()
+            for i in range(129)
+        )
+        with self.assertRaises(ValueError):
+            parse_patch_xml(b"<titlepatch><tag>" + packages +
+                            b"</tag></titlepatch>", "CUSA02343")
 
     def test_rejects_wrong_cusa(self):
         with self.assertRaises(ValueError):

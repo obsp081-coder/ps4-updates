@@ -1,8 +1,18 @@
 
-TITLE       := PS4 Game Scanner Test
-VERSION     := 01.10
+TITLE       := PS4 Auto Updater - Read Only Preview
+VERSION     := 01.14
 TITLE_ID    := BREW00197
 CONTENT_ID  := IV0000-BREW00197_00-PS4SCANNERTEST00
+
+# This is a SEPARATE diagnostic application, never a replacement for
+# BREW00197. Default remains unchanged. Build only in a fresh checkout.
+FW14_DIAGNOSTIC ?= 0
+ifeq ($(FW14_DIAGNOSTIC),1)
+TITLE       := PS4 FPKG Header Probe - Read Only
+VERSION     := 00.01
+TITLE_ID    := BREW01998
+CONTENT_ID  := IV0000-BREW01998_00-FW14HEADERPROBE0
+endif
 
 TOOLCHAIN   := $(OO_PS4_TOOLCHAIN)
 TOOLBIN     := $(TOOLCHAIN)/bin/linux
@@ -10,13 +20,23 @@ INTDIR      := build
 
 RUNTIME_PRXS := sce_module/libc.prx sce_module/libSceFios2.prx
 
-LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceAppInstUtil
+LIBS        := -lc -lkernel -lc++ -lSceNet -lSceSysmodule -lSceSystemService -lSceVideoOut -lScePad -lSceUserService
 
+# Optional, UNVERIFIED FW14-only diagnostic; off for normal builds:
+# add -DPS4_ENABLE_EXPERIMENTAL_WIDE_ART_PROBE to CFLAGS manually on an
+# isolated hardware-test build. Never enable this for the release package.
 CFLAGS      := -D__ORBIS__ -include stdbool.h -Wall -Wextra -Werror \
                --target=x86_64-pc-freebsd12-elf \
                -fPIC -funwind-tables -c \
                -isysroot $(TOOLCHAIN) \
                -isystem $(TOOLCHAIN)/include
+
+ifeq ($(FW14_DIAGNOSTIC),1)
+# The scanner writes only to an isolated /data/PS4AutoUpdaterProbe root.
+# No install/download APIs are enabled. This macro opens only read-only
+# app.pkg headers and must never enter the normal production build.
+CFLAGS += -DPS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE -DPS4_DIAGNOSTIC_ISOLATED
+endif
 
 LDFLAGS     := -m elf_x86_64 -pie \
                --script $(TOOLCHAIN)/link.x \
@@ -25,6 +45,11 @@ LDFLAGS     := -m elf_x86_64 -pie \
                $(LIBS) $(TOOLCHAIN)/lib/crt1.o
 
 CC          := clang
+CXX         := clang++
+CXXFLAGS    := -D__ORBIS__ -std=c++17 -Wall -Wextra -Werror \
+               --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -c \
+               -isysroot $(TOOLCHAIN) -isystem $(TOOLCHAIN)/include \
+               -I$(INTDIR)
 LD          := ld.lld
 
 .PHONY: all clean host-check
@@ -34,11 +59,93 @@ all: $(CONTENT_ID).pkg
 $(INTDIR):
 	mkdir -p $(INTDIR)
 
-$(INTDIR)/main.o: src/ftp_scanner_v05.c | $(INTDIR)
+# Installed-PKG 8-byte read-only probe is compile-time opt-in only:
+# PS4_ENABLE_EXPERIMENTAL_PKG_HEADER_PROBE (never in default release).
+# It reports a flag hint, NOT FPKG verification or installation permission.
+$(INTDIR)/main.o: src/ftp_scanner_v05.c src/pkg_header_evidence.h | $(INTDIR)
 	$(CC) $(CFLAGS) -o $@ $<
 
-eboot.bin: $(INTDIR)/main.o
-	$(LD) $(INTDIR)/main.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
+$(INTDIR)/ui_snapshot.o: src/ui_snapshot.c src/ui_snapshot.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_source_bridge.o: src/ui_source_bridge.c src/ui_source_bridge.h src/ui_models.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Offline, read-only compatibility reviewer. Linked but not activated
+# until real metadata/provenance and FW14 hardware gates are verified.
+$(INTDIR)/ui_compatibility.o: src/ui_compatibility.c src/ui_compatibility.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_models.o: src/ui_models.c src/ui_models.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Transport-free Stage 5 queue: built for ABI checks but not activated.
+$(INTDIR)/download_queue.o: src/download_queue.c src/download_queue.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Metadata-only HTTP response policy. No native sockets or TLS activated.
+$(INTDIR)/download_http_policy.o: src/download_http_policy.c src/download_http_policy.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Strict HTTP/1.1 header decoder (transport-agnostic, no TLS assumption).
+$(INTDIR)/download_http_headers.o: src/download_http_headers.c src/download_http_headers.h src/download_http_policy.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Independent bounded transport boundary; PS4 backend hard-disabled.
+# Host tests use synthetic callbacks only, not authenticated HTTPS.
+$(INTDIR)/download_transport.o: src/download_transport.c src/download_transport.h src/download_http_headers.h src/download_http_policy.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# V1 resume checkpoint reviewer; compiled for ABI tests, never activates
+# PS4 transport, persistent writes or installation.
+$(INTDIR)/download_resume.o: src/download_resume.c src/download_resume.h src/download_http_headers.h src/download_sha256.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Pure C pipeline compiled but deliberately unavailable at PS4 runtime.
+# Neither HTTPS trust nor firmware storage rights are assumed.
+$(INTDIR)/download_pipeline.o: src/download_pipeline.c src/download_pipeline.h src/download_queue.h src/download_storage.h src/download_http_headers.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Storage lifetime policy uses injected callbacks. No PS4 file writes.
+$(INTDIR)/download_storage.o: src/download_storage.c src/download_storage.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Portable cryptographic checksum with no OS or FS APIs.
+$(INTDIR)/download_sha256.o: src/download_sha256.c src/download_sha256.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Experimental backend is intentionally a nonfunctional stub on PS4.
+# Host POSIX implementation is tested separately. Never enable filesystem
+# writes with an unverified replacement of linkat/unlinkat/fsync.
+$(INTDIR)/download_file_backend.o: src/download_file_backend.c src/download_file_backend.h src/download_storage.h src/download_sha256.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_navigation.o: src/ui_navigation.c src/ui_navigation.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_title_layout.o: src/ui_title_layout.c src/ui_title_layout.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_png_transport.o: src/ui_png_transport.c src/ui_png_transport.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_image.o: src/ui_image.c src/ui_image.h vendor/stb_image.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/ui_arabic_generated.h: tools/generate_ui_arabic.py | $(INTDIR)
+	python3 tools/generate_ui_arabic.py --output $@
+
+$(INTDIR)/ui_icon_cache.o: src/ui_icon_cache.c src/ui_icon_cache.h src/ui_image.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+$(INTDIR)/scanner_ui.o: src/scanner_ui.cpp src/scanner_ui.h src/ui_navigation.h src/ui_title_layout.h src/ui_icon_cache.h $(INTDIR)/ui_arabic_generated.h | $(INTDIR)
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+$(INTDIR)/ps4_shell_exit.o: src/ps4_shell_exit.c src/ps4_shell_exit.h | $(INTDIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+eboot.bin: $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/download_queue.o $(INTDIR)/download_http_policy.o $(INTDIR)/download_http_headers.o $(INTDIR)/download_transport.o $(INTDIR)/download_pipeline.o $(INTDIR)/download_resume.o $(INTDIR)/download_storage.o $(INTDIR)/download_sha256.o $(INTDIR)/download_file_backend.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o
+	$(LD) $(INTDIR)/main.o $(INTDIR)/ui_snapshot.o $(INTDIR)/ui_navigation.o $(INTDIR)/ui_title_layout.o $(INTDIR)/ui_models.o $(INTDIR)/ui_source_bridge.o $(INTDIR)/ui_compatibility.o $(INTDIR)/download_queue.o $(INTDIR)/download_http_policy.o $(INTDIR)/download_http_headers.o $(INTDIR)/download_pipeline.o $(INTDIR)/download_resume.o $(INTDIR)/download_storage.o $(INTDIR)/download_sha256.o $(INTDIR)/download_file_backend.o $(INTDIR)/ui_image.o $(INTDIR)/ui_png_transport.o $(INTDIR)/ui_icon_cache.o $(INTDIR)/scanner_ui.o $(INTDIR)/ps4_shell_exit.o -o $(INTDIR)/scanner.elf $(LDFLAGS)
 	$(TOOLBIN)/create-fself -in=$(INTDIR)/scanner.elf -out=$(INTDIR)/scanner.oelf --eboot eboot.bin --paid 0x3800000000000011
 
 sce_sys/param.sfo: Makefile

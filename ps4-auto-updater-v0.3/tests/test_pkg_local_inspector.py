@@ -131,6 +131,15 @@ class PkgLocalInspectorTests(unittest.TestCase):
         self.assertEqual(inspect(self.pkg, self.inventory)["status"],
                          "NOT_AN_UPDATE_PACKAGE")
 
+    def test_gdp_category_does_not_claim_documented_game_patch(self):
+        # Only 'gp' has been verified as PS4 Game Application Patch in
+        # PS4 param.sfo references; this is not an FPKG authenticity test.
+        synthetic_pkg(self.pkg, category="gdp")
+        details = read_pkg_metadata(self.pkg)
+        self.assertEqual(details["package_kind_from_category"], "unknown")
+        self.assertEqual(inspect(self.pkg, self.inventory)["status"],
+                         "NOT_AN_UPDATE_PACKAGE")
+
     def test_firmware_too_low(self):
         self.assertEqual(inspect(self.pkg, self.inventory, firmware="10.00")["status"],
                          "FIRMWARE_TOO_LOW")

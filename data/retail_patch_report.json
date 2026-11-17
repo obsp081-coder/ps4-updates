@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source_kind": "official_retail_metadata",
-  "generated_at_utc": "2026-11-16T09:53:19.990731+00:00",
+  "generated_at_utc": "2026-11-17T10:50:34.713078+00:00",
   "is_fpkg_update_catalog": false,
   "fpkg_compatibility_confirmed": false,
   "downloads_enabled": false,
@@ -20,7 +20,7 @@
     {
       "cusa": "CUSA57220",
       "status": "RETAIL_PATCH_LISTED",
-      "latest_retail_version": "01.09"
+      "latest_retail_version": "01.10"
     },
     {
       "cusa": "CUSA03506",

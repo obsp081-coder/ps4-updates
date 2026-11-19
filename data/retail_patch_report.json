@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "source_kind": "official_retail_metadata",
-  "generated_at_utc": "2026-11-18T10:18:39.601707+00:00",
+  "generated_at_utc": "2026-11-19T10:28:41.557626+00:00",
   "is_fpkg_update_catalog": false,
   "fpkg_compatibility_confirmed": false,
   "downloads_enabled": false,
@@ -15,7 +15,7 @@
     {
       "cusa": "CUSA06122",
       "status": "RETAIL_PATCH_LISTED",
-      "latest_retail_version": "02.63"
+      "latest_retail_version": "02.64"
     },
     {
       "cusa": "CUSA57220",
